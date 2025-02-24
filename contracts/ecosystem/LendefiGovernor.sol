@@ -3,7 +3,7 @@ pragma solidity 0.8.23;
 /**
  * @title Lendefi DAO Governor
  * @notice Standard OZUpgradeable governor, small modification with UUPS
- * @author Nebula Labs LLC
+ * @dev Implements a secure and upgradeable DAO governor
  * @custom:security-contact security@nebula-labs.xyz
  */
 
@@ -53,6 +53,12 @@ contract LendefiGovernor is
      */
     event Upgrade(address indexed src, address indexed implementation);
 
+    /**
+     * @dev Custom Error.
+     * @param msg error desription
+     */
+    error CustomError(string msg);
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -68,11 +74,10 @@ contract LendefiGovernor is
         external
         initializer
     {
-        require(address(_token) != address(0x0), "ZERO_ADDRESS");
-        require(address(_timelock) != address(0x0), "ZERO_ADDRESS");
-        require(guardian != address(0x0), "ZERO_ADDRESS");
-
-        __Governor_init("Yoda Governor");
+        if (guardian == address(0x0) || address(_timelock) == address(0x0) || address(_token) == address(0x0)) {
+            revert CustomError("ZERO_ADDRESS_DETECTED");
+        }
+        __Governor_init("Lendefi Governor");
         __GovernorSettings_init(7200, /* 1 day */ 50400, /* 1 week */ 20000e18);
         __GovernorCountingSimple_init();
         __GovernorVotes_init(_token);
