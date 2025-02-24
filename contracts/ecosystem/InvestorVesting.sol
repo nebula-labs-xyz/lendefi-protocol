@@ -5,7 +5,7 @@ pragma solidity 0.8.23;
  * @title Lendefi DAO Investor Vesting Contract
  * @notice Investor Vesting contract
  * @notice Offers flexible withdrawal schedule (gas efficient)
- * @author Nebula Labs LLC
+ * @dev Implements linear vesting schedule for investors
  * @custom:security-contact security@nebula-labs.xyz
  */
 
@@ -31,7 +31,6 @@ contract InvestorVesting is IVESTING, Context, Ownable2Step {
      * vesting duration of the vesting contract.
      */
     constructor(address token, address beneficiary, uint64 startTimestamp, uint64 durationSeconds)
-        payable
         Ownable(beneficiary)
     {
         require(token != address(0x0) && beneficiary != address(0x0), "ZERO_ADDRESS");
