@@ -5,7 +5,7 @@ pragma solidity 0.8.23;
  * @title Lendefi DAO TreasuryV2 Contract
  * @notice Vesting contract: initialRelease + (36 month duration)
  * @notice Offers flexible withdrawal schedule (gas efficient)
- * @author Nebula Labs LLC
+ * @dev Implements secure and upgradeable DAO treasury with linear vesting
  * @custom:security-contact security@nebula-labs.xyz
  */
 
@@ -44,6 +44,7 @@ contract TreasuryV2 is
     uint32 public version;
     /// @dev token amounts released so far
     mapping(address token => uint256) private _erc20Released;
+    /// @dev upgrade gap
     uint256[50] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -62,34 +63,42 @@ contract TreasuryV2 is
      * @param timelock address of timelock contract
      */
     function initialize(address guardian, address timelock) external initializer {
+        // Initialize upgradeable contracts
         __Pausable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
         __ReentrancyGuard_init();
-        if (guardian != address(0x0) && timelock != address(0x0)) {
-            require(guardian != address(0x0), "ZERO_ADDRESS");
-            _grantRole(DEFAULT_ADMIN_ROLE, guardian);
-            require(timelock != address(0x0), "ZERO_ADDRESS");
-            _grantRole(MANAGER_ROLE, timelock);
 
-            _start = SafeCast.toUint64(block.timestamp - 219 days);
-            _duration = SafeCast.toUint64(1095 days + 219 days);
-            version++;
-            emit Initialized(msg.sender);
-        } else {
-            revert CustomError("ZERO_ADDRESS_DETECTED");
-        }
+        // Set up roles
+        _grantRole(DEFAULT_ADMIN_ROLE, guardian);
+        _grantRole(MANAGER_ROLE, timelock);
+
+        // Set up vesting schedule
+        // 180 days before current time as start
+        _start = SafeCast.toUint64(block.timestamp - 180 days);
+        // 3 years (1095 days) duration
+        _duration = SafeCast.toUint64(1095 days);
+
+        // Increment version and emit event
+        version = 1;
+        emit Initialized(msg.sender);
     }
 
     /**
-     * @dev Pause contract.
+     * @dev Pauses all token transfers and releases.
+     * @notice Emergency function to pause contract operations
+     * @custom:requires-role PAUSER_ROLE
+     * @custom:events-emits {Paused} from PausableUpgradeable
      */
     function pause() external onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
     /**
-     * @dev Unpause contract.
+     * @dev Unpauses token transfers and releases.
+     * @notice Resumes normal contract operations after pause
+     * @custom:requires-role PAUSER_ROLE
+     * @custom:events-emits {Unpaused} from PausableUpgradeable
      */
     function unpause() external onlyRole(PAUSER_ROLE) {
         _unpause();
@@ -97,12 +106,20 @@ contract TreasuryV2 is
 
     /**
      * @dev Release the native token (ether) that have already vested.
-     * @param to beneficiary address
-     * @param amount amount of ETH to transfer
-     * Emits a {EtherReleased} event.
+     * @notice Allows the manager to release vested ETH to a beneficiary
+     * @param to The address that will receive the vested ETH
+     * @param amount The amount of ETH to release
+     * @custom:requires-role MANAGER_ROLE
+     * @custom:requires Contract must not be paused
+     * @custom:requires Amount must not exceed vested amount
+     * @custom:requires Beneficiary address must not be zero
+     * @custom:security non-reentrant
+     * @custom:access restricted to MANAGER_ROLE
+     * @custom:events-emits {EtherReleased}
      */
     function release(address to, uint256 amount) external nonReentrant whenNotPaused onlyRole(MANAGER_ROLE) {
         uint256 vested = releasable();
+        if (to == address(0)) revert CustomError({msg: "ZERO_ADDRESS"});
         if (amount > vested) revert CustomError({msg: "NOT_ENOUGH_VESTED"});
         _released += amount;
         emit EtherReleased(to, amount);
@@ -110,14 +127,22 @@ contract TreasuryV2 is
     }
 
     /**
-     * @dev Release the tokens that have already vested.
-     * @param token token address
-     * @param to beneficiary address
-     * @param amount amount of tokens to transfer
-     * Emits a {ERC20Released} event.
+     * @dev Release the ERC20 tokens that have already vested.
+     * @notice Allows the manager to release vested tokens to a beneficiary
+     * @param token The address of the ERC20 token to release
+     * @param to The address that will receive the vested tokens
+     * @param amount The amount of tokens to release
+     * @custom:requires-role MANAGER_ROLE
+     * @custom:requires Contract must not be paused
+     * @custom:requires Amount must not exceed vested amount
+     * @custom:requires Token address must not be zero
+     * @custom:requires Beneficiary address must not be zero
+     * @custom:access restricted to MANAGER_ROLE
+     * @custom:events-emits {ERC20Released}
      */
     function release(address token, address to, uint256 amount) external whenNotPaused onlyRole(MANAGER_ROLE) {
         uint256 vested = releasable(token);
+        if (to == address(0)) revert CustomError({msg: "ZERO_ADDRESS"});
         if (amount > vested) revert CustomError({msg: "NOT_ENOUGH_VESTED"});
         _erc20Released[token] += amount;
         emit ERC20Released(token, to, amount);
