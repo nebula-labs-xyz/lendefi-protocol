@@ -2,8 +2,8 @@
 pragma solidity 0.8.23;
 /**
  * @title Ecosystem Interface
- * @author Nebula Labs LLC
  * @custom:security-contact security@nebula-labs.xyz
+ * @custom:copyright Copyright (c) 2025 Nebula Holding Inc. All rights reserved.
  */
 
 interface IECOSYSTEM {
@@ -75,14 +75,6 @@ interface IECOSYSTEM {
     function airdrop(address[] calldata winners, uint256 amount) external;
 
     /**
-     * @dev Verify airdrop list is valid
-     * @param winners address array
-     * @param amount of tokens
-     * @return true
-     */
-    function verifyAirdrop(address[] calldata winners, uint256 amount) external returns (bool);
-
-    /**
      * @dev Rewards liquidity providers participating in the Nebula Protocol.
      * @param to address
      * @param amount of tokens
@@ -101,9 +93,11 @@ interface IECOSYSTEM {
      * @dev Creates vesting contracts for partners and funds them.
      * @param account address
      * @param amount token allocation
+     * @param cliff cliff period
+     * @param duration vesting duration
      * Emits a {AddPartner} event.
      */
-    function addPartner(address account, uint256 amount) external;
+    function addPartner(address account, uint256 amount, uint256 cliff, uint256 duration) external;
     /**
      * @dev Getter for the starting reward supply.
      * @return starting reward supply
