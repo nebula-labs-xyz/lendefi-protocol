@@ -4,8 +4,8 @@ pragma solidity 0.8.23;
 /**
  * @title Yoda Math Contract
  * @notice Compunding and beyond
- * @author Nebula Labs Inc
- * @custom:security-contact security@nebula-labs.xysz
+ * @author Nebula Holding Inc
+ * @custom:security-contact security@nebula-labs.xyz
  */
 
 import {IYODAMATH} from "../../interfaces/IYodaMath.sol";
