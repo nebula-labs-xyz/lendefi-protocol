@@ -6,7 +6,7 @@ pragma solidity 0.8.23;
  * @notice Vesting contract: initialRelease + (36 month duration)
  * @notice Offers flexible withdrawal schedule (gas efficient)
  * @dev Implements secure and upgradeable DAO treasury with linear vesting
- * @custom:security-contact security@nebula-labs.xysz
+ * @custom:security-contact security@nebula-labs.xyz
  */
 
 import {ITREASURY} from "../interfaces/ITreasury.sol";
