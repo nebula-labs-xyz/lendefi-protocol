@@ -356,18 +356,12 @@ contract LiquidateTest is BasicDeploy {
         vm.startPrank(charlie);
         usdcInstance.approve(address(LendefiInstance), 1e6);
 
-        // Get details for expected error
-        // uint256 debtAmount = LendefiInstance.calculateDebtWithInterest(bob, positionId);
-        // uint256 liquidationBonus = LendefiInstance.getPositionLiquidationFee(bob, positionId);
-        // uint256 totalDebt = debtAmount + (debtAmount * liquidationBonus / 1e18);
-
         // Attempt liquidation without enough USDC
         vm.expectRevert();
         LendefiInstance.liquidate(bob, positionId);
         vm.stopPrank();
     }
 
-    // Test liquidation of a position with multiple collateral assets
     // Test liquidation of a position with multiple collateral assets
     function test_LiquidationWithMultipleCollateralAssets() public {
         // Only create a cross-collateral position (not isolated)
@@ -517,5 +511,126 @@ contract LiquidateTest is BasicDeploy {
             LendefiInstance.liquidate(bob, positionId);
         }
         vm.stopPrank();
+    }
+
+    function test_LiquidationWithMaximumAssets() public {
+        // Setup liquidator first
+        vm.prank(address(timelockInstance));
+        treasuryInstance.release(address(tokenInstance), charlie, 50_000 ether);
+        usdcInstance.mint(charlie, 1_000_000e6); // Give plenty of USDC
+
+        // Create a position for Bob
+        uint256 positionId = _createPosition(bob, address(wethInstance), false);
+
+        // Create 20 different mock assets
+        MockRWA[] memory mockAssets = new MockRWA[](20);
+        address[] memory assetAddresses = new address[](20);
+
+        // Deploy and configure 20 unique mock tokens
+        vm.startPrank(address(timelockInstance));
+        for (uint256 i = 0; i < 20; i++) {
+            // Create a new mock token with unique name
+            string memory name = string(abi.encodePacked("Asset", vm.toString(i)));
+            string memory symbol = string(abi.encodePacked("AST", vm.toString(i)));
+            mockAssets[i] = new MockRWA(name, symbol);
+            assetAddresses[i] = address(mockAssets[i]);
+
+            // Create oracle for each asset
+            RWAPriceConsumerV3 oracle = new RWAPriceConsumerV3();
+            oracle.setPrice(1000e8); // $1000 per token
+
+            // Configure asset in protocol
+            LendefiInstance.updateAssetConfig(
+                address(mockAssets[i]),
+                address(oracle),
+                8,
+                18,
+                1,
+                800, // 80% borrow threshold
+                850, // 85% liquidation threshold
+                1_000_000 ether,
+                IPROTOCOL.CollateralTier.CROSS_A,
+                0
+            );
+
+            // Register oracle
+            oracleInstance.addOracle(address(mockAssets[i]), address(oracle), 8);
+            oracleInstance.setPrimaryOracle(address(mockAssets[i]), address(oracle));
+        }
+        vm.stopPrank();
+
+        // Add all 20 assets as collateral
+        uint256 totalCollateralValue = 0;
+        uint256 collateralAmount = 5 ether;
+
+        vm.startPrank(bob);
+        for (uint256 i = 0; i < 20; i++) {
+            // Mint tokens to Bob
+            mockAssets[i].mint(bob, collateralAmount);
+
+            // Add as collateral
+            mockAssets[i].approve(address(LendefiInstance), collateralAmount);
+            LendefiInstance.supplyCollateral(address(mockAssets[i]), collateralAmount, positionId);
+
+            // Track total value for logging
+            totalCollateralValue += collateralAmount * 1000 * 80 / 100; // 80% of $1000 per token
+        }
+
+        // Borrow near the maximum allowed - CHANGE: increase from 95% to 98%
+        uint256 creditLimit = LendefiInstance.calculateCreditLimit(bob, positionId);
+        uint256 borrowAmount = creditLimit * 98 / 100; // 98% of credit limit
+        LendefiInstance.borrow(positionId, borrowAmount);
+        vm.stopPrank();
+
+        // Log initial state
+        console2.log("Position created with 20 different assets");
+        console2.log("Total collateral value (USD): ", totalCollateralValue);
+        console2.log("Borrow amount (USDC): ", borrowAmount);
+        console2.log("Credit limit: ", creditLimit);
+
+        // Make position liquidatable by dropping all asset prices
+        // CHANGE: drop by 15% instead of 10%
+        vm.startPrank(address(timelockInstance));
+        for (uint256 i = 0; i < 20; i++) {
+            // Get the oracle for this asset
+            address oracle = assetInfo(assetAddresses[i]).oracleUSD;
+            RWAPriceConsumerV3(oracle).setPrice(850e8); // Drop from $1000 to $850 (15% drop)
+        }
+        vm.stopPrank();
+
+        // Calculate and log health factor
+        uint256 healthFactor = LendefiInstance.healthFactor(bob, positionId);
+        console2.log("Health factor after price drop: ", healthFactor);
+
+        // Verify position is now liquidatable
+        bool isLiquidatable = LendefiInstance.isLiquidatable(bob, positionId);
+        assertTrue(isLiquidatable, "Position should be liquidatable after price drop");
+
+        // Execute liquidation with gas measurement
+        vm.startPrank(charlie);
+        usdcInstance.approve(address(LendefiInstance), 1_000_000e6); // Approve more than needed
+
+        uint256 gasStart = gasleft();
+        LendefiInstance.liquidate(bob, positionId);
+        uint256 gasUsed = gasStart - gasleft();
+        vm.stopPrank();
+
+        // Log gas usage
+        console2.log("Gas used for liquidation of 20 assets: ", gasUsed);
+
+        // Verify liquidation was successful
+        IPROTOCOL.UserPosition memory position = LendefiInstance.getUserPosition(bob, positionId);
+        assertEq(position.debtAmount, 0, "Debt should be cleared");
+
+        // Verify all 20 assets were transferred to Charlie
+        for (uint256 i = 0; i < 20; i++) {
+            uint256 charlieBalance = mockAssets[i].balanceOf(charlie);
+            assertEq(charlieBalance, collateralAmount, "Liquidator should receive all collateral");
+        }
+    }
+
+    // Helper function to access assetInfo storage for tests
+    function assetInfo(address asset) internal view returns (IPROTOCOL.Asset memory) {
+        return LendefiInstance.getAssetInfo(asset);
     }
 }
