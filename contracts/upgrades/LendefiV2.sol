@@ -85,7 +85,6 @@ contract LendefiV2 is
     UUPSUpgradeable
 {
     using EnumerableSet for EnumerableSet.AddressSet;
-    using LendefiRates for EnumerableSet.AddressSet;
 
     // Constants
     uint256 internal constant WAD = 1e6;
