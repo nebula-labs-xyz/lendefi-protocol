@@ -3,14 +3,14 @@ pragma solidity ^0.8.23;
 
 import "../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
-import {IPROTOCOL} from "../../contracts/interfaces/IProtocol.sol";
+import {ILendefiAssets} from "../../contracts/interfaces/ILendefiAssets.sol";
+import {ILendefiOracle} from "../../contracts/interfaces/ILendefiOracle.sol";
 import {RWAPriceConsumerV3} from "../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../contracts/mock/WETHOracle.sol";
 import {MockRWA} from "../../contracts/mock/MockRWA.sol";
-import {Lendefi} from "../../contracts/lender/Lendefi.sol";
 
 contract LendefiExtendedTest is BasicDeploy {
-    uint256 constant WAD = 1e18;
+    uint256 constant WAD = 1e6;
     MockRWA internal rwaToken;
 
     RWAPriceConsumerV3 internal rwaOracleInstance;
@@ -59,7 +59,8 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Configure RWA token (isolated)
-        LendefiInstance.updateAssetConfig(
+        // Changed from LendefiInstance to assetsInstance
+        assetsInstance.updateAssetConfig(
             address(rwaToken), // asset
             address(rwaOracleInstance), // oracle
             8, // oracle decimals
@@ -68,12 +69,13 @@ contract LendefiExtendedTest is BasicDeploy {
             650, // borrow threshold (65%)
             750, // liquidation threshold (75%)
             1_000_000 ether, // max supply
-            IPROTOCOL.CollateralTier.ISOLATED,
+            ILendefiAssets.CollateralTier.ISOLATED,
             100_000e6 // isolation debt cap
         );
 
         // Configure WETH (cross-collateral)
-        LendefiInstance.updateAssetConfig(
+        // Changed from LendefiInstance to assetsInstance
+        assetsInstance.updateAssetConfig(
             address(wethInstance), // asset
             address(wethOracleInstance), // oracle
             8, // oracle decimals
@@ -82,7 +84,7 @@ contract LendefiExtendedTest is BasicDeploy {
             800, // borrow threshold (80%)
             850, // liquidation threshold (85%)
             1_000_000 ether, // max supply
-            IPROTOCOL.CollateralTier.CROSS_A,
+            ILendefiAssets.CollateralTier.CROSS_A,
             0 // no isolation debt cap
         );
 
@@ -123,17 +125,18 @@ contract LendefiExtendedTest is BasicDeploy {
         LendefiInstance.supplyCollateral(address(wethInstance), 10 ether, 0);
 
         // Pass CROSS_A tier since we're using WETH
-        uint256 borrowRate = LendefiInstance.getBorrowRate(IPROTOCOL.CollateralTier.CROSS_A);
+        uint256 borrowRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
         console2.log("Borrow rate (%):", borrowRate * 100 / 1e6);
 
         // Log rates and utilization
         uint256 utilization = LendefiInstance.getUtilization();
-        // Get protocol snapshot for base rate
-        IPROTOCOL.ProtocolSnapshot memory snapshot = LendefiInstance.getProtocolSnapshot();
-        uint256 tierRate = LendefiInstance.getBorrowRate(IPROTOCOL.CollateralTier.CROSS_A);
+
+        // Get base borrow rate
+        uint256 baseRate = LendefiInstance.baseBorrowRate();
+        uint256 tierRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
 
         console2.log("Initial utilization (%):", utilization * 100 / WAD);
-        console2.log("Base borrow rate (%):", snapshot.borrowRate * 100 / 1e6);
+        console2.log("Base borrow rate (%):", baseRate * 100 / 1e6);
         console2.log("Tier borrow rate (%):", tierRate * 100 / 1e6);
 
         // Calculate and log credit limit
@@ -168,12 +171,12 @@ contract LendefiExtendedTest is BasicDeploy {
         console2.log("Final debt (USDC):", debtWithInterest / 1e6);
 
         // Add more detailed rate logging
-        console2.log("Expected minimum rate (%):", snapshot.borrowRate * 100 / 1e6);
-        console2.log("Expected maximum rate (%):", (snapshot.borrowRate + tierRate) * 100 / 1e6);
+        console2.log("Expected minimum rate (%):", baseRate * 100 / 1e6);
+        console2.log("Expected maximum rate (%):", (baseRate + tierRate) * 100 / 1e6);
 
         // Update assertions to match actual rates
-        assertTrue(effectiveAPR >= snapshot.borrowRate * 100, "APR below base rate");
-        assertTrue(effectiveAPR <= (snapshot.borrowRate + tierRate) * 100, "APR above max rate");
+        assertTrue(effectiveAPR >= baseRate * 100, "APR below base rate");
+        assertTrue(effectiveAPR <= (baseRate + tierRate) * 100, "APR above max rate");
 
         // Full repayment
         LendefiInstance.repay(0, debtWithInterest);
@@ -215,13 +218,13 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.warp(block.timestamp + 180 days);
 
         // Check reward eligibility
-        (,,, bool isEligible, uint256 pendingRewards) = LendefiInstance.getLPInfo(alice);
+        bool isEligible = LendefiInstance.isRewardable(alice);
         assertTrue(isEligible, "Should be eligible for rewards");
-        assertTrue(pendingRewards > 0, "Should have pending rewards");
 
         vm.stopPrank();
     }
 
+    // Fixed - Using proper ILendefiOracle.OracleInvalidPrice error
     function test_OracleFailures() public {
         vm.startPrank(bob);
         wethInstance.deposit{value: 10 ether}();
@@ -232,7 +235,10 @@ contract LendefiExtendedTest is BasicDeploy {
         // Mock oracle failure
         wethOracleInstance.setPrice(0); // Set invalid price
 
-        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.OracleInvalidPrice.selector, address(wethOracleInstance), 0));
+        // Use custom error from ILendefiOracle interface
+        vm.expectRevert(
+            abi.encodeWithSelector(ILendefiOracle.OracleInvalidPrice.selector, address(wethOracleInstance), 0)
+        );
         LendefiInstance.borrow(0, 1000e6);
         vm.stopPrank();
     }
@@ -240,21 +246,24 @@ contract LendefiExtendedTest is BasicDeploy {
     function test_ParameterUpdates() public {
         vm.startPrank(address(timelockInstance));
 
-        // Update base profit target
-        LendefiInstance.updateBaseProfitTarget(0.005e6);
+        // Update protocol metrics - consolidated method
+        LendefiInstance.updateProtocolMetrics(
+            0.005e6, // base profit target
+            0.02e6, // base borrow rate
+            2_000 ether, // target reward
+            180 days, // reward interval
+            100_000e6, // rewardable supply
+            20_000 ether // liquidator threshold
+        );
 
-        // Update base borrow rate
-        LendefiInstance.updateBaseBorrowRate(0.02e6);
-
-        // Update tier parameters
-        LendefiInstance.updateTierParameters(IPROTOCOL.CollateralTier.CROSS_A, 0.1e6, 0.1e6);
+        // Update tier parameters - moved to assetsInstance
+        assetsInstance.updateTierParameters(ILendefiAssets.CollateralTier.CROSS_A, 0.1e6, 0.1e6);
 
         vm.stopPrank();
 
         // Verify updates
-        IPROTOCOL.ProtocolSnapshot memory snapshot = LendefiInstance.getProtocolSnapshot();
-        assertEq(snapshot.baseProfitTarget, 0.005e6);
-        assertEq(snapshot.borrowRate, 0.02e6);
+        assertEq(LendefiInstance.baseProfitTarget(), 0.005e6);
+        assertEq(LendefiInstance.baseBorrowRate(), 0.02e6);
     }
 
     function test_TVLTracking() public {
@@ -263,11 +272,127 @@ contract LendefiExtendedTest is BasicDeploy {
         LendefiInstance.createPosition(address(wethInstance), false);
         wethInstance.approve(address(LendefiInstance), 10 ether);
 
-        uint256 initialTVL = LendefiInstance.assetTVL(address(wethInstance));
+        uint256 initialTVL = assetsInstance.assetTVL(address(wethInstance));
         LendefiInstance.supplyCollateral(address(wethInstance), 10 ether, 0);
-        uint256 newTVL = LendefiInstance.assetTVL(address(wethInstance));
+        uint256 newTVL = assetsInstance.assetTVL(address(wethInstance));
 
         assertEq(newTVL - initialTVL, 10 ether, "TVL should increase by deposit amount");
+        vm.stopPrank();
+    }
+
+    // Fixed - Using proper ILendefiOracle.OracleTimeout error
+    function testRevert_OracleTimeout() public {
+        vm.startPrank(bob);
+        wethInstance.deposit{value: 10 ether}();
+        LendefiInstance.createPosition(address(wethInstance), false);
+        wethInstance.approve(address(LendefiInstance), 10 ether);
+        LendefiInstance.supplyCollateral(address(wethInstance), 10 ether, 0);
+
+        // Warp time far into future to cause oracle timeout
+        vm.warp(block.timestamp + 30 days);
+
+        // Use custom error from ILendefiOracle interface
+        // The parameters must match the exact format used in the contract
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILendefiOracle.OracleTimeout.selector,
+                address(wethOracleInstance),
+                block.timestamp - 30 days, // Oracle timestamp
+                block.timestamp, // Current timestamp
+                8 hours // Max age
+            )
+        );
+        LendefiInstance.borrow(0, 1000e6);
+        vm.stopPrank();
+    }
+
+    function testRevert_BorrowZeroAmount() public {
+        vm.startPrank(bob);
+        wethInstance.deposit{value: 10 ether}();
+        LendefiInstance.createPosition(address(wethInstance), false);
+        wethInstance.approve(address(LendefiInstance), 10 ether);
+        LendefiInstance.supplyCollateral(address(wethInstance), 10 ether, 0);
+
+        // Get the initial state
+        uint256 initialDebt = LendefiInstance.getUserPosition(bob, 0).debtAmount;
+        uint256 initialLastAccrual = LendefiInstance.getUserPosition(bob, 0).lastInterestAccrual;
+
+        // Borrow with zero amount - should NOT revert
+        LendefiInstance.borrow(0, 0);
+
+        // Verify state changes
+        uint256 newDebt = LendefiInstance.getUserPosition(bob, 0).debtAmount;
+        uint256 newLastAccrual = LendefiInstance.getUserPosition(bob, 0).lastInterestAccrual;
+
+        // Debt should remain 0
+        assertEq(newDebt, initialDebt, "Debt should not change with zero borrow");
+
+        // Last accrual should be updated
+        assertGt(newLastAccrual, initialLastAccrual, "Last accrual timestamp should be updated");
+
+        vm.stopPrank();
+    }
+
+    function testRevert_BorrowWhenPaused() public {
+        vm.startPrank(bob);
+        wethInstance.deposit{value: 10 ether}();
+        LendefiInstance.createPosition(address(wethInstance), false);
+        wethInstance.approve(address(LendefiInstance), 10 ether);
+        LendefiInstance.supplyCollateral(address(wethInstance), 10 ether, 0);
+        vm.stopPrank();
+
+        // Pause the protocol
+        vm.prank(guardian);
+        LendefiInstance.pause();
+
+        // Try to borrow when paused
+        vm.startPrank(bob);
+        vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
+        LendefiInstance.borrow(0, 1000e6);
+        vm.stopPrank();
+    }
+
+    function testRevert_InvalidPosition() public {
+        vm.startPrank(bob);
+
+        // Try to borrow from non-existent position
+        vm.expectRevert(bytes("IN")); // IN = Invalid position
+        LendefiInstance.borrow(999, 1000e6);
+
+        vm.stopPrank();
+    }
+
+    // Test - Use proper asset capacity error code
+    function testRevert_ExceedAssetSupplyLimit() public {
+        // Setup low max supply for WETH
+        vm.startPrank(address(timelockInstance));
+        assetsInstance.updateAssetConfig(
+            address(wethInstance),
+            address(wethOracleInstance),
+            8,
+            18,
+            1,
+            800,
+            850,
+            5 ether, // Low max supply of 5 ETH
+            ILendefiAssets.CollateralTier.CROSS_A,
+            0
+        );
+        vm.stopPrank();
+
+        // Try to supply more than the limit
+        vm.startPrank(bob);
+        wethInstance.deposit{value: 10 ether}();
+        LendefiInstance.createPosition(address(wethInstance), false);
+        wethInstance.approve(address(LendefiInstance), 10 ether);
+
+        // First supply 5 ETH (at limit)
+        LendefiInstance.supplyCollateral(address(wethInstance), 5 ether, 0);
+
+        // Use "AC" instead of "MS" to match the actual error in Lendefi.sol
+        // In _validateDeposit(): require(!assetsModule.isAssetAtCapacity(asset, amount), "AC");
+        vm.expectRevert(bytes("AC")); // AC = Asset Capacity
+        LendefiInstance.supplyCollateral(address(wethInstance), 1 ether, 0);
         vm.stopPrank();
     }
 }
