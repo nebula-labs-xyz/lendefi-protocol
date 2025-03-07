@@ -25,6 +25,7 @@ pragma solidity 0.8.23;
  */
 
 import {IPROTOCOL} from "../interfaces/IProtocol.sol";
+import {ILendefiAssets} from "../interfaces/ILendefiAssets.sol";
 import {IVault} from "../vendor/@balancer-labs/v2-interfaces/contracts/vault/IVault.sol";
 import {IFlashLoanRecipient} from "../vendor/@balancer-labs/v2-interfaces/contracts/vault/IFlashLoanRecipient.sol";
 import {ISwapRouter} from "../vendor/@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
@@ -41,6 +42,8 @@ contract FlashLoanRecipient is IFlashLoanRecipient, Ownable {
     IPROTOCOL public immutable PROTOCOL_INSTANCE;
     /// @dev gov token instance
     IERC20 public immutable TOKEN_INSTANCE;
+    /// @dev gov assets instance
+    ILendefiAssets public immutable ASSETS_INSTANCE;
     /// @dev Uniswap router instance
     ISwapRouter public immutable UNISWAP_ROUTER;
 
@@ -56,14 +59,20 @@ contract FlashLoanRecipient is IFlashLoanRecipient, Ownable {
         _;
     }
 
-    constructor(address usdc, address nebula, address balancerVault, address uniswapRouter, address govToken)
-        Ownable(msg.sender)
-    {
+    constructor(
+        address usdc,
+        address nebula,
+        address balancerVault,
+        address uniswapRouter,
+        address govToken,
+        address assets
+    ) Ownable(msg.sender) {
         USDC_INSTANCE = IERC20(usdc);
         PROTOCOL_INSTANCE = IPROTOCOL(payable(nebula));
         BALANCER_VAULT = IVault(balancerVault);
         UNISWAP_ROUTER = ISwapRouter(uniswapRouter); //uniswapV3
         TOKEN_INSTANCE = IERC20(govToken);
+        ASSETS_INSTANCE = ILendefiAssets(assets);
     }
 
     /**
@@ -71,7 +80,8 @@ contract FlashLoanRecipient is IFlashLoanRecipient, Ownable {
      * @param account address
      */
     function liquidate(address account) external onlyOwner {
-        uint256 positionId = PROTOCOL_INSTANCE.getUserPositionsCount(account) - 1;
+        IPROTOCOL.UserPosition[] memory positions = PROTOCOL_INSTANCE.getUserPositions(account);
+        uint256 positionId = positions.length - 1;
         if (PROTOCOL_INSTANCE.isLiquidatable(account, positionId)) {
             require(TOKEN_INSTANCE.balanceOf(address(this)) >= 20_000 ether, "ERR_INSUFFIENT_LIQUIDATOR_TOKENS");
 
@@ -111,13 +121,14 @@ contract FlashLoanRecipient is IFlashLoanRecipient, Ownable {
         bytes memory userData
     ) external override onlyVault {
         address target = address(uint160(bytes20(userData)));
-        uint256 positionId = PROTOCOL_INSTANCE.getUserPositionsCount(target) - 1;
+        IPROTOCOL.UserPosition[] memory positions = PROTOCOL_INSTANCE.getUserPositions(target);
+        uint256 positionId = positions.length - 1;
         address[] memory assets = PROTOCOL_INSTANCE.getPositionCollateralAssets(target, positionId);
         uint256 len = assets.length;
 
         uint256[] memory tokenAmounts = new uint256[](len);
         for (uint256 i = 0; i < len; ++i) {
-            uint256 amount = PROTOCOL_INSTANCE.getUserCollateralAmount(target, positionId, assets[i]);
+            uint256 amount = PROTOCOL_INSTANCE.getCollateralAmount(target, positionId, assets[i]);
             if (amount > 0) {
                 tokenAmounts[i] = amount;
             }
@@ -129,8 +140,8 @@ contract FlashLoanRecipient is IFlashLoanRecipient, Ownable {
         uint256 recievedBase;
         for (uint256 i = 0; i < len; ++i) {
             if (tokenAmounts[i] > 0) {
-                IPROTOCOL.Asset memory assetInfo = PROTOCOL_INSTANCE.getAssetInfo(assets[i]);
-                uint256 assetPrice = PROTOCOL_INSTANCE.getAssetPrice(assetInfo.oracleUSD);
+                ILendefiAssets.Asset memory assetInfo = ASSETS_INSTANCE.getAssetInfo(assets[i]);
+                uint256 assetPrice = ASSETS_INSTANCE.getAssetPrice(assetInfo.oracleUSD);
                 uint256 amountOutMin = (tokenAmounts[i] * assetPrice * 99) / 10 ** assetInfo.oracleDecimals / 100;
                 uint256 outAmount = uniswapV3(assets[i], tokenAmounts[i], amountOutMin);
                 recievedBase += outAmount;
