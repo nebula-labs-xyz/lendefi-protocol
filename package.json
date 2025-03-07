@@ -1,5 +1,5 @@
 {
-  "name": "lendefi-dao",
+  "name": "lendefi-protocol",
   "private": true,
   "description": "Lendefi DAO Contracts",
   "homepage": "https://github.com/nebula-labs-xyz/lendefi-protocol#readme",
@@ -25,7 +25,7 @@
     "solhint": "./node_modules/.bin/solhint -f table contracts/**/*.sol",
     "test": "forge test -vvv --ffi",
     "test:integration": "forge test --match-contract Integration -vvv",
-    "test:unit": "forge test --match-contract Lendefi -vvv --ffi",
+    "test:unit": "forge test --match-contract LendefiExtendedTest -vvv --ffi",
     "test:unit:deep": "FOUNDRY_FUZZ_RUNS=5000 npm run test:unit"
   },
   "lint-staged": {
