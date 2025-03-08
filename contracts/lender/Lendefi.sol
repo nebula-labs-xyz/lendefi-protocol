@@ -239,7 +239,7 @@ contract Lendefi is
     /**
      * @dev Reserved storage gap for future upgrades
      */
-    uint256[20] private __gap;
+    uint256[10] private __gap;
 
     /**
      * @dev Ensures the position exists for the given user
@@ -354,12 +354,41 @@ contract Lendefi is
 
     /**
      * @notice Executes a flash loan of USDC to the specified receiver
-     * @dev The borrower must return the borrowed amount plus fee before the transaction ends
+     * @dev This function facilitates uncollateralized loans that must be repaid within the same transaction:
+     *      1. Validates available protocol liquidity
+     *      2. Calculates flash loan fee
+     *      3. Transfers requested amount to receiver
+     *      4. Calls receiver's executeOperation function
+     *      5. Verifies loan repayment plus fee
+     *      6. Updates protocol fee accounting
+     *
+     * The receiver contract must implement IFlashLoanReceiver interface and handle the loan
+     * in its executeOperation function. The loan plus fee must be repaid before the
+     * transaction completes.
+     *
      * @param receiver Address of the contract receiving and handling the flash loan
      * @param amount Amount of USDC to borrow
      * @param params Arbitrary data to pass to the receiver for execution context
+     *
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Amount must not exceed protocol's available liquidity
+     *   - Receiver must implement IFlashLoanReceiver interface
+     *   - Loan plus fee must be repaid within the same transaction
+     *
+     * @custom:state-changes
+     *   - Temporarily reduces protocol USDC balance by amount
+     *   - Increases totalFlashLoanFees by the fee amount after repayment
+     *   - Final protocol USDC balance increases by fee amount
+     *
+     * @custom:emits
+     *   - FlashLoan(msg.sender, receiver, address(usdcInstance), amount, fee)
+     *
      * @custom:access-control Available to any caller when protocol is not paused
-     * @custom:events Emits a FlashLoan event
+     * @custom:error-codes
+     *   - "LL": Low liquidity (amount exceeds available protocol liquidity)
+     *   - "FLF": Flash loan failed (executeOperation returned false)
+     *   - "RPF": Repay failed (final balance less than required amount)
      */
     function flashLoan(address receiver, uint256 amount, bytes calldata params) external nonReentrant whenNotPaused {
         uint256 availableLiquidity = usdcInstance.balanceOf(address(this));
@@ -398,16 +427,45 @@ contract Lendefi is
 
     /**
      * @notice Supplies USDC liquidity to the lending pool
-     * @dev Mints yield tokens to the supplier based on the current exchange rate
-     * @param amount Amount of USDC to supply
+     * @dev This function handles the process of supplying liquidity to the protocol:
+     *      1. Calculating the appropriate amount of yield tokens to mint based on current exchange rate
+     *      2. Updating the protocol's total supplied liquidity accounting
+     *      3. Recording the timestamp for reward calculation purposes
+     *      4. Minting yield tokens to the supplier
+     *      5. Transferring USDC from the supplier to the protocol
+     *
+     * The yield token amount (value) is calculated differently based on protocol state:
+     * - Normal operation: (amount * existing_yield_token_supply) / total_protocol_assets
+     * - Initial supply or zero utilization: value equals amount (1:1 ratio)
+     *
+     * This ensures that early suppliers don't get diluted and later suppliers receive
+     * tokens proportional to the current asset-to-yield-token ratio.
+     *
+     * @param amount Amount of USDC to supply to the protocol
+     *
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Caller must have approved sufficient USDC to the protocol
+     *
+     * @custom:state-changes
+     *   - Increases totalSuppliedLiquidity by amount
+     *   - Sets liquidityAccrueTimeIndex[msg.sender] to current timestamp
+     *   - Mints yield tokens to msg.sender based on calculated exchange rate
+     *   - Transfers USDC from msg.sender to the protocol
+     *
+     * @custom:emits
+     *   - SupplyLiquidity(msg.sender, amount)
+     *
      * @custom:access-control Available to any caller when protocol is not paused
-     * @custom:events Emits a SupplyLiquidity event
+     * @custom:error-codes
+     *   - Reverts if protocol is paused (from whenNotPaused modifier)
+     *   - Reverts on reentrancy (from nonReentrant modifier)
+     *   - Reverts if USDC transfer fails
      */
     function supplyLiquidity(uint256 amount) external nonReentrant whenNotPaused {
         uint256 total = usdcInstance.balanceOf(address(this)) + totalBorrow;
-        if (total == 0) total = WAD;
         uint256 supply = yieldTokenInstance.totalSupply();
-        uint256 value = (amount * supply) / total;
+        uint256 value = (amount * supply) / (total > 0 ? total : WAD);
         uint256 utilization = getUtilization();
         if (supply == 0 || utilization == 0) value = amount;
 
@@ -422,30 +480,61 @@ contract Lendefi is
 
     /**
      * @notice Exchanges yield tokens for USDC, withdrawing liquidity from the protocol
-     * @dev Burns yield tokens and returns USDC plus accrued interest to the caller
-     * @param amount Amount of yield tokens to exchange
+     * @dev This function handles the withdrawal of liquidity from the protocol, which includes:
+     *      1. Calculating the user's proportional share of the total protocol assets
+     *      2. Potentially taking protocol profit to the treasury
+     *      3. Updating protocol liquidity and interest accounting
+     *      4. Processing rewards if the user is eligible
+     *      5. Burning the yield tokens
+     *      6. Transferring USDC to the user
+     *
+     * The redemption value is based on the current exchange rate determined by:
+     * - Total protocol assets (USDC on hand + outstanding loans)
+     * - Total yield token supply
+     * This ensures users receive their proportional share of interest earned since deposit.
+     *
+     * If the protocol has exceeded its profit target, a portion of the withdrawal amount
+     * is minted as yield tokens to the treasury before calculating the user's redemption value.
+     *
+     * @param amount Amount of yield tokens to exchange for underlying USDC
+     *
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Caller must have sufficient yield tokens
+     *   - Protocol must have sufficient USDC to fulfill the withdrawal
+     *
+     * @custom:state-changes
+     *   - Decreases totalSuppliedLiquidity by the base amount of the withdrawal
+     *   - Increases totalAccruedSupplierInterest by any interest earned
+     *   - Burns yield tokens from the caller
+     *   - Potentially mints yield tokens to the treasury (profit target)
+     *   - May reset the caller's liquidityAccrueTimeIndex if rewards are processed
+     *
+     * @custom:emits
+     *   - Exchange(msg.sender, amount, value) for the exchange operation
+     *   - Reward(msg.sender, rewardAmount) if rewards are issued
+     *
      * @custom:access-control Available to any caller when protocol is not paused
-     * @custom:events Emits an Exchange event and potentially reward-related events
+     * @custom:error-codes
+     *   - Reverts if protocol is paused (from whenNotPaused modifier)
+     *   - Reverts on reentrancy (from nonReentrant modifier)
+     *   - Reverts if yield token transfer or USDC transfer fails
      */
     function exchange(uint256 amount) external nonReentrant whenNotPaused {
-        uint256 fee;
         uint256 supply = yieldTokenInstance.totalSupply();
         uint256 baseAmount = (amount * totalSuppliedLiquidity) / supply;
-        uint256 target = (baseAmount * baseProfitTarget) / WAD;
         uint256 total = usdcInstance.balanceOf(address(this)) + totalBorrow;
 
+        uint256 target = (baseAmount * baseProfitTarget) / WAD;
         if (total >= totalSuppliedLiquidity + target) {
-            fee = target;
-            yieldTokenInstance.mint(treasury, fee);
+            yieldTokenInstance.mint(treasury, target);
         }
 
         uint256 value = (amount * total) / yieldTokenInstance.totalSupply();
 
         totalSuppliedLiquidity -= baseAmount;
-
         totalAccruedSupplierInterest += value - baseAmount;
 
-        _rewardInternal(baseAmount);
         yieldTokenInstance.burn(msg.sender, amount);
 
         emit Exchange(msg.sender, amount, value);
@@ -453,46 +542,70 @@ contract Lendefi is
     }
 
     /**
-     * @notice Supplies collateral assets to a position
-     * @dev Validates the deposit against position constraints and asset limits
-     * @param asset Address of the collateral asset to supply
-     * @param amount Amount of the asset to supply as collateral
-     * @param positionId ID of the position to receive the collateral
-     * @custom:access-control Available to position owners when protocol is not paused
-     * @custom:events Emits a SupplyCollateral event
+     * @notice Claims accumulated rewards for eligible liquidity providers
+     * @dev Calculates time-based rewards and transfers them to the caller if eligible
+     *
+     * @custom:requirements
+     *   - Caller must have sufficient time since last claim (>= rewardInterval)
+     *   - Caller must have supplied minimum amount (>= rewardableSupply)
+     *
+     * @custom:state-changes
+     *   - Resets liquidityAccrueTimeIndex[msg.sender] if rewards are claimed
+     *
+     * @custom:emits
+     *   - Reward(msg.sender, rewardAmount) if rewards are issued
+     *
+     * @custom:access-control Available to any caller when protocol is not paused
      */
-    function supplyCollateral(address asset, uint256 amount, uint256 positionId) external nonReentrant whenNotPaused {
-        _processDeposit(asset, amount, positionId);
-        emit SupplyCollateral(msg.sender, positionId, asset, amount);
-        TH.safeTransferFrom(IERC20(asset), msg.sender, address(this), amount);
-    }
-
-    /**
-     * @notice Withdraws collateral assets from a position
-     * @dev Ensures the position remains sufficiently collateralized after withdrawal
-     * @param asset Address of the collateral asset to withdraw
-     * @param amount Amount of the asset to withdraw
-     * @param positionId ID of the position from which to withdraw
-     * @custom:access-control Available to position owners when protocol is not paused
-     * @custom:events Emits a WithdrawCollateral event
-     */
-    function withdrawCollateral(address asset, uint256 amount, uint256 positionId)
-        external
-        nonReentrant
-        whenNotPaused
-    {
-        _processWithdrawal(asset, amount, positionId);
-        emit WithdrawCollateral(msg.sender, positionId, asset, amount);
-        TH.safeTransfer(IERC20(asset), msg.sender, amount);
+    function claimReward() external nonReentrant whenNotPaused returns (uint256 finalReward) {
+        if (isRewardable(msg.sender)) {
+            // Calculate reward amount based on time elapsed
+            uint256 duration = block.timestamp - liquidityAccrueTimeIndex[msg.sender];
+            uint256 reward = (targetReward * duration) / rewardInterval;
+            // Apply maximum reward cap
+            uint256 maxReward = ecosystemInstance.maxReward();
+            finalReward = reward > maxReward ? maxReward : reward;
+            // Reset timer for next reward period
+            liquidityAccrueTimeIndex[msg.sender] = block.timestamp;
+            // Emit event and issue reward
+            emit Reward(msg.sender, finalReward);
+            ecosystemInstance.reward(msg.sender, finalReward);
+        }
     }
 
     /**
      * @notice Creates a new borrowing position with specified isolation mode
-     * @dev For isolated positions, the initial asset is recorded immediately
+     * @dev This function initializes a new borrowing position for the caller.
+     *      Two types of positions can be created:
+     *      1. Isolated positions: Limited to one specific collateral asset
+     *      2. Cross-collateral positions: Can use multiple asset types as collateral
+     *
+     * For isolated positions, the asset parameter is immediately registered as the position's
+     * collateral asset. For cross-collateral positions, no asset is registered initially;
+     * assets must be added later via supplyCollateral().
+     *
+     * The newly created position has no debt and is marked with ACTIVE status. The position ID
+     * is implicitly the index of the position in the user's positions array (positions.length - 1).
+     *
      * @param asset Address of the initial collateral asset for the position
-     * @param isIsolated Whether the position uses isolation mode (single-asset)
+     * @param isIsolated Whether the position uses isolation mode (true = single-asset only)
+     *
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Asset must be whitelisted in the protocol (validAsset modifier)
+     *
+     * @custom:state-changes
+     *   - Creates new UserPosition entry in positions[msg.sender] array
+     *   - Sets position.isIsolated based on parameter
+     *   - Sets position.status to ACTIVE
+     *   - For isolated positions: adds the asset to the position's asset set
+     *
+     * @custom:emits
+     *   - PositionCreated(msg.sender, positionId, isIsolated)
+     *
      * @custom:access-control Available to any caller when protocol is not paused
-     * @custom:events Emits a PositionCreated event
+     * @custom:error-codes
+     *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
      */
     function createPosition(address asset, bool isIsolated) external validAsset(asset) nonReentrant whenNotPaused {
         UserPosition storage newPosition = positions[msg.sender].push();
@@ -509,12 +622,151 @@ contract Lendefi is
     }
 
     /**
-     * @notice Borrows USDC from the protocol against a collateralized position
-     * @dev Checks credit limit, isolation debt cap, and protocol liquidity before lending
-     * @param positionId ID of the collateralized position
-     * @param amount Amount of USDC to borrow
+     * @notice Supplies collateral assets to a position
+     * @dev This function handles adding collateral to an existing position, which includes:
+     *      1. Processing the deposit via _processDeposit (validation and state updates)
+     *      2. Emitting the supply event
+     *      3. Transferring the assets from the caller to the protocol
+     *
+     * The collateral can be used to either open new borrowing capacity or
+     * strengthen the collateralization ratio of an existing debt position.
+     *
+     * For isolated positions, only the initial asset type can be supplied.
+     * For cross-collateral positions, multiple asset types can be added
+     * (up to a maximum of 20 different assets per position).
+     *
+     * @param asset Address of the collateral asset to supply
+     * @param amount Amount of the asset to supply as collateral
+     * @param positionId ID of the position to receive the collateral
+     *
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Position must exist and be in ACTIVE status
+     *   - Asset must be whitelisted in the protocol
+     *   - Asset must not be at its global capacity limit
+     *   - For isolated positions: asset must match the position's initial asset
+     *   - For isolated assets: position must be in isolation mode
+     *   - Position must have fewer than 20 different asset types (if adding a new asset type)
+     *
+     * @custom:state-changes
+     *   - Increases positionCollateralAmounts[msg.sender][positionId][asset] by amount
+     *   - Adds asset to positionCollateralAssets[msg.sender][positionId] if not already present
+     *   - Updates protocol-wide TVL for the asset
+     *   - Transfers asset tokens from msg.sender to the contract
+     *
+     * @custom:emits
+     *   - SupplyCollateral(msg.sender, positionId, asset, amount)
+     *
      * @custom:access-control Available to position owners when protocol is not paused
-     * @custom:events Emits a Borrow event
+     * @custom:error-codes
+     *   - "IN": Invalid position (from activePosition modifier)
+     *   - "INA": Inactive position (from activePosition modifier)
+     *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
+     *   - "AC": Asset at capacity (asset has reached global capacity limit)
+     *   - "ISO": Isolated asset in cross-collateral position (supplying isolated-tier asset to a cross position)
+     *   - "IA": Invalid asset for isolation (supplying an asset that doesn't match the isolated position's asset)
+     *   - "MA": Maximum assets reached (position already has 20 different asset types)
+     */
+    function supplyCollateral(address asset, uint256 amount, uint256 positionId) external nonReentrant whenNotPaused {
+        _processDeposit(asset, amount, positionId);
+        emit SupplyCollateral(msg.sender, positionId, asset, amount);
+        TH.safeTransferFrom(IERC20(asset), msg.sender, address(this), amount);
+    }
+
+    /**
+     * @notice Withdraws collateral assets from a position
+     * @dev This function handles removing collateral from an existing position, which includes:
+     *      1. Processing the withdrawal via _processWithdrawal (validation and state updates)
+     *      2. Emitting the withdrawal event
+     *      3. Transferring the assets from the protocol to the caller
+     *
+     * The function ensures that the position remains sufficiently collateralized
+     * after the withdrawal by checking that the remaining credit limit exceeds
+     * the outstanding debt.
+     *
+     * @param asset Address of the collateral asset to withdraw
+     * @param amount Amount of the asset to withdraw
+     * @param positionId ID of the position from which to withdraw
+     *
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Position must exist and be in ACTIVE status
+     *   - For isolated positions: asset must match the position's initial asset
+     *   - Current balance must be greater than or equal to the withdrawal amount
+     *   - Position must remain sufficiently collateralized after withdrawal
+     *
+     * @custom:state-changes
+     *   - Decreases positionCollateralAmounts[msg.sender][positionId][asset] by amount
+     *   - Updates protocol-wide TVL for the asset
+     *   - For non-isolated positions: Removes asset from positionCollateralAssets if balance becomes zero
+     *   - Transfers asset tokens from the contract to msg.sender
+     *
+     * @custom:emits
+     *   - WithdrawCollateral(msg.sender, positionId, asset, amount)
+     *
+     * @custom:access-control Available to position owners when protocol is not paused
+     * @custom:error-codes
+     *   - "IN": Invalid position (from activePosition modifier)
+     *   - "INA": Inactive position (from activePosition modifier)
+     *   - "IA": Invalid asset for isolation (withdrawing an asset that doesn't match the isolated position's asset)
+     *   - "LB": Low balance (not enough collateral balance to withdraw)
+     *   - "CM": Collateral minimum (withdrawal would leave position undercollateralized)
+     */
+    function withdrawCollateral(address asset, uint256 amount, uint256 positionId)
+        external
+        nonReentrant
+        whenNotPaused
+    {
+        _processWithdrawal(asset, amount, positionId);
+        emit WithdrawCollateral(msg.sender, positionId, asset, amount);
+        TH.safeTransfer(IERC20(asset), msg.sender, amount);
+    }
+
+    /**
+     * @notice Borrows USDC from the protocol against a collateralized position
+     * @dev This function handles the borrowing process including:
+     *      1. Interest accrual on any existing debt
+     *      2. Multiple validation checks (liquidity, debt caps, credit limits)
+     *      3. Protocol and position accounting updates
+     *      4. USDC transfer to the borrower
+     *
+     * The function first accrues any pending interest on existing debt to ensure
+     * all calculations use up-to-date values. It then validates the borrow request
+     * against protocol-wide constraints (available liquidity) and position-specific
+     * constraints (isolation debt caps, credit limits).
+     *
+     * After successful validation, it updates the position's debt, the protocol's
+     * total debt accounting, and transfers the requested USDC amount to the borrower.
+     *
+     * @param positionId ID of the collateralized position to borrow against
+     * @param amount Amount of USDC to borrow (in base units with 6 decimals)
+     *
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Position must exist and be in ACTIVE status
+     *   - Amount must be greater than zero
+     *   - Protocol must have sufficient liquidity
+     *   - For isolated positions: borrow must not exceed asset's isolation debt cap
+     *   - Total debt must not exceed position's credit limit
+     *
+     * @custom:state-changes
+     *   - Increases position.debtAmount by amount plus any accrued interest
+     *   - Updates position.lastInterestAccrual to current timestamp
+     *   - Increases totalBorrow by amount plus any accrued interest
+     *   - Increases totalAccruedBorrowerInterest if interest is accrued
+     *
+     * @custom:emits
+     *   - Borrow(msg.sender, positionId, amount)
+     *   - InterestAccrued(msg.sender, positionId, accruedInterest) if interest was accrued
+     *
+     * @custom:access-control Available to position owners when protocol is not paused
+     * @custom:error-codes
+     *   - "ZA": Zero amount (amount is zero)
+     *   - "LL": Low liquidity (not enough protocol liquidity)
+     *   - "IDC": Isolation debt cap exceeded
+     *   - "CLM": Credit limit exceeded
+     *   - "IN": Invalid position (from activePosition modifier)
+     *   - "INA": Inactive position (from activePosition modifier)
      */
     function borrow(uint256 positionId, uint256 amount)
         external
@@ -522,23 +774,46 @@ contract Lendefi is
         nonReentrant
         whenNotPaused
     {
-        require(totalBorrow + amount <= totalSuppliedLiquidity, "LL");
+        require(amount > 0, "ZA"); // Zero amount check
 
         UserPosition storage position = positions[msg.sender][positionId];
 
+        // Calculate current debt with interest
+        uint256 currentDebt = 0;
+        uint256 accruedInterest = 0;
+
+        if (position.debtAmount > 0) {
+            currentDebt = calculateDebtWithInterest(msg.sender, positionId);
+            accruedInterest = currentDebt - position.debtAmount;
+
+            // Update the interest accrual statistics
+            if (accruedInterest > 0) {
+                totalAccruedBorrowerInterest += accruedInterest;
+                emit InterestAccrued(msg.sender, positionId, accruedInterest);
+            }
+        }
+
+        // Check if there's enough protocol liquidity
+        require(totalBorrow + accruedInterest + amount <= totalSuppliedLiquidity, "LL");
+
+        // For isolated positions, check debt cap
         if (position.isIsolated) {
             EnumerableSet.AddressSet storage posAssets = positionCollateralAssets[msg.sender][positionId];
             address posAsset = posAssets.at(0);
             ILendefiAssets.Asset memory asset = assetsModule.getAssetInfo(posAsset);
-            require(position.debtAmount + amount <= asset.isolationDebtCap, "IDC");
+            require(currentDebt + amount <= asset.isolationDebtCap, "IDC");
         }
 
+        // Check credit limit
         uint256 creditLimit = calculateCreditLimit(msg.sender, positionId);
-        require(position.debtAmount + amount <= creditLimit, "CLM");
+        require(currentDebt + amount <= creditLimit, "CLM");
 
-        position.debtAmount += amount;
+        // Update total protocol debt (including accrued interest)
+        totalBorrow += accruedInterest + amount;
+
+        // Update position debt and interest accrual timestamp
+        position.debtAmount = currentDebt + amount;
         position.lastInterestAccrual = block.timestamp;
-        totalBorrow += amount;
 
         emit Borrow(msg.sender, positionId, amount);
         TH.safeTransfer(usdcInstance, msg.sender, amount);
@@ -546,9 +821,38 @@ contract Lendefi is
 
     /**
      * @notice Repays borrowed USDC for a position, including accrued interest
-     * @dev Updates interest accrual time and decreases debt amount
+     * @dev This function handles the repayment process including:
+     *      1. Validation of the position's debt status
+     *      2. Processing the repayment via _processRepay (accounting updates)
+     *      3. Transferring USDC from the user to the protocol
+     *
+     * The function supports both partial and full repayments. If the user attempts
+     * to repay more than they owe, only the outstanding debt amount is taken.
+     * Interest accrual is handled automatically by the _processRepay function.
+     *
      * @param positionId ID of the position with debt to repay
      * @param amount Amount of USDC to repay (repays full debt if amount exceeds balance)
+     *
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Position must exist and be in ACTIVE status
+     *   - Position must have existing debt to repay
+     *
+     * @custom:state-changes
+     *   - Decreases position.debtAmount by the repayment amount
+     *   - Updates position.lastInterestAccrual to current timestamp
+     *   - Updates totalBorrow to reflect repayment and accrued interest
+     *   - Updates totalAccruedBorrowerInterest by adding newly accrued interest
+     *
+     * @custom:emits
+     *   - Repay(msg.sender, positionId, actualAmount)
+     *   - InterestAccrued(msg.sender, positionId, accruedInterest)
+     *
+     * @custom:access-control Available to position owners when protocol is not paused
+     * @custom:error-codes
+     *   - "ND": No debt (position has no debt to repay)
+     *   - "IN": Invalid position (from activePosition modifier)
+     *   - "INA": Inactive position (from activePosition modifier)
      */
     function repay(uint256 positionId, uint256 amount)
         external
@@ -564,10 +868,39 @@ contract Lendefi is
 
     /**
      * @notice Closes a borrowing position by repaying all debt and withdrawing all collateral
-     * @dev Repays any outstanding debt and withdraws all collateral assets to the owner
+     * @dev This function handles the complete position closure process, which includes:
+     *      1. Repaying any outstanding debt with interest (if debt exists)
+     *      2. Withdrawing all collateral assets back to the owner
+     *      3. Marking the position as CLOSED in the protocol
+     *
+     * The function allows users to exit their positions with a single transaction
+     * rather than calling separate repay and withdraw functions for each asset.
+     * For full debt repayment, it uses the max uint256 value to signal "repay all".
+     *
      * @param positionId ID of the position to close
+     *
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Position must exist and be in ACTIVE status
+     *   - If position has debt, caller must have approved sufficient USDC
+     *
+     * @custom:state-changes
+     *   - Repays any debt in the position (position.debtAmount = 0)
+     *   - Updates position.lastInterestAccrual if debt existed
+     *   - Removes all collateral assets from the position
+     *   - Updates protocol-wide TVL for each asset
+     *   - Sets position.status to CLOSED
+     *
+     * @custom:emits
+     *   - PositionClosed(msg.sender, positionId)
+     *   - Repay(msg.sender, positionId, actualAmount) if debt existed
+     *   - InterestAccrued(msg.sender, positionId, accruedInterest) if interest was accrued
+     *   - WithdrawCollateral(msg.sender, positionId, asset, amount) for each collateral asset
+     *
      * @custom:access-control Available to position owners when protocol is not paused
-     * @custom:events Emits PositionClosed and potentially Repay and WithdrawCollateral events
+     * @custom:error-codes
+     *   - "IN": Invalid position (from activePosition modifier)
+     *   - "INA": Inactive position (from activePosition modifier)
      */
     function exitPosition(uint256 positionId)
         external
@@ -590,12 +923,48 @@ contract Lendefi is
     }
 
     /**
-     * @notice Liquidates an undercollateralized position
-     * @dev Repays the position's debt and receives all collateral plus a liquidation bonus
-     * @param user Address of the position owner
+     * @notice Liquidates an undercollateralized position to maintain protocol solvency
+     * @dev This function handles the liquidation process including:
+     *      1. Verification that the caller owns sufficient governance tokens
+     *      2. Confirmation that the position's health factor is below 1.0
+     *      3. Calculation of debt with accrued interest and liquidation fee
+     *      4. Position state updates (marking as liquidated, clearing debt)
+     *      5. Transferring debt+fee from liquidator to the protocol
+     *      6. Transferring all collateral assets to the liquidator
+     *
+     * The liquidator receives all collateral assets in exchange for repaying
+     * the position's debt plus a liquidation fee. The fee percentage varies
+     * based on the collateral tier of the position's assets.
+     *
+     * @param user Address of the position owner being liquidated
      * @param positionId ID of the position to liquidate
+     *
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Position must exist and be in ACTIVE status
+     *   - Caller must hold at least liquidatorThreshold amount of governance tokens
+     *   - Position's health factor must be below 1.0 (undercollateralized)
+     *
+     * @custom:state-changes
+     *   - Sets position.isIsolated to false
+     *   - Sets position.debtAmount to 0
+     *   - Sets position.lastInterestAccrual to 0
+     *   - Sets position.status to LIQUIDATED
+     *   - Decreases totalBorrow by the position's debt amount
+     *   - Increases totalAccruedBorrowerInterest by any accrued interest
+     *   - Removes all collateral assets from the position
+     *   - Updates protocol-wide TVL for each asset
+     *
+     * @custom:emits
+     *   - Liquidated(user, positionId, msg.sender)
+     *   - WithdrawCollateral(user, positionId, asset, amount) for each collateral asset
+     *
      * @custom:access-control Available to any caller with sufficient governance tokens when protocol is not paused
-     * @custom:events Emits a Liquidated event and WithdrawCollateral events for each asset
+     * @custom:error-codes
+     *   - "NLQDR": Not a liquidator (caller doesn't have enough governance tokens)
+     *   - "NLQ": Not liquidatable (position's health factor is above 1.0)
+     *   - "IN": Invalid position (from activePosition modifier)
+     *   - "INA": Inactive position (from activePosition modifier)
      */
     function liquidate(address user, uint256 positionId)
         external
@@ -1050,12 +1419,32 @@ contract Lendefi is
     }
 
     /**
-     * @notice Processes a repayment for a position and calculates the correct transfer amount
-     * @dev Handles all debt accounting, interest calculation, and state updates
-     * @param positionId ID of the position being repaid
-     * @param proposedAmount Amount the user is offering to repay (may be capped)
+     * @notice Processes a repayment for a position and handles debt accounting
+     * @dev This internal function manages all debt-related state changes during repayment:
+     *      1. Calculates the up-to-date debt including accrued interest
+     *      2. Tracks interest accrued since last update
+     *      3. Determines the actual amount to repay (capped at outstanding debt)
+     *      4. Updates the protocol's total debt accounting
+     *      5. Updates the position's debt and interest accrual timestamp
+     *      6. Emits relevant events
+     *
+     * The function handles two key scenarios:
+     * - Partial repayment: When proposedAmount < balance, repays that exact amount
+     * - Full repayment: When proposedAmount >= balance, repays exactly the outstanding balance
+     *
+     * @param positionId The ID of the position being repaid
+     * @param proposedAmount The amount the user is offering to repay (uncapped)
      * @param position Storage reference to the user's position
-     * @return actualAmount The actual amount that should be transferred (capped at debt)
+     * @return actualAmount The actual amount that should be transferred from the user,
+     *         which is the lesser of proposedAmount and the outstanding debt
+     *
+     * @custom:accounting When calculating updated totalBorrow, the formula:
+     *        totalBorrow + (balance - actualAmount) - position.debtAmount
+     *        takes into account both newly accrued interest and the repayment amount
+     *
+     * @custom:events Emits:
+     *        - Repay(msg.sender, positionId, actualAmount)
+     *        - InterestAccrued(msg.sender, positionId, accruedInterest)
      */
     function _processRepay(uint256 positionId, uint256 proposedAmount, UserPosition storage position)
         internal
@@ -1109,27 +1498,6 @@ contract Lendefi is
             }
 
             posAssets.remove(asset);
-        }
-    }
-
-    /**
-     * @notice Processes rewards for eligible liquidity providers
-     * @dev Calculates time-based rewards and triggers ecosystem reward issuance
-     * @param amount The liquidity amount to check against the rewardable minimum
-     * @custom:events Emits a Reward event if rewards are issued
-     */
-    function _rewardInternal(uint256 amount) internal {
-        bool rewardable =
-            block.timestamp - rewardInterval >= liquidityAccrueTimeIndex[msg.sender] && amount >= rewardableSupply;
-
-        if (rewardable) {
-            uint256 duration = block.timestamp - liquidityAccrueTimeIndex[msg.sender];
-            uint256 reward = (targetReward * duration) / rewardInterval;
-            uint256 maxReward = ecosystemInstance.maxReward();
-            uint256 target = reward > maxReward ? maxReward : reward;
-            delete liquidityAccrueTimeIndex[msg.sender];
-            emit Reward(msg.sender, target);
-            ecosystemInstance.reward(msg.sender, target);
         }
     }
 
