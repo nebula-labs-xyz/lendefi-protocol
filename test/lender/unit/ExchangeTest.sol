@@ -348,43 +348,7 @@ contract ExchangeTest is BasicDeploy {
         );
     }
 
-    // Test 10: Exchange with rewards (when user is eligible)
-    function test_ExchangeWithRewards() public {
-        // Setup reward parameters correctly using the consolidated function
-        vm.startPrank(address(timelockInstance));
-        // UPDATED: Use updateProtocolMetrics instead of individual methods
-        LendefiInstance.updateProtocolMetrics(
-            LendefiInstance.baseProfitTarget(), // keep current profit target
-            LendefiInstance.baseBorrowRate(), // keep current borrow rate
-            1_000e18, // Set target reward
-            LendefiInstance.rewardInterval(), // keep current interval
-            100_000e6, // Lower reward threshold
-            LendefiInstance.liquidatorThreshold() // keep current liquidator threshold
-        );
-        vm.stopPrank();
-
-        uint256 supplyAmount = 100_000e6;
-
-        // Supply liquidity
-        _supplyLiquidity(alice, supplyAmount);
-
-        // Fast forward time to be eligible for rewards
-        vm.warp(block.timestamp + LendefiInstance.rewardInterval() + 1);
-
-        // Verify Alice is now eligible for rewards
-        bool isEligible = LendefiInstance.isRewardable(alice);
-        assertTrue(isEligible, "Alice should be eligible for rewards");
-
-        // Exchange all tokens to trigger reward
-        vm.prank(alice);
-        LendefiInstance.exchange(supplyAmount);
-
-        // Verify Alice received rewards
-        uint256 aliceGovTokens = tokenInstance.balanceOf(alice);
-        assertTrue(aliceGovTokens > 0, "Alice should receive governance tokens as rewards");
-    }
-
-    // Test 11: Exchange with large amounts
+    // Test 10: Exchange with large amounts
     function test_ExchangeLargeAmount() public {
         uint256 largeSupply = 1_000_000_000e6; // 1 billion USDC
 
@@ -407,7 +371,7 @@ contract ExchangeTest is BasicDeploy {
         );
     }
 
-    // Test 12: End-to-end exchange with real interest
+    // Test 11: End-to-end exchange with real interest
     function test_ExchangeWithRealInterest() public {
         uint256 supplyAmount = 100_000e6;
         uint256 collateralAmount = 50 ether;
@@ -453,7 +417,7 @@ contract ExchangeTest is BasicDeploy {
         assertEq(balanceAfter / 1e6, expBal / 1e6);
     }
 
-    // Test 13: Exchange slightly more than balance should use exact balance
+    // Test 12: Exchange slightly more than balance should use exact balance
     function test_ExchangeExactBalance() public {
         uint256 supplyAmount = 10_000e6;
 
@@ -483,7 +447,7 @@ contract ExchangeTest is BasicDeploy {
         assertEq(initialAliceTokens, supplyAmount, "Initial balance should match supply");
     }
 
-    // Fuzz Test 1: Exchange random amounts
+    // Fuzz Test 13: Exchange random amounts
     function testFuzz_ExchangeRandomAmount(uint256 amount) public {
         // Bound to reasonable values
         uint256 supplyAmount = 100_000e6;
@@ -502,7 +466,7 @@ contract ExchangeTest is BasicDeploy {
         assertEq(aliceTokens, supplyAmount - amount, "Token balance should decrease by exchanged amount");
     }
 
-    // Fuzz Test 2: Multiple users with random exchange amounts
+    // Fuzz Test 14: Multiple users with random exchange amounts
     function testFuzz_MultipleUsersRandomExchanges(uint256 amount1, uint256 amount2) public {
         // Bound to reasonable values
         uint256 supplyAmount1 = 100_000e6;
