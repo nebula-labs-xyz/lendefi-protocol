@@ -38,6 +38,7 @@ contract BasicDeploy is Test {
     event Upgrade(address indexed src, address indexed implementation);
 
     bytes32 internal constant DEFAULT_ADMIN_ROLE = 0x00;
+    bytes32 internal constant CIRCUIT_BREAKER_ROLE = keccak256("CIRCUIT_BREAKER_ROLE");
     bytes32 internal constant ALLOCATOR_ROLE = keccak256("ALLOCATOR_ROLE");
     bytes32 internal constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
     bytes32 internal constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
@@ -407,8 +408,8 @@ contract BasicDeploy is Test {
 
         // Grant necessary roles
         vm.startPrank(guardian);
-        oracleInstance.grantRole(oracleInstance.ORACLE_MANAGER_ROLE(), address(timelockInstance));
-        oracleInstance.grantRole(oracleInstance.CIRCUIT_BREAKER_ROLE(), address(timelockInstance));
+        oracleInstance.grantRole(MANAGER_ROLE, address(timelockInstance));
+        oracleInstance.grantRole(CIRCUIT_BREAKER_ROLE, address(timelockInstance));
         vm.stopPrank();
     }
 
@@ -427,7 +428,6 @@ contract BasicDeploy is Test {
                 address(ecoInstance),
                 address(treasuryInstance),
                 address(timelockInstance),
-                address(oracleInstance),
                 address(yieldTokenInstance),
                 address(assetsInstance),
                 guardian
@@ -547,7 +547,6 @@ contract BasicDeploy is Test {
                 address(ecoInstance),
                 address(treasuryInstance),
                 address(timelockInstance),
-                address(oracleInstance),
                 address(yieldTokenInstance),
                 address(assetsInstance),
                 guardian
