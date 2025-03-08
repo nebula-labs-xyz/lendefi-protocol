@@ -82,8 +82,7 @@ contract BasicDeployTest is BasicDeploy {
 
         // Test Oracle functionality
         assertTrue(
-            oracleInstance.hasRole(oracleInstance.ORACLE_MANAGER_ROLE(), address(timelockInstance)),
-            "Timelock should have ORACLE_MANAGER_ROLE"
+            oracleInstance.hasRole(MANAGER_ROLE, address(timelockInstance)), "Timelock should have ORACLE_MANAGER_ROLE"
         );
     }
 
