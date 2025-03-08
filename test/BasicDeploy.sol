@@ -519,6 +519,49 @@ contract BasicDeploy is Test {
     }
 
     /**
+     * @notice Upgrades the LendefiAssets implementation
+     * @dev Follows the same pattern as other contract upgrades
+     */
+    function deployAssetsModuleUpgrade() internal {
+        // Make sure we have a complete deployment first, which includes timelock
+        if (address(timelockInstance) == address(0) || address(assetsInstance) == address(0)) {
+            deployComplete(); // This will deploy token, timelock, ecosystem, treasury, etc.
+            _deployOracle(); // Then deploy oracle
+            _deployAssetsModule(); // Then deploy assets module
+        }
+
+        // Get the proxy address
+        address payable proxy = payable(address(assetsInstance));
+
+        // Get the current implementation address for assertion later
+        address implAddressV1 = Upgrades.getImplementationAddress(proxy);
+
+        // Grant upgrader role to manager admin
+        vm.prank(guardian);
+        assetsInstance.grantRole(UPGRADER_ROLE, managerAdmin);
+
+        // Perform the upgrade
+        vm.startPrank(managerAdmin);
+        Upgrades.upgradeProxy(proxy, "LendefiAssetsV2.sol", "", guardian);
+        vm.stopPrank();
+
+        // Verify the upgrade
+        address implAddressV2 = Upgrades.getImplementationAddress(proxy);
+        LendefiAssets instanceV2 = LendefiAssets(proxy);
+        assertEq(instanceV2.version(), 2);
+        assertFalse(implAddressV2 == implAddressV1);
+
+        // Verify role assignments
+        bool isUpgrader = instanceV2.hasRole(UPGRADER_ROLE, managerAdmin);
+        assertTrue(isUpgrader == true);
+
+        // Revoke the upgrader role as cleanup
+        vm.prank(guardian);
+        instanceV2.revokeRole(UPGRADER_ROLE, managerAdmin);
+        assertFalse(instanceV2.hasRole(UPGRADER_ROLE, managerAdmin) == true);
+    }
+
+    /**
      * @notice Updates the _deployLendefiModules function to include assets module
      */
     function _deployLendefiModules() internal {
