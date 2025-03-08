@@ -439,7 +439,7 @@ contract BorrowTest is BasicDeploy {
         vm.stopPrank();
     }
 
-    // Test 11: Borrow with zero amount (edge case)
+    // Test 11: Borrow with zero amount should revert with "ZA" error
     function test_BorrowZeroAmount() public {
         uint256 collateralAmount = 10 ether;
 
@@ -450,12 +450,11 @@ contract BorrowTest is BasicDeploy {
 
         vm.startPrank(bob);
 
-        // Borrow zero amount
-        vm.expectEmit(true, true, false, true);
-        emit Borrow(bob, positionId, 0);
+        // Expect the transaction to revert with "ZA" (Zero Amount) error
+        vm.expectRevert(bytes("ZA"));
         LendefiInstance.borrow(positionId, 0);
 
-        // Verify no state change
+        // Verify state hasn't changed since the transaction reverted
         uint256 finalTotalBorrow = LendefiInstance.totalBorrow();
         IPROTOCOL.UserPosition memory position = LendefiInstance.getUserPosition(bob, positionId);
         uint256 positionDebt = position.debtAmount;
