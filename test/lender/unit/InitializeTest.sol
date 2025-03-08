@@ -11,6 +11,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 contract InitializeTest is BasicDeploy {
     Lendefi internal lendefiInstance;
+    bytes internal data;
 
     function setUp() public {
         deployCompleteWithOracle();
@@ -18,11 +19,7 @@ contract InitializeTest is BasicDeploy {
         // TGE setup
         vm.prank(guardian);
         tokenInstance.initializeTGE(address(ecoInstance), address(treasuryInstance));
-    }
-
-    function test_InitializeSuccess() public {
-        // Deploy Lendefi
-        bytes memory data = abi.encodeCall(
+        data = abi.encodeCall(
             Lendefi.initialize,
             (
                 address(usdcInstance),
@@ -30,12 +27,15 @@ contract InitializeTest is BasicDeploy {
                 address(ecoInstance),
                 address(treasuryInstance),
                 address(timelockInstance),
-                address(oracleInstance),
                 address(yieldTokenInstance),
                 address(assetsInstance), // Add assetsModule parameter
                 guardian
             )
         );
+    }
+
+    function test_InitializeSuccess() public {
+        // Deploy Lendefi
 
         address payable proxy = payable(Upgrades.deployUUPSProxy("Lendefi.sol", data));
         LendefiInstance = Lendefi(proxy);
@@ -101,22 +101,6 @@ contract InitializeTest is BasicDeploy {
         bytes32 upgraderRole = keccak256("UPGRADER_ROLE");
         bytes32 defaultAdminRole = 0x00;
 
-        // Deploy with initialization
-        bytes memory data = abi.encodeCall(
-            Lendefi.initialize,
-            (
-                address(usdcInstance),
-                address(tokenInstance),
-                address(ecoInstance),
-                address(treasuryInstance),
-                address(timelockInstance),
-                address(oracleInstance),
-                address(yieldTokenInstance),
-                address(assetsInstance), // Add assetsModule parameter
-                guardian
-            )
-        );
-
         address payable proxy = payable(Upgrades.deployUUPSProxy("Lendefi.sol", data));
         LendefiInstance = Lendefi(proxy);
 
@@ -142,20 +126,6 @@ contract InitializeTest is BasicDeploy {
     // Test for decimal precision in initialized values
     function test_InitializationDecimalPrecision() public {
         // Deploy Lendefi with initialization
-        bytes memory data = abi.encodeCall(
-            Lendefi.initialize,
-            (
-                address(usdcInstance),
-                address(tokenInstance),
-                address(ecoInstance),
-                address(treasuryInstance),
-                address(timelockInstance),
-                address(oracleInstance),
-                address(yieldTokenInstance),
-                address(assetsInstance),
-                guardian
-            )
-        );
 
         address payable proxy = payable(Upgrades.deployUUPSProxy("Lendefi.sol", data));
         LendefiInstance = Lendefi(proxy);
