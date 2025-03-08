@@ -27,20 +27,31 @@ contract LendefiAssets is
 {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    // Constants & access roles
-    bytes32 public constant CORE_ROLE = keccak256("CORE_ROLE");
-    bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
-    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    /// @notice Core contract role for managing TVL and essential functions
+    bytes32 internal constant CORE_ROLE = keccak256("CORE_ROLE");
 
-    // State variables
+    /// @notice Role for managing asset configurations and parameters
+    bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
+
+    /// @notice Role for upgrading contract implementations
+    bytes32 internal constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+
+    /// @notice Role for emergency pause functionality
+    bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+
+    /// @notice Current version of the contract
     uint8 public version;
-    // address public lendefiCore;
+
+    /// @notice Oracle module for asset price feeds
     ILendefiOracle public oracleModule;
 
-    // Asset data storage
+    /// @notice Set of all assets listed in the protocol
     EnumerableSet.AddressSet internal listedAsset;
+
+    /// @notice Detailed configuration for each asset
     mapping(address => Asset) internal assetInfo;
+
+    /// @notice Total value locked per asset
     mapping(address => uint256) public assetTVL;
 
     /// @notice Base borrow rate for each collateral risk tier
@@ -75,7 +86,6 @@ contract LendefiAssets is
         _grantRole(DEFAULT_ADMIN_ROLE, guardian);
         _grantRole(MANAGER_ROLE, timelock);
         _grantRole(UPGRADER_ROLE, guardian);
-        // _grantRole(CORE_ROLE, core_);
         _grantRole(PAUSER_ROLE, guardian);
 
         oracleModule = ILendefiOracle(oracle_);
@@ -111,16 +121,6 @@ contract LendefiAssets is
      * @param newCore New Lendefi core address
      * @dev Only callable by accounts with DEFAULT_ADMIN_ROLE
      */
-    // function updateCoreAddress(address newCore) external onlyRole(DEFAULT_ADMIN_ROLE) {
-    //     if (newCore == address(0)) revert ZeroAddressNotAllowed();
-
-    //     // Revoke CORE_ROLE from old address and grant to new address
-    //     _revokeRole(CORE_ROLE, lendefiCore);
-    //     _grantRole(CORE_ROLE, newCore);
-
-    //     lendefiCore = newCore;
-    //     emit CoreAddressUpdated(newCore);
-    // }
 
     /**
      * @notice Updates the oracle module address
