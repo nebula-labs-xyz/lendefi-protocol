@@ -81,9 +81,7 @@ contract BasicDeployTest is BasicDeploy {
         );
 
         // Test Oracle functionality
-        assertTrue(
-            oracleInstance.hasRole(MANAGER_ROLE, address(timelockInstance)), "Timelock should have ORACLE_MANAGER_ROLE"
-        );
+        assertTrue(oracleInstance.hasRole(MANAGER_ROLE, address(timelockInstance)), "Timelock should have MANAGER_ROLE");
     }
 
     function test_013_deployYieldToken() public {
@@ -176,5 +174,12 @@ contract BasicDeployTest is BasicDeploy {
         vm.prank(address(LendefiInstance));
         yieldTokenInstance.burn(alice, 50 ether);
         assertEq(yieldTokenInstance.balanceOf(alice), 50 ether, "Burn from Lendefi should work");
+    }
+
+    function test_018_deployAssetsModuleUpgrade() public {
+        deployAssetsModuleUpgrade();
+
+        // Check version after upgrade
+        assertEq(assetsInstance.version(), 2, "Version should be 2 after upgrade");
     }
 }
