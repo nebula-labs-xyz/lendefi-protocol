@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
 /**
- * @title LendefiYieldToken
+ * @title LendefiYieldToken (for testing Upgrades)
  * @author alexei@nebula-labs(dot)xyz
- * @notice LP token representing shares in the Lendefi lending protocol's liquidity pool
+ * @notice LP token representing shares in the Lendefi lending protocol's liquidity pool, using 6 decimals to match USDC
  * @dev This contract implements an ERC20 token that represents a user's share of the Lendefi protocol's
  *      lending pool. It's designed to be controlled exclusively by the main Lendefi protocol.
+ *      The token uses 6 decimals to maintain consistency with USDC.
  * @custom:security-contact security@nebula-labs.xyz
  */
 
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
@@ -17,25 +19,32 @@ import {ERC20PausableUpgradeable} from
 
 /// @custom:oz-upgrades-from contracts/lender/LendefiYieldToken.sol:LendefiYieldToken
 contract LendefiYieldTokenV2 is
+    Initializable,
     ERC20PausableUpgradeable,
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable
 {
     /// @notice Role for pausing and unpausing token transfers in emergency situations
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
     /// @notice Role for the main Lendefi protocol to control token minting and burning
-    bytes32 public constant PROTOCOL_ROLE = keccak256("PROTOCOL_ROLE");
+    bytes32 internal constant PROTOCOL_ROLE = keccak256("PROTOCOL_ROLE");
 
     /// @notice Role for authorizing contract upgrades
-    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    bytes32 internal constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    /// @notice Current version of the contract, incremented on each upgrade
+    /// @dev Used to track implementation versions and verify successful upgrades
+    uint8 public version;
 
+    /// @dev Reserved storage slots for future upgrades to maintain storage layout compatibility
+    uint256[50] private __gap;
     /**
      * @notice Emitted when the contract is initialized
      * @param admin Address of the initial admin
      * @custom:access-control This event is emitted once during initialization
      */
+
     event Initialized(address indexed admin);
 
     /**
@@ -45,13 +54,6 @@ contract LendefiYieldTokenV2 is
      * @custom:access-control This event is emitted during authorized upgrades
      */
     event Upgrade(address indexed upgrader, address indexed implementation);
-
-    /// @notice Current version of the contract, incremented on each upgrade
-    /// @dev Used to track implementation versions and verify successful upgrades
-    uint8 public version;
-
-    /// @dev Reserved storage slots for future upgrades to maintain storage layout compatibility
-    uint256[50] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -143,6 +145,15 @@ contract LendefiYieldTokenV2 is
     }
 
     /**
+     * @notice Returns the number of decimals used for token amounts
+     * @dev Overrides the default ERC20 implementation which uses 18 decimals
+     * @return The number of decimals (6 to match USDC)
+     * @custom:state-changes None, view-only function
+     */
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+    /**
      * @dev Override to enforce pause state during transfers
      * @param from Address sending tokens
      * @param to Address receiving tokens
@@ -150,6 +161,7 @@ contract LendefiYieldTokenV2 is
      * @custom:state-changes None, modifies underlying token transfer behavior
      * @custom:validation-rules Reverts if contract is paused
      */
+
     function _update(address from, address to, uint256 value) internal override whenNotPaused {
         super._update(from, to, value);
     }
