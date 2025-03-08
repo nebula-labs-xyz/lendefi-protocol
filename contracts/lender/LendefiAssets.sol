@@ -2,6 +2,7 @@
 pragma solidity 0.8.23;
 /**
  * @title LendefiAssets
+ * @author alexei@nebula-labs(dot)xyz
  * @notice Manages asset configurations, listings, and oracle integrations
  * @dev Extracted component for asset-related functionality
  * @custom:security-contact security@nebula-labs.xyz
@@ -17,6 +18,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {ILendefiOracle} from "../interfaces/ILendefiOracle.sol";
 import {ILendefiAssets} from "../interfaces/ILendefiAssets.sol";
 
+/// @custom:oz-upgrades
 contract LendefiAssets is
     ILendefiAssets,
     Initializable,
@@ -61,8 +63,8 @@ contract LendefiAssets is
     /// @notice Liquidation bonus percentage for each collateral tier
     /// @dev Higher risk tiers have larger liquidation bonuses
     mapping(CollateralTier => uint256) public tierLiquidationFee;
-    /// @custom:oz-upgrades-unsafe-allow constructor
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
@@ -74,14 +76,14 @@ contract LendefiAssets is
      * @param guardian Address with PAUSER_ROLE for emergency functions
      */
     function initialize(address timelock, address oracle_, address guardian) external initializer {
+        if (timelock == address(0) || oracle_ == address(0) || guardian == address(0)) {
+            revert ZeroAddressNotAllowed();
+        }
+
         __AccessControl_init();
         __ReentrancyGuard_init();
         __Pausable_init();
         __UUPSUpgradeable_init();
-
-        if (timelock == address(0) || oracle_ == address(0) || guardian == address(0)) {
-            revert ZeroAddressNotAllowed();
-        }
 
         _grantRole(DEFAULT_ADMIN_ROLE, guardian);
         _grantRole(MANAGER_ROLE, timelock);
