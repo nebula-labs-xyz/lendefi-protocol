@@ -317,18 +317,16 @@ contract LendefiExtendedTest is BasicDeploy {
         uint256 initialDebt = LendefiInstance.getUserPosition(bob, 0).debtAmount;
         uint256 initialLastAccrual = LendefiInstance.getUserPosition(bob, 0).lastInterestAccrual;
 
-        // Borrow with zero amount - should NOT revert
+        // Borrow with zero amount - SHOULD revert with "ZA" error
+        vm.expectRevert(bytes("ZA"));
         LendefiInstance.borrow(0, 0);
 
-        // Verify state changes
+        // Verify state hasn't changed (these assertions won't execute if the revert works properly)
         uint256 newDebt = LendefiInstance.getUserPosition(bob, 0).debtAmount;
         uint256 newLastAccrual = LendefiInstance.getUserPosition(bob, 0).lastInterestAccrual;
 
-        // Debt should remain 0
-        assertEq(newDebt, initialDebt, "Debt should not change with zero borrow");
-
-        // Last accrual should be updated
-        assertGt(newLastAccrual, initialLastAccrual, "Last accrual timestamp should be updated");
+        assertEq(newDebt, initialDebt, "Debt should not change after reverting");
+        assertEq(newLastAccrual, initialLastAccrual, "Last accrual timestamp should not change after reverting");
 
         vm.stopPrank();
     }
