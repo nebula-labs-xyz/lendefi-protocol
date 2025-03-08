@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.23;
-
-import {ILendefiOracle} from "./ILendefiOracle.sol";
-
 /**
  * @title ILendefiAssets
  * @notice Interface for the LendefiAssets module which manages asset configurations and oracle integrations
  * @dev Contains all external facing functions, events, errors and data structures
  * @custom:security-contact security@nebula-labs.xyz
+ * @custom:copyright Copyright (c) 2025 Nebula Holding Inc. All rights reserved.
  */
+
+import {ILendefiOracle} from "./ILendefiOracle.sol";
+
 interface ILendefiAssets {
     /**
      * @notice Risk tiers for collateral assets in ascending order of risk
@@ -81,11 +82,28 @@ interface ILendefiAssets {
      */
     event Upgrade(address indexed upgrader, address indexed implementation);
 
-    // Add these events
+    /**
+     * @notice Emitted when tier parameters are updated
+     * @param tier The collateral tier that was updated
+     * @param borrowRate The new borrow rate for the tier
+     * @param liquidationFee The new liquidation fee for the tier
+     */
     event TierParametersUpdated(CollateralTier tier, uint256 borrowRate, uint256 liquidationFee);
 
+    /**
+     * @notice Error thrown when a proposed interest rate exceeds maximum allowed value
+     * @param provided The provided rate value
+     * @param maximum The maximum allowed rate value
+     */
     error RateTooHigh(uint256 provided, uint256 maximum);
+
+    /**
+     * @notice Error thrown when a proposed fee exceeds maximum allowed value
+     * @param provided The provided fee value
+     * @param maximum The maximum allowed fee value
+     */
     error FeeTooHigh(uint256 provided, uint256 maximum);
+
     /**
      * @notice Error thrown when a function restricted to the core contract is called by another address
      * @param caller The address that attempted the call
@@ -306,12 +324,6 @@ interface ILendefiAssets {
     function version() external view returns (uint8);
 
     /**
-     * @notice Returns the address of the core Lendefi contract
-     * @return Address of the core contract with CORE_ROLE
-     */
-    // function lendefiCore() external view returns (address);
-
-    /**
      * @notice Returns the address of the oracle module
      * @return Address of the oracle module contract
      */
@@ -324,12 +336,50 @@ interface ILendefiAssets {
      */
     function assetTVL(address asset) external view returns (uint256);
 
-    // Add these function declarations
+    /**
+     * @notice Gets the interest rate jump multiplier for a specific collateral tier
+     * @param tier The collateral tier to query
+     * @return Jump rate multiplier applied to base interest rate
+     */
     function tierJumpRate(CollateralTier tier) external view returns (uint256);
+
+    /**
+     * @notice Gets the liquidation fee percentage for a specific collateral tier
+     * @param tier The collateral tier to query
+     * @return Liquidation fee as a percentage in basis points
+     */
     function tierLiquidationFee(CollateralTier tier) external view returns (uint256);
+
+    /**
+     * @notice Updates the risk parameters for a specific collateral tier
+     * @param tier The tier to update
+     * @param jumpRate New jump rate multiplier for interest calculation
+     * @param liquidationFee New liquidation fee percentage for the tier
+     * @dev Only callable by accounts with MANAGER_ROLE
+     */
     function updateTierParameters(CollateralTier tier, uint256 jumpRate, uint256 liquidationFee) external;
+
+    /**
+     * @notice Gets all tier rates in a single call
+     * @return jumpRates Array of jump rates for all tiers
+     * @return liquidationFees Array of liquidation fees for all tiers
+     * @dev Returns arrays indexed by tier enum values (0=STABLE, 1=CROSS_A, etc.)
+     */
     function getTierRates() external view returns (uint256[4] memory jumpRates, uint256[4] memory liquidationFees);
+
+    /**
+     * @notice Gets the liquidation fee for a specific collateral tier
+     * @param tier The collateral tier to query
+     * @return Liquidation fee percentage in basis points
+     * @dev Main function for getting liquidation fees, preferred over getLiquidationFee
+     */
     function getTierLiquidationFee(CollateralTier tier) external view returns (uint256);
+
+    /**
+     * @notice Gets the jump rate multiplier for a specific collateral tier
+     * @param tier The collateral tier to query
+     * @return Jump rate multiplier for interest calculations
+     * @dev Used in interest rate model calculations
+     */
     function getTierJumpRate(CollateralTier tier) external view returns (uint256);
-    // function initializeDefaultTierParameters() external;
 }
