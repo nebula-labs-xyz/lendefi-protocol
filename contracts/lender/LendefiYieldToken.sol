@@ -26,13 +26,13 @@ contract LendefiYieldToken is
     UUPSUpgradeable
 {
     /// @notice Role for pausing and unpausing token transfers in emergency situations
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
     /// @notice Role for the main Lendefi protocol to control token minting and burning
-    bytes32 public constant PROTOCOL_ROLE = keccak256("PROTOCOL_ROLE");
+    bytes32 internal constant PROTOCOL_ROLE = keccak256("PROTOCOL_ROLE");
 
     /// @notice Role for authorizing contract upgrades
-    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    bytes32 internal constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     /// @notice Current version of the contract, incremented on each upgrade
     /// @dev Used to track implementation versions and verify successful upgrades
     uint8 public version;
