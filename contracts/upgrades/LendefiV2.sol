@@ -127,11 +127,6 @@ contract LendefiV2 is
     IECOSYSTEM internal ecosystemInstance;
 
     /**
-     * @dev Reference to the oracle module for asset price feeds
-     */
-    ILendefiOracle internal oracleModule;
-
-    /**
      * @dev Reference to the yield token (LP token) contract
      */
     ILendefiYieldToken internal yieldTokenInstance;
@@ -284,7 +279,6 @@ contract LendefiV2 is
      * @param ecosystem Address of the ecosystem contract for managing rewards
      * @param treasury_ Address of the treasury for collecting protocol fees
      * @param timelock_ Address of the timelock contract for governance actions
-     * @param oracle_ Address of the oracle module for price feeds
      * @param yieldToken Address of the yield token (LP token) contract
      * @param assetsModule_ Address of the assets module for managing supported collateral
      * @param guardian Address of the protocol guardian with emergency powers
@@ -297,7 +291,7 @@ contract LendefiV2 is
         address ecosystem,
         address treasury_,
         address timelock_,
-        address oracle_,
+        // address oracle_,
         address yieldToken,
         address assetsModule_,
         address guardian
@@ -316,7 +310,7 @@ contract LendefiV2 is
         tokenInstance = IERC20(govToken);
         ecosystemInstance = IECOSYSTEM(payable(ecosystem));
         treasury = treasury_;
-        oracleModule = ILendefiOracle(oracle_);
+        // oracleModule = ILendefiOracle(oracle_);
         yieldTokenInstance = ILendefiYieldToken(yieldToken);
         assetsModule = ILendefiAssets(assetsModule_);
 
