@@ -176,7 +176,6 @@ interface IPROTOCOL {
      * @param ecosystem The address of the ecosystem contract that manages rewards
      * @param treasury_ The address of the treasury that collects protocol fees
      * @param timelock_ The address of the timelock contract for governance actions
-     * @param oracle_ The address of the oracle module for price feeds
      * @param yieldToken The address of the yield token contract
      * @param guardian The address of the initial admin with pausing capability
      * @dev Sets up access control roles and default protocol parameters
@@ -187,7 +186,6 @@ interface IPROTOCOL {
         address ecosystem,
         address treasury_,
         address timelock_,
-        address oracle_,
         address yieldToken,
         address assetsModule,
         address guardian
