@@ -28,7 +28,7 @@ contract InitializeTest is BasicDeploy {
                 address(treasuryInstance),
                 address(timelockInstance),
                 address(yieldTokenInstance),
-                address(assetsInstance), // Add assetsModule parameter
+                address(assetsInstance),
                 guardian
             )
         );
