@@ -462,7 +462,7 @@ contract Lendefi is
      * @custom:events Emits a SupplyCollateral event
      */
     function supplyCollateral(address asset, uint256 amount, uint256 positionId) external nonReentrant whenNotPaused {
-        _validateDeposit(asset, amount, positionId);
+        _processDeposit(asset, amount, positionId);
         emit SupplyCollateral(msg.sender, positionId, asset, amount);
         TH.safeTransferFrom(IERC20(asset), msg.sender, address(this), amount);
     }
@@ -481,7 +481,7 @@ contract Lendefi is
         nonReentrant
         whenNotPaused
     {
-        _validateWithdrawal(asset, amount, positionId);
+        _processWithdrawal(asset, amount, positionId);
         emit WithdrawCollateral(msg.sender, positionId, asset, amount);
         TH.safeTransfer(IERC20(asset), msg.sender, amount);
     }
@@ -549,8 +549,6 @@ contract Lendefi is
      * @dev Updates interest accrual time and decreases debt amount
      * @param positionId ID of the position with debt to repay
      * @param amount Amount of USDC to repay (repays full debt if amount exceeds balance)
-     * @custom:access-control Available to position owners when protocol is not paused
-     * @custom:events Emits Repay and InterestAccrued events
      */
     function repay(uint256 positionId, uint256 amount)
         external
@@ -559,22 +557,9 @@ contract Lendefi is
         whenNotPaused
     {
         UserPosition storage position = positions[msg.sender][positionId];
-
-        uint256 balance = calculateDebtWithInterest(msg.sender, positionId);
-        require(balance > 0, "ND");
-
-        uint256 accruedInterest = balance - position.debtAmount;
-        totalAccruedBorrowerInterest += accruedInterest;
-        amount = amount > balance ? balance : amount;
-        totalBorrow = totalBorrow + (balance - amount) - position.debtAmount;
-
-        position.debtAmount = balance - amount;
-        position.lastInterestAccrual = block.timestamp;
-
-        emit Repay(msg.sender, positionId, amount);
-        emit InterestAccrued(msg.sender, positionId, accruedInterest);
-
-        TH.safeTransferFrom(usdcInstance, msg.sender, address(this), amount);
+        require(position.debtAmount > 0, "ND"); // No debt
+        uint256 actualAmount = _processRepay(positionId, amount, position);
+        TH.safeTransferFrom(usdcInstance, msg.sender, address(this), actualAmount);
     }
 
     /**
@@ -593,14 +578,9 @@ contract Lendefi is
         UserPosition storage position = positions[msg.sender][positionId];
 
         if (position.debtAmount > 0) {
-            uint256 debt = calculateDebtWithInterest(msg.sender, positionId);
-
-            position.debtAmount = 0;
-            position.lastInterestAccrual = 0;
-            totalBorrow -= debt;
-
-            TH.safeTransferFrom(usdcInstance, msg.sender, address(this), debt);
-            emit Repay(msg.sender, positionId, debt);
+            // For full repayment, we pass type(uint256).max to signal "repay all"
+            uint256 actualAmount = _processRepay(positionId, type(uint256).max, position);
+            TH.safeTransferFrom(usdcInstance, msg.sender, address(this), actualAmount);
         }
 
         _withdrawAllCollateral(msg.sender, positionId, msg.sender);
@@ -635,17 +615,17 @@ contract Lendefi is
         uint256 liquidationFee = getPositionLiquidationFee(user, positionId);
 
         uint256 fee = ((debtWithInterest * liquidationFee) / WAD);
-        uint256 total = debtWithInterest + fee;
+        // uint256 total = debtWithInterest + fee;
 
         position.isIsolated = false;
         position.debtAmount = 0;
         position.lastInterestAccrual = 0;
         position.status = PositionStatus.LIQUIDATED;
-        totalBorrow -= debtWithInterest;
+        totalBorrow -= position.debtAmount;
 
         emit Liquidated(user, positionId, msg.sender);
 
-        TH.safeTransferFrom(usdcInstance, msg.sender, address(this), total);
+        TH.safeTransferFrom(usdcInstance, msg.sender, address(this), debtWithInterest + fee);
         _withdrawAllCollateral(user, positionId, msg.sender);
     }
 
@@ -663,9 +643,10 @@ contract Lendefi is
         external
         validAsset(asset)
         whenNotPaused
+        nonReentrant
     {
-        _validateWithdrawal(asset, amount, fromPositionId);
-        _validateDeposit(asset, amount, toPositionId);
+        _processWithdrawal(asset, amount, fromPositionId);
+        _processDeposit(asset, amount, toPositionId);
         emit InterPositionalTransfer(msg.sender, asset, amount);
     }
 
@@ -690,7 +671,6 @@ contract Lendefi is
         uint256 liquidatorAmount
     ) external onlyRole(MANAGER_ROLE) {
         // Validate all parameters
-        // Validate all parameters using require statements instead of custom errors
         require(profitTargetRate >= 0.0025e6, "I1");
         require(borrowRate >= 0.01e6, "I2");
         require(rewardAmount <= 10_000 ether, "I3");
@@ -1014,7 +994,7 @@ contract Lendefi is
      * @param amount Amount of the asset to deposit
      * @param positionId ID of the position to receive the collateral
      */
-    function _validateDeposit(address asset, uint256 amount, uint256 positionId)
+    function _processDeposit(address asset, uint256 amount, uint256 positionId)
         internal
         activePosition(msg.sender, positionId)
         validAsset(asset)
@@ -1046,7 +1026,7 @@ contract Lendefi is
      * @param amount Amount of the asset to withdraw
      * @param positionId ID of the position to withdraw from
      */
-    function _validateWithdrawal(address asset, uint256 amount, uint256 positionId)
+    function _processWithdrawal(address asset, uint256 amount, uint256 positionId)
         internal
         activePosition(msg.sender, positionId)
     {
@@ -1066,6 +1046,43 @@ contract Lendefi is
 
         if (positionCollateralAmounts[msg.sender][positionId][asset] == 0 && !position.isIsolated) {
             posAssets.remove(asset);
+        }
+    }
+
+    /**
+     * @notice Processes a repayment for a position and calculates the correct transfer amount
+     * @dev Handles all debt accounting, interest calculation, and state updates
+     * @param positionId ID of the position being repaid
+     * @param proposedAmount Amount the user is offering to repay (may be capped)
+     * @param position Storage reference to the user's position
+     * @return actualAmount The actual amount that should be transferred (capped at debt)
+     */
+    function _processRepay(uint256 positionId, uint256 proposedAmount, UserPosition storage position)
+        internal
+        returns (uint256 actualAmount)
+    {
+        // Calculate current debt with interest
+        uint256 balance = calculateDebtWithInterest(msg.sender, positionId);
+
+        if (balance > 0) {
+            // Calculate interest accrued
+            uint256 accruedInterest = balance - position.debtAmount;
+            totalAccruedBorrowerInterest += accruedInterest;
+
+            // Determine actual repayment amount (capped at total debt)
+            actualAmount = proposedAmount > balance ? balance : proposedAmount;
+
+            // Update total protocol debt
+            // The formula ensures we account for both interest accrual and repayment
+            totalBorrow = totalBorrow + (balance - actualAmount) - position.debtAmount;
+
+            // Update position state
+            position.debtAmount = balance - actualAmount;
+            position.lastInterestAccrual = block.timestamp;
+
+            // Emit events
+            emit Repay(msg.sender, positionId, actualAmount);
+            emit InterestAccrued(msg.sender, positionId, accruedInterest);
         }
     }
 
