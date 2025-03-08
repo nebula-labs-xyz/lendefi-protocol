@@ -1,77 +1,77 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.23;
-
-import {AggregatorV3Interface} from "../vendor/@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-
 /**
  * @title Lendefi Oracle
  * @notice Secure price feed provider for Lendefi Protocol with robust validation
+ * @author alexei@nebula-labs(dot)xyz
  * @dev Implements multi-oracle architecture with multiple security features:
  *      - Multiple price sources with median calculation
  *      - Configurable freshness thresholds
  *      - Volatility detection and protection
  *      - Circuit breakers for extreme price movements
+ *
+ * @custom:security-contact security@nebula-labs.xyz
+ * @custom:copyright Copyright (c) 2025 Nebula Holding Inc. All rights reserved.
  */
-contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
-    // Roles
-    bytes32 public constant ORACLE_MANAGER_ROLE = keccak256("ORACLE_MANAGER_ROLE");
-    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-    bytes32 public constant CIRCUIT_BREAKER_ROLE = keccak256("CIRCUIT_BREAKER_ROLE");
 
-    // Time threshold configurations
-    uint256 public freshnessThreshold; // Maximum age of price data (default: 8 hours)
-    uint256 public volatilityThreshold; // Stricter freshness for volatile prices (default: 1 hour)
+import {ILendefiOracle} from "../interfaces/ILendefiOracle.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {AggregatorV3Interface} from "../vendor/@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
-    // Percentage thresholds
-    uint256 public volatilityPercentage; // Price change % that triggers volatility check (default: 20%)
-    uint256 public circuitBreakerThreshold; // Price change % that triggers circuit breaker (default: 50%)
+contract LendefiOracle is
+    ILendefiOracle,
+    Initializable,
+    AccessControlUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
+    /// @notice Role for managing oracle configurations
+    bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 
-    // Oracle data structures
+    /// @notice Role for upgrading contract implementation
+    bytes32 internal constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+
+    /// @notice Role for triggering circuit breaker manually
+    bytes32 internal constant CIRCUIT_BREAKER_ROLE = keccak256("CIRCUIT_BREAKER_ROLE");
+
+    /// @notice Maximum age of price data (default: 8 hours)
+    uint256 public freshnessThreshold;
+
+    /// @notice Stricter freshness threshold for volatile prices (default: 1 hour)
+    uint256 public volatilityThreshold;
+
+    /// @notice Price change % that triggers volatility check (default: 20%)
+    uint256 public volatilityPercentage;
+
+    /// @notice Price change % that triggers circuit breaker (default: 50%)
+    uint256 public circuitBreakerThreshold;
+
+    /// @notice Maps assets to their oracle addresses
     mapping(address asset => address[] oracles) private assetOracles;
+
+    /// @notice Maps assets to their primary oracle
     mapping(address asset => address primary) public primaryOracle;
+
+    /// @notice Maps oracles to their decimal precision
     mapping(address oracle => uint8 decimals) public oracleDecimals;
 
-    // Circuit breaker and price history
+    /// @notice Maps assets to their circuit breaker status
     mapping(address asset => bool broken) public circuitBroken;
+
+    /// @notice Maps assets to their last valid price
     mapping(address asset => uint256 price) public lastValidPrice;
+
+    /// @notice Maps assets to their last price update timestamp
     mapping(address asset => uint256 timestamp) public lastUpdateTimestamp;
 
-    // Minimum oracle requirements
-    uint256 public minimumOraclesRequired; // Minimum oracles required for reliable price (default: 2)
+    /// @notice Minimum oracles required for reliable price (default: 2)
+    uint256 public minimumOraclesRequired;
+
+    /// @notice Asset-specific minimum oracle requirements
     mapping(address asset => uint256 minOraclesForAsset) public assetMinimumOracles;
-
-    // Events
-    event OracleAdded(address indexed asset, address indexed oracle);
-    event OracleRemoved(address indexed asset, address indexed oracle);
-    event PrimaryOracleSet(address indexed asset, address indexed oracle);
-    event FreshnessThresholdUpdated(uint256 oldValue, uint256 newValue);
-    event VolatilityThresholdUpdated(uint256 oldValue, uint256 newValue);
-    event VolatilityPercentageUpdated(uint256 oldValue, uint256 newValue);
-    event CircuitBreakerThresholdUpdated(uint256 oldValue, uint256 newValue);
-    event CircuitBreakerTriggered(address indexed asset, uint256 currentPrice, uint256 previousPrice);
-    event CircuitBreakerReset(address indexed asset);
-    event PriceUpdated(address indexed asset, uint256 price, uint256 median, uint256 numOracles);
-    event MinimumOraclesUpdated(uint256 oldValue, uint256 newValue);
-    event AssetMinimumOraclesUpdated(address indexed asset, uint256 oldValue, uint256 newValue);
-    event NotEnoughOraclesWarning(address indexed asset, uint256 required, uint256 actual);
-
-    // Errors
-    error OracleInvalidPrice(address oracle, int256 price);
-    error OracleStalePrice(address oracle, uint80 roundId, uint80 answeredInRound);
-    error OracleTimeout(address oracle, uint256 timestamp, uint256 currentTimestamp, uint256 maxAge);
-    error OracleInvalidPriceVolatility(address oracle, int256 price, uint256 volatility);
-    error OracleNotFound(address asset);
-    error PrimaryOracleNotSet(address asset);
-    error CircuitBreakerActive(address asset);
-    error InvalidThreshold(string name, uint256 value, uint256 minValue, uint256 maxValue);
-    error NotEnoughOracles(address asset, uint256 required, uint256 actual);
-    error OracleAlreadyAdded(address asset, address oracle);
-    error InvalidOracle(address oracle);
-    error CircuitBreakerCooldown(address asset, uint256 remainingTime);
-    error LargeDeviation(address asset, uint256 price, uint256 previousPrice, uint256 deviationPct);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -81,7 +81,7 @@ contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, 
     /**
      * @notice Initializes the oracle module with default parameters
      * @param admin Address that will have DEFAULT_ADMIN_ROLE
-     * @param manager Address that will have ORACLE_MANAGER_ROLE
+     * @param manager Address that will have MANAGER_ROLE
      */
     function initialize(address admin, address manager) external initializer {
         __AccessControl_init();
@@ -89,7 +89,7 @@ contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, 
         __ReentrancyGuard_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(ORACLE_MANAGER_ROLE, manager);
+        _grantRole(MANAGER_ROLE, manager);
         _grantRole(UPGRADER_ROLE, admin);
         _grantRole(CIRCUIT_BREAKER_ROLE, manager);
 
@@ -107,12 +107,9 @@ contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, 
      * @param oracle Address of the Chainlink price feed
      * @param oracleDecimalsValue Number of decimals in oracle price feed
      * @dev Adds a new price oracle to the array of oracles for the asset
-     * @custom:access Restricted to ORACLE_MANAGER_ROLE
+     * @custom:access Restricted to MANAGER_ROLE
      */
-    function addOracle(address asset, address oracle, uint8 oracleDecimalsValue)
-        external
-        onlyRole(ORACLE_MANAGER_ROLE)
-    {
+    function addOracle(address asset, address oracle, uint8 oracleDecimalsValue) external onlyRole(MANAGER_ROLE) {
         if (oracle == address(0)) revert InvalidOracle(oracle);
 
         // Check if oracle is already added for this asset
@@ -141,9 +138,9 @@ contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, 
      * @param asset Address of the asset
      * @param oracle Address of the Chainlink price feed to remove
      * @dev Removes oracle from the array of oracles for the asset
-     * @custom:access Restricted to ORACLE_MANAGER_ROLE
+     * @custom:access Restricted to MANAGER_ROLE
      */
-    function removeOracle(address asset, address oracle) external onlyRole(ORACLE_MANAGER_ROLE) {
+    function removeOracle(address asset, address oracle) external onlyRole(MANAGER_ROLE) {
         address[] storage oracles = assetOracles[asset];
         uint256 length = oracles.length;
         bool found = false;
@@ -194,9 +191,9 @@ contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, 
      * @param asset Address of the asset
      * @param oracle Address of the oracle to set as primary
      * @dev The primary oracle is used as a fallback when median calculation fails
-     * @custom:access Restricted to ORACLE_MANAGER_ROLE
+     * @custom:access Restricted to MANAGER_ROLE
      */
-    function setPrimaryOracle(address asset, address oracle) external onlyRole(ORACLE_MANAGER_ROLE) {
+    function setPrimaryOracle(address asset, address oracle) external onlyRole(MANAGER_ROLE) {
         address[] storage oracles = assetOracles[asset];
         bool found = false;
 
@@ -217,9 +214,9 @@ contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, 
      * @notice Updates the global minimum number of oracles required for reliable price
      * @param minimum New minimum number of oracles
      * @dev Minimum value is 1, applies to all assets unless overridden
-     * @custom:access Restricted to ORACLE_MANAGER_ROLE
+     * @custom:access Restricted to MANAGER_ROLE
      */
-    function updateMinimumOracles(uint256 minimum) external onlyRole(ORACLE_MANAGER_ROLE) {
+    function updateMinimumOracles(uint256 minimum) external onlyRole(MANAGER_ROLE) {
         if (minimum < 1) {
             revert InvalidThreshold("minimumOracles", minimum, 1, type(uint256).max);
         }
@@ -234,9 +231,9 @@ contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, 
      * @param asset Address of the asset
      * @param minimum New minimum number of oracles for this asset
      * @dev Set to 0 to use the global default
-     * @custom:access Restricted to ORACLE_MANAGER_ROLE
+     * @custom:access Restricted to MANAGER_ROLE
      */
-    function updateAssetMinimumOracles(address asset, uint256 minimum) external onlyRole(ORACLE_MANAGER_ROLE) {
+    function updateAssetMinimumOracles(address asset, uint256 minimum) external onlyRole(MANAGER_ROLE) {
         uint256 oldValue = assetMinimumOracles[asset];
         assetMinimumOracles[asset] = minimum;
         emit AssetMinimumOraclesUpdated(asset, oldValue, minimum);
@@ -246,9 +243,9 @@ contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, 
      * @notice Updates the freshness threshold for price feeds
      * @param threshold New maximum age of price data in seconds
      * @dev Controls how old price data can be before rejection
-     * @custom:access Restricted to ORACLE_MANAGER_ROLE
+     * @custom:access Restricted to MANAGER_ROLE
      */
-    function updateFreshnessThreshold(uint256 threshold) external onlyRole(ORACLE_MANAGER_ROLE) {
+    function updateFreshnessThreshold(uint256 threshold) external onlyRole(MANAGER_ROLE) {
         if (threshold < 15 minutes || threshold > 24 hours) {
             revert InvalidThreshold("freshness", threshold, 15 minutes, 24 hours);
         }
@@ -262,9 +259,9 @@ contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, 
      * @notice Updates the volatility time threshold
      * @param threshold New threshold for volatile asset prices in seconds
      * @dev Controls how old price data can be during high volatility
-     * @custom:access Restricted to ORACLE_MANAGER_ROLE
+     * @custom:access Restricted to MANAGER_ROLE
      */
-    function updateVolatilityThreshold(uint256 threshold) external onlyRole(ORACLE_MANAGER_ROLE) {
+    function updateVolatilityThreshold(uint256 threshold) external onlyRole(MANAGER_ROLE) {
         if (threshold < 5 minutes || threshold > 4 hours) {
             revert InvalidThreshold("volatility", threshold, 5 minutes, 4 hours);
         }
@@ -278,9 +275,9 @@ contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, 
      * @notice Updates the volatility percentage threshold
      * @param percentage New percentage that triggers the volatility check
      * @dev Price changes above this percentage require fresher data
-     * @custom:access Restricted to ORACLE_MANAGER_ROLE
+     * @custom:access Restricted to MANAGER_ROLE
      */
-    function updateVolatilityPercentage(uint256 percentage) external onlyRole(ORACLE_MANAGER_ROLE) {
+    function updateVolatilityPercentage(uint256 percentage) external onlyRole(MANAGER_ROLE) {
         if (percentage < 5 || percentage > 30) {
             revert InvalidThreshold("volatilityPercentage", percentage, 5, 30);
         }
@@ -294,9 +291,9 @@ contract LendefiOracle is AccessControlUpgradeable, ReentrancyGuardUpgradeable, 
      * @notice Updates the circuit breaker threshold
      * @param percentage New percentage that triggers the circuit breaker
      * @dev Price changes above this percentage halt trading for the asset
-     * @custom:access Restricted to ORACLE_MANAGER_ROLE
+     * @custom:access Restricted to MANAGER_ROLE
      */
-    function updateCircuitBreakerThreshold(uint256 percentage) external onlyRole(ORACLE_MANAGER_ROLE) {
+    function updateCircuitBreakerThreshold(uint256 percentage) external onlyRole(MANAGER_ROLE) {
         if (percentage < 25 || percentage > 70) {
             revert InvalidThreshold("circuitBreaker", percentage, 25, 70);
         }
