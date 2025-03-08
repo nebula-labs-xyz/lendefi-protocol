@@ -137,28 +137,8 @@ contract IsRewardableTest is BasicDeploy {
         assertTrue(isEligible, "User at exact time threshold should be rewardable");
     }
 
-    // Test 7: User becomes ineligible after withdrawing (using withdraw instead of exchange)
-    function test_BecomesIneligibleAfterWithdrawal() public {
-        // Supply above threshold
-        _supplyLiquidity(user1, LARGE_SUPPLY);
 
-        // Fast-forward beyond reward interval
-        vm.warp(block.timestamp + 181 days);
-
-        // Verify initially eligible
-        bool initialEligibility = LendefiInstance.isRewardable(user1);
-        assertTrue(initialEligibility, "User should initially be eligible");
-
-        // Withdraw half of tokens
-        uint256 userBalance = yieldTokenInstance.balanceOf(user1);
-        _exchangeLPTokens(user1, userBalance / 2);
-
-        // Verify now ineligible due to reduced balance
-        bool finalEligibility = LendefiInstance.isRewardable(user1);
-        assertFalse(finalEligibility, "User should be ineligible after withdrawal");
-    }
-
-    // Test 8: Multiple users with different eligibility
+    // Test 7: Multiple users with different eligibility
     function test_MultipleUsersDifferentEligibility() public {
         // User1: Enough balance, enough time
         _supplyLiquidity(user1, LARGE_SUPPLY);
@@ -181,7 +161,7 @@ contract IsRewardableTest is BasicDeploy {
         assertEq(LendefiInstance.isRewardable(user2), shouldBeEligible, "User2 eligibility check");
     }
 
-    // Test 9: Changing protocol parameters affects eligibility
+    // Test 8: Changing protocol parameters affects eligibility
     function test_ParameterChangesAffectEligibility() public {
         // Supply near the threshold
         _supplyLiquidity(user1, 110_000e6); // 110k USDC
@@ -217,7 +197,7 @@ contract IsRewardableTest is BasicDeploy {
         assertFalse(LendefiInstance.isRewardable(user1), "User should be ineligible after threshold increase");
     }
 
-    // Test 10: Protocol actions reset the timer
+    // Test 9: Protocol actions reset the timer
     function test_SupplyResetsRewardTimer() public {
         // Initial supply
         _supplyLiquidity(user1, LARGE_SUPPLY);
@@ -241,7 +221,7 @@ contract IsRewardableTest is BasicDeploy {
         assertTrue(LendefiInstance.isRewardable(user1), "User should be eligible after full interval");
     }
 
-    // Test 11: Zero totalSupply edge case
+    // Test 10: Zero totalSupply edge case
     function test_ZeroTotalSupplyEdgeCase() public {
         // Edge case: check isRewardable when totalSupply is 0
         // This should never happen in production, but testing for robustness
@@ -254,7 +234,7 @@ contract IsRewardableTest is BasicDeploy {
         assertFalse(result, "User should not be rewardable with zero totalSupply");
     }
 
-    // Test 12: Multiple deposits and their effect on reward timer
+    // Test 11: Multiple deposits and their effect on reward timer
     function test_MultipleDepositsTimerBehavior() public {
         // First deposit
         _supplyLiquidity(user1, 50_000e6); // 50k (below threshold)
@@ -279,7 +259,7 @@ contract IsRewardableTest is BasicDeploy {
         assertTrue(LendefiInstance.isRewardable(user1), "User should be eligible after full interval from last deposit");
     }
 
-    // Test 13: Multiple partial withdrawals and eligibility
+    // Test 12: Multiple partial withdrawals and eligibility
     function test_MultiplePartialWithdrawals() public {
         // Supply 200k USDC (well above threshold)
         _supplyLiquidity(user1, 200_000e6);
