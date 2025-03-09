@@ -872,7 +872,8 @@ contract LendefiV2 is
         nonReentrant
         whenNotPaused
     {
-        uint256 actualAmount = _processRepay(positionId, amount);
+        UserPosition storage position = positions[msg.sender][positionId];
+        uint256 actualAmount = _processRepay(positionId, amount, position);
         if (actualAmount > 0) TH.safeTransferFrom(usdcInstance, msg.sender, address(this), actualAmount);
     }
 
@@ -920,10 +921,10 @@ contract LendefiV2 is
         whenNotPaused
     {
         UserPosition storage position = positions[msg.sender][positionId];
-        uint256 actualAmount = _processRepay(positionId, type(uint256).max);
+        uint256 actualAmount = _processRepay(positionId, type(uint256).max, position);
+        position.status = PositionStatus.CLOSED;
         if (actualAmount > 0) TH.safeTransferFrom(usdcInstance, msg.sender, address(this), actualAmount);
         _withdrawAllCollateral(msg.sender, positionId, msg.sender);
-        position.status = PositionStatus.CLOSED;
         emit PositionClosed(msg.sender, positionId);
     }
 
@@ -1464,12 +1465,12 @@ contract LendefiV2 is
      *        - Repay(msg.sender, positionId, actualAmount)
      *        - InterestAccrued(msg.sender, positionId, accruedInterest)
      */
-    function _processRepay(uint256 positionId, uint256 proposedAmount)
+    function _processRepay(uint256 positionId, uint256 proposedAmount, UserPosition storage position)
         internal
         validAmount(proposedAmount)
         returns (uint256 actualAmount)
     {
-        UserPosition storage position = positions[msg.sender][positionId];
+        // UserPosition storage position = positions[msg.sender][positionId];
         if (position.debtAmount > 0) {
             // Calculate current debt with interest
             uint256 balance = calculateDebtWithInterest(msg.sender, positionId);
@@ -1508,15 +1509,13 @@ contract LendefiV2 is
         while (posAssets.length() > 0) {
             address asset = posAssets.at(0);
             uint256 amount = positionCollateralAmounts[owner][positionId][asset];
-
+            posAssets.remove(asset);
             if (amount > 0) {
                 positionCollateralAmounts[owner][positionId][asset] = 0;
+                emit WithdrawCollateral(owner, positionId, asset, amount);
                 assetsModule.updateAssetTVL(asset, assetsModule.assetTVL(asset) - amount);
                 TH.safeTransfer(IERC20(asset), recipient, amount);
-                emit WithdrawCollateral(owner, positionId, asset, amount);
             }
-
-            posAssets.remove(asset);
         }
     }
 
