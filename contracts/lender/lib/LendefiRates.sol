@@ -6,12 +6,10 @@ pragma solidity 0.8.23;
  * @dev Contains math-heavy functions to reduce main contract size
  */
 
-import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {ILendefiAssets} from "../../interfaces/ILendefiAssets.sol";
-import {IPROTOCOL} from "../../interfaces/IProtocol.sol";
 
 library LendefiRates {
-    using EnumerableSet for EnumerableSet.AddressSet;
+    // using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @dev base scale
     uint256 internal constant WAD = 1e6;
@@ -129,121 +127,6 @@ library LendefiRates {
     }
 
     /**
-     * @notice Calculates credit limit for a position
-     * @param assets Set of assets in the position
-     * @param positionCollateralAmounts Mapping of asset to collateral amount
-     * @param assetsModule Interface to the assets module
-     * @return credit limit in USD
-     */
-    function calculateCreditLimit(
-        EnumerableSet.AddressSet storage assets,
-        mapping(address => uint256) storage positionCollateralAmounts,
-        ILendefiAssets assetsModule
-    ) internal view returns (uint256 credit) {
-        if (assets.length() == 0) return 0;
-        // Works for both isolated and cross-collateral positions
-        uint256 len = assets.length();
-        for (uint256 i; i < len; i++) {
-            address asset = assets.at(i);
-            uint256 amount = positionCollateralAmounts[asset];
-            if (amount > 0) {
-                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
-                credit += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * item.borrowThreshold * WAD)
-                    / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
-            }
-        }
-    }
-
-    /**
-     * @notice Calculates raw collateral value
-     * @param assets Set of assets in the position
-     * @param positionCollateralAmounts Mapping of asset to collateral amount
-     * @param assetsModule Interface to the assets module
-     * @return value Collateral value in USD
-     */
-    function calculateCollateralValue(
-        EnumerableSet.AddressSet storage assets,
-        mapping(address => uint256) storage positionCollateralAmounts,
-        ILendefiAssets assetsModule
-    ) internal view returns (uint256 value) {
-        if (assets.length() == 0) return 0;
-        uint256 len = assets.length();
-        for (uint256 i; i < len; i++) {
-            address asset = assets.at(i);
-            uint256 amount = positionCollateralAmounts[asset];
-            if (amount > 0) {
-                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
-                value += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * WAD)
-                    / (10 ** item.decimals * 10 ** item.oracleDecimals);
-            }
-        }
-        return value;
-    }
-
-    /**
-     * @notice Calculates health factor for a position
-     * @param assets Set of assets in the position
-     * @param positionCollateralAmounts Mapping of asset to collateral amount
-     * @param debt Current debt with interest
-     * @param assetsModule Interface to the assets module
-     * @return Health factor (>1 is healthy)
-     */
-    function healthFactor(
-        EnumerableSet.AddressSet storage assets,
-        mapping(address => uint256) storage positionCollateralAmounts,
-        uint256 debt,
-        ILendefiAssets assetsModule
-    ) internal view returns (uint256) {
-        if (debt == 0) return type(uint256).max;
-
-        uint256 liqLevel;
-        uint256 len = assets.length();
-        for (uint256 i; i < len; i++) {
-            address asset = assets.at(i);
-            uint256 amount = positionCollateralAmounts[asset];
-
-            if (amount != 0) {
-                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
-                liqLevel += (
-                    amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * item.liquidationThreshold * WAD
-                ) / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
-            }
-        }
-
-        return (liqLevel * WAD) / debt;
-    }
-
-    /**
-     * @notice Determines highest risk tier in the position
-     * @param assets Set of assets in the position
-     * @param positionCollateralAmounts Mapping of asset to collateral amount
-     * @param assetsModule Interface to the assets module
-     * @return Highest tier among position's assets
-     */
-    function getHighestTier(
-        EnumerableSet.AddressSet storage assets,
-        mapping(address => uint256) storage positionCollateralAmounts,
-        ILendefiAssets assetsModule
-    ) internal view returns (ILendefiAssets.CollateralTier) {
-        uint256 len = assets.length();
-        ILendefiAssets.CollateralTier tier = ILendefiAssets.CollateralTier.STABLE;
-
-        for (uint256 i; i < len; i++) {
-            address asset = assets.at(i);
-            uint256 amount = positionCollateralAmounts[asset];
-
-            if (amount > 0) {
-                ILendefiAssets.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
-                if (uint8(assetConfig.tier) > uint8(tier)) {
-                    tier = assetConfig.tier;
-                }
-            }
-        }
-
-        return tier;
-    }
-
-    /**
      * @notice Calculates supply rate based on protocol metrics
      * @param totalSupply Total LP token supply
      * @param totalBorrow Current borrowed amount
@@ -304,33 +187,5 @@ library LendefiRates {
         uint256 baseRate = rate > baseBorrowRate ? rate : baseBorrowRate;
 
         return baseRate + ((tierJumpRate * utilization) / WAD);
-    }
-
-    /**
-     * @notice Calculates utilization rate
-     * @param totalBorrow Total borrowed amount
-     * @param totalSuppliedLiquidity Total supplied liquidity
-     * @return Utilization rate scaled by WAD
-     */
-    function getUtilization(uint256 totalBorrow, uint256 totalSuppliedLiquidity) internal pure returns (uint256) {
-        if (totalSuppliedLiquidity == 0) return 0;
-        return (totalBorrow * WAD) / totalSuppliedLiquidity;
-    }
-
-    /**
-     * @notice Calculates liquidation fee for a position
-     * @param assets Set of collateral assets in position
-     * @param positionCollateralAmounts Mapping of asset to collateral amount
-     * @param assetsModule Interface to the assets module
-     * @return Liquidation fee as percentage in WAD format
-     */
-    function getPositionLiquidationFee(
-        EnumerableSet.AddressSet storage assets,
-        mapping(address => uint256) storage positionCollateralAmounts,
-        ILendefiAssets assetsModule
-    ) internal view returns (uint256) {
-        // For non-isolated positions, use highest tier
-        ILendefiAssets.CollateralTier tier = getHighestTier(assets, positionCollateralAmounts, assetsModule);
-        return assetsModule.getLiquidationFee(tier);
     }
 }
