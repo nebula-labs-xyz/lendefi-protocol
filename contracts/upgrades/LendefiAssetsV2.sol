@@ -9,6 +9,7 @@ pragma solidity 0.8.23;
  * @custom:copyright Copyright (c) 2025 Nebula Holding Inc. All rights reserved.
  */
 
+import {IPROTOCOL} from "../interfaces/IProtocol.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -29,9 +30,6 @@ contract LendefiAssetsV2 is
 {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    /// @notice Core contract role for managing TVL and essential functions
-    bytes32 internal constant CORE_ROLE = keccak256("CORE_ROLE");
-
     /// @notice Role for managing asset configurations and parameters
     bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 
@@ -44,17 +42,19 @@ contract LendefiAssetsV2 is
     /// @notice Current version of the contract
     uint8 public version;
 
+    /// @notice Address of the core Lendefi contract
+    address public coreAddress;
+
     /// @notice Oracle module for asset price feeds
     ILendefiOracle public oracleModule;
+
+    IPROTOCOL internal LendefiInstance;
 
     /// @notice Set of all assets listed in the protocol
     EnumerableSet.AddressSet internal listedAsset;
 
     /// @notice Detailed configuration for each asset
     mapping(address => Asset) internal assetInfo;
-
-    /// @notice Total value locked per asset
-    mapping(address => uint256) public assetTVL;
 
     /// @notice Base borrow rate for each collateral risk tier
     /// @dev Higher tiers have higher interest rates due to increased risk
@@ -271,17 +271,15 @@ contract LendefiAssetsV2 is
     }
 
     /**
-     * @notice Updates the TVL for an asset
-     * @param asset Address of the asset
-     * @param newAmount New total amount of the asset in protocol
-     * @dev Only callable by the core contract
+     * @notice Updates the core Lendefi contract address
+     * @param newCore New Lendefi core address
+     * @dev Only callable by accounts with DEFAULT_ADMIN_ROLE
      */
-    function updateAssetTVL(address asset, uint256 newAmount) external onlyRole(CORE_ROLE) whenNotPaused {
-        if (!listedAsset.contains(asset)) {
-            revert AssetNotListed(asset);
-        }
-        assetTVL[asset] = newAmount;
-        emit TVLUpdated(asset, newAmount);
+    function setCoreAddress(address newCore) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
+        if (newCore == address(0)) revert ZeroAddressNotAllowed();
+        coreAddress = newCore;
+        LendefiInstance = IPROTOCOL(newCore);
+        emit CoreAddressUpdated(newCore);
     }
 
     /**
@@ -366,7 +364,7 @@ contract LendefiAssetsV2 is
         if (!listedAsset.contains(asset)) {
             revert AssetNotListed(asset);
         }
-        return assetTVL[asset] + additionalAmount > assetInfo[asset].maxSupplyThreshold;
+        return LendefiInstance.assetTVL(asset) + additionalAmount > assetInfo[asset].maxSupplyThreshold;
     }
 
     /**
@@ -402,7 +400,7 @@ contract LendefiAssetsV2 is
 
         Asset memory assetConfig = assetInfo[asset];
         price = getAssetPriceOracle(assetConfig.oracleUSD);
-        totalSupplied = assetTVL[asset];
+        totalSupplied = LendefiInstance.assetTVL(asset);
         maxSupply = assetConfig.maxSupplyThreshold;
         tier = assetConfig.tier;
     }
