@@ -385,22 +385,29 @@ contract Lendefi is
      *   - "RPF": Repay failed (final balance less than required amount)
      */
     function flashLoan(address receiver, uint256 amount, bytes calldata params) external nonReentrant whenNotPaused {
-        uint256 availableLiquidity = usdcInstance.balanceOf(address(this));
-        require(amount <= availableLiquidity, "LL"); // Low liquidity
+        // Check available liquidity and valid parameters
+        require(amount > 0, "ZA"); // Zero amount check
+        uint256 initialBalance = usdcInstance.balanceOf(address(this));
+        require(amount <= initialBalance, "LL"); // Low liquidity
 
+        // Calculate fee and record initial balance
         uint256 fee = (amount * flashLoanFee) / 10000;
+        uint256 requiredBalance = initialBalance + fee;
+
+        // Transfer flash loan amount
         TH.safeTransfer(usdcInstance, receiver, amount);
 
+        // Execute flash loan operation
         bool success =
             IFlashLoanReceiver(receiver).executeOperation(address(usdcInstance), amount, fee, msg.sender, params);
 
-        require(success, "FLF"); // Flash loan failed
+        // Verify both the return value AND the actual balance
+        require(success, "FLF"); // Flash loan failed (incorrect return value)
 
-        uint256 requiredBalance = availableLiquidity + fee;
         uint256 currentBalance = usdcInstance.balanceOf(address(this));
+        require(currentBalance >= requiredBalance, "RPF"); // Repay failed (insufficient funds returned)
 
-        require(currentBalance >= requiredBalance, "RPF"); //repay failed
-
+        // Update protocol state only after all verifications succeed
         totalFlashLoanFees += fee;
         emit FlashLoan(msg.sender, receiver, address(usdcInstance), amount, fee);
     }
@@ -976,9 +983,7 @@ contract Lendefi is
         totalAccruedBorrowerInterest += interestAccrued;
 
         uint256 liquidationFee = getPositionLiquidationFee(user, positionId);
-
         uint256 fee = ((debtWithInterest * liquidationFee) / WAD);
-        // uint256 total = debtWithInterest + fee;
 
         position.isIsolated = false;
         position.debtAmount = 0;
@@ -994,13 +999,34 @@ contract Lendefi is
 
     /**
      * @notice Transfers collateral between two positions owned by the same user
-     * @dev Validates both the withdrawal from source and deposit to destination
+     * @dev Validates both the withdrawal from the source position and the deposit to the destination position.
+     *      This function ensures that the collateral transfer adheres to the protocol's rules regarding
+     *      isolation and cross-collateral positions.
      * @param fromPositionId The ID of the position to transfer collateral from
      * @param toPositionId The ID of the position to transfer collateral to
      * @param asset The address of the collateral asset to transfer
      * @param amount The amount of the asset to transfer
-     * @custom:access-control Available to position owners when protocol is not paused
+     * @custom:access-control Available to position owners when the protocol is not paused
      * @custom:events Emits an InterPositionalTransfer event
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Asset must be whitelisted in the protocol
+     *   - Source position must exist and be in ACTIVE status
+     *   - Destination position must exist and be in ACTIVE status
+     *   - Source position must have sufficient collateral balance of the specified asset
+     *   - Destination position must adhere to isolation rules if applicable
+     * @custom:state-changes
+     *   - Decreases the collateral amount of the specified asset in the source position
+     *   - Increases the collateral amount of the specified asset in the destination position
+     *   - Updates protocol-wide TVL for the asset
+     * @custom:error-codes
+     *   - "IN": Invalid position (from activePosition modifier)
+     *   - "INA": Inactive position (from activePosition modifier)
+     *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
+     *   - "LB": Low balance (not enough collateral balance to transfer)
+     *   - "ISO": Isolated asset in cross-collateral position (transferring isolated-tier asset to a cross position)
+     *   - "IA": Invalid asset for isolation (transferring an asset that doesn't match the isolated position's asset)
+     *   - "MA": Maximum assets reached (destination position already has 20 different asset types)
      */
     function interpositionalTransfer(uint256 fromPositionId, uint256 toPositionId, address asset, uint256 amount)
         external
