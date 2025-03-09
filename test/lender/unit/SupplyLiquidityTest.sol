@@ -154,21 +154,18 @@ contract SupplyLiquidityTest is BasicDeploy {
         vm.stopPrank();
     }
 
-    // Test 3: Supply with zero amount
-    function test_SupplyZeroAmount() public {
+    // Test 3: Supply with zero amount (now expected to fail)
+    function testRevert_SupplyZeroAmount() public {
         uint256 amount = 0;
 
         vm.startPrank(alice);
         // Approve USDC spending
         usdcInstance.approve(address(LendefiInstance), amount);
 
-        // Supply zero liquidity (should work, but do nothing)
+        // Supply zero liquidity should now be rejected with "ZA" error
+        vm.expectRevert(bytes("ZA"));
         LendefiInstance.supplyLiquidity(amount);
         vm.stopPrank();
-
-        // Verify alice got no tokens
-        uint256 aliceTokenBalance = yieldTokenInstance.balanceOf(alice);
-        assertEq(aliceTokenBalance, 0, "Alice should receive no tokens");
     }
 
     // Test 4: Supply after initial supply (with non-zero totalSupply)
