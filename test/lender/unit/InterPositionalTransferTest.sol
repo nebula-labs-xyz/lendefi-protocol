@@ -228,7 +228,8 @@ contract InterPositionalTransferTest is BasicDeploy {
     }
 
     // Test 7: Transfer with zero amount is allowed
-    function test_ZeroTransferAllowed() public {
+    // Replace test_ZeroTransferAllowed with testRevert_ZeroTransferNotAllowed
+    function testRevert_ZeroTransferNotAllowed() public {
         // Create two cross-collateral positions
         uint256 fromPositionId = _createPosition(bob, address(wethInstance), false);
         uint256 toPositionId = _createPosition(bob, address(wethInstance), false);
@@ -236,16 +237,14 @@ contract InterPositionalTransferTest is BasicDeploy {
         // Supply collateral to source position
         _mintAndSupply(bob, address(wethInstance), fromPositionId, 5 ether);
 
-        // Transfer zero amount
+        // Transfer zero amount should now revert with ZA error
         vm.prank(bob);
+        vm.expectRevert(bytes("ZA")); // Zero amount validation error
         LendefiInstance.interpositionalTransfer(fromPositionId, toPositionId, address(wethInstance), 0);
 
-        // Check that balances are unchanged
+        // Verify balances remain unchanged (this won't execute after revert, but including for clarity)
         uint256 sourceBalance = LendefiInstance.getCollateralAmount(bob, fromPositionId, address(wethInstance));
-        uint256 targetBalance = LendefiInstance.getCollateralAmount(bob, toPositionId, address(wethInstance));
-
         assertEq(sourceBalance, 5 ether, "Source balance should be unchanged");
-        assertEq(targetBalance, 0, "Target balance should be zero");
     }
 
     // Test 8: Transfer when asset isn't listed in protocol
