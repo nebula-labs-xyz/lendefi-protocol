@@ -205,6 +205,8 @@ contract Lendefi is
     address public treasury;
 
     // Mappings
+    /// @notice Total value locked per asset
+    mapping(address => uint256) public assetTVL;
     /**
      * @dev Stores all borrowing positions for each user
      * @dev Key: User address, Value: Array of positions
@@ -731,6 +733,7 @@ contract Lendefi is
      */
     function withdrawCollateral(address asset, uint256 amount, uint256 positionId)
         external
+        validAmount(amount)
         nonReentrant
         whenNotPaused
     {
@@ -1035,6 +1038,7 @@ contract Lendefi is
     function interpositionalTransfer(uint256 fromPositionId, uint256 toPositionId, address asset, uint256 amount)
         external
         validAsset(asset)
+        validAmount(amount)
         whenNotPaused
         nonReentrant
     {
@@ -1401,7 +1405,9 @@ contract Lendefi is
         }
 
         positionCollateralAmounts[msg.sender][positionId][asset] += amount;
-        assetsModule.updateAssetTVL(asset, assetsModule.assetTVL(asset) + amount);
+
+        assetTVL[asset] += amount;
+        emit TVLUpdated(address(asset), assetTVL[asset]);
     }
 
     /**
@@ -1413,7 +1419,6 @@ contract Lendefi is
      */
     function _processWithdrawal(address asset, uint256 amount, uint256 positionId)
         internal
-        validAmount(amount)
         activePosition(msg.sender, positionId)
     {
         UserPosition storage position = positions[msg.sender][positionId];
@@ -1423,7 +1428,8 @@ contract Lendefi is
         require(positionCollateralAmounts[msg.sender][positionId][asset] >= amount, "LB"); // Insufficient balance
 
         positionCollateralAmounts[msg.sender][positionId][asset] -= amount;
-        assetsModule.updateAssetTVL(asset, assetsModule.assetTVL(asset) - amount);
+        assetTVL[asset] -= amount;
+        emit TVLUpdated(address(asset), assetTVL[asset]);
 
         require(calculateCreditLimit(msg.sender, positionId) >= position.debtAmount, "CM"); // Credit limit exceeded
 
@@ -1506,8 +1512,9 @@ contract Lendefi is
             posAssets.remove(asset);
             if (amount > 0) {
                 positionCollateralAmounts[owner][positionId][asset] = 0;
+                assetTVL[asset] -= amount;
+                emit TVLUpdated(address(asset), assetTVL[asset]);
                 emit WithdrawCollateral(owner, positionId, asset, amount);
-                assetsModule.updateAssetTVL(asset, assetsModule.assetTVL(asset) - amount);
                 TH.safeTransfer(IERC20(asset), recipient, amount);
             }
         }
