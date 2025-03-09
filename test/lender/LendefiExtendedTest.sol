@@ -272,9 +272,9 @@ contract LendefiExtendedTest is BasicDeploy {
         LendefiInstance.createPosition(address(wethInstance), false);
         wethInstance.approve(address(LendefiInstance), 10 ether);
 
-        uint256 initialTVL = assetsInstance.assetTVL(address(wethInstance));
+        uint256 initialTVL = LendefiInstance.assetTVL(address(wethInstance));
         LendefiInstance.supplyCollateral(address(wethInstance), 10 ether, 0);
-        uint256 newTVL = assetsInstance.assetTVL(address(wethInstance));
+        uint256 newTVL = LendefiInstance.assetTVL(address(wethInstance));
 
         assertEq(newTVL - initialTVL, 10 ether, "TVL should increase by deposit amount");
         vm.stopPrank();
