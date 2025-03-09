@@ -165,6 +165,12 @@ interface IPROTOCOL {
      */
     event InterPositionalTransfer(address indexed user, address asset, uint256 amount);
 
+    /**
+     * @notice Emitted when an asset's total value locked (TVL) is updated
+     * @param asset The address of the asset that was updated
+     * @param amount The new TVL amount
+     */
+    event TVLUpdated(address indexed asset, uint256 amount);
     //////////////////////////////////////////////////
     // ---------------Core functions---------------//
     /////////////////////////////////////////////////
@@ -190,6 +196,13 @@ interface IPROTOCOL {
         address assetsModule,
         address guardian
     ) external;
+
+    /**
+     * @notice Returns the total value locked for a specific asset
+     * @param asset The address of the asset to query
+     * @return Total amount of the asset held in the protocol
+     */
+    function assetTVL(address asset) external view returns (uint256);
 
     /**
      * @notice Pauses all protocol operations in case of emergency
