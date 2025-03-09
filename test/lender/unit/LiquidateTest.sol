@@ -270,7 +270,7 @@ contract LiquidateTest is BasicDeploy {
         usdcInstance.approve(address(LendefiInstance), 100_000e6);
 
         // Attempt liquidation without enough governance tokens
-        vm.expectRevert(bytes("NLQDR")); // Using new error code for insufficient gov tokens
+        vm.expectRevert(bytes("GTL")); // Using new error code for insufficient gov tokens
         LendefiInstance.liquidate(bob, positionId);
         vm.stopPrank();
     }
@@ -626,7 +626,58 @@ contract LiquidateTest is BasicDeploy {
         }
     }
 
+    // Add this test to the LiquidateTest contract
+    function test_LiquidationUpdatesTotalBorrow() public {
+        // Setup a liquidatable position
+        uint256 positionId = _setupLiquidatablePosition(bob, address(wethInstance), false);
+
+        // Get the position debt amount before liquidation
+        // We need to use position.debtAmount, not calculateDebtWithInterest, because
+        // that's what the contract subtracts from totalBorrow in the liquidate function
+        IPROTOCOL.UserPosition memory position = LendefiInstance.getUserPosition(bob, positionId);
+        uint256 positionDebtAmount = position.debtAmount;
+
+        // Get the total borrow amount before liquidation
+        uint256 totalBorrowBefore = LendefiInstance.totalBorrow();
+
+        // Ensure we have a meaningful test by verifying the debt is included in totalBorrow
+        assertGt(positionDebtAmount, 0, "Position must have debt for this test");
+        assertGe(totalBorrowBefore, positionDebtAmount, "Total borrow must include position debt");
+
+        console2.log("Position debt amount:", positionDebtAmount);
+        console2.log("Total borrow before liquidation:", totalBorrowBefore);
+
+        // Setup Charlie as liquidator
+        vm.prank(address(timelockInstance));
+        treasuryInstance.release(address(tokenInstance), charlie, 50_000 ether); // Give enough gov tokens
+
+        uint256 debtWithInterest = LendefiInstance.calculateDebtWithInterest(bob, positionId);
+        uint256 liquidationFee = LendefiInstance.getPositionLiquidationFee(bob, positionId);
+        uint256 feeAmount = (debtWithInterest * liquidationFee) / 1e6;
+        uint256 totalRequired = debtWithInterest + feeAmount;
+
+        // Prepare the liquidator with enough USDC
+        usdcInstance.mint(charlie, totalRequired);
+
+        // Perform the liquidation
+        vm.startPrank(charlie);
+        usdcInstance.approve(address(LendefiInstance), totalRequired);
+        LendefiInstance.liquidate(bob, positionId);
+        vm.stopPrank();
+
+        // Get the total borrow amount after liquidation
+        uint256 totalBorrowAfter = LendefiInstance.totalBorrow();
+        console2.log("Total borrow after liquidation:", totalBorrowAfter);
+
+        // Verify that totalBorrow was reduced by exactly the position's debt amount
+        assertEq(
+            totalBorrowBefore - positionDebtAmount,
+            totalBorrowAfter,
+            "totalBorrow should be reduced by exactly position.debtAmount"
+        );
+    }
     // Helper function to access assetInfo storage for tests
+
     function assetInfo(address asset) internal view returns (ILendefiAssets.Asset memory) {
         return assetsInstance.getAssetInfo(asset);
     }
