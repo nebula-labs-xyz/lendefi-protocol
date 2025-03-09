@@ -607,6 +607,7 @@ contract BasicDeploy is Test {
         yieldTokenInstance.renounceRole(DEFAULT_ADMIN_ROLE, address(guardian));
 
         // Update the core address in the assets module to point to the real Lendefi address
+        assetsInstance.setCoreAddress(address(LendefiInstance));
         assetsInstance.grantRole(CORE_ROLE, address(LendefiInstance));
         assetsInstance.grantRole(DEFAULT_ADMIN_ROLE, address(timelockInstance));
         assetsInstance.renounceRole(DEFAULT_ADMIN_ROLE, address(guardian));
