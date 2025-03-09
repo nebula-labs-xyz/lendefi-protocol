@@ -620,7 +620,6 @@ contract Lendefi is
         newPosition.status = PositionStatus.ACTIVE;
 
         if (isIsolated) {
-            // No need to add to a separate EnumerableSet, just initialize with zero amount
             EnumerableMap.AddressToUintMap storage collaterals =
                 positionCollateral[msg.sender][positions[msg.sender].length - 1];
             collaterals.set(asset, 0); // Register the asset with zero initial amount
@@ -993,6 +992,7 @@ contract Lendefi is
         position.debtAmount = 0;
         position.status = PositionStatus.LIQUIDATED;
 
+        emit InterestAccrued(user, positionId, interestAccrued);
         emit Liquidated(user, positionId, msg.sender);
 
         TH.safeTransferFrom(usdcInstance, msg.sender, address(this), debtWithInterest + fee);
@@ -1529,7 +1529,7 @@ contract Lendefi is
         emit TVLUpdated(address(asset), assetTVL[asset]);
 
         // Verify collateralization after withdrawal
-        require(calculateCreditLimit(msg.sender, positionId) >= position.debtAmount, "CM");
+        require(calculateCreditLimit(msg.sender, positionId) >= position.debtAmount, "CM"); // Credit limit maxed out
     }
 
     /**
