@@ -439,16 +439,11 @@ contract WithdrawCollateralTest is BasicDeploy {
         uint256 positionId = _createPosition(bob, address(wethInstance), false);
         _supplyCollateral(bob, address(wethInstance), collateralAmount, positionId);
 
-        uint256 initialCollateral = LendefiInstance.getCollateralAmount(bob, positionId, address(wethInstance));
-
         vm.startPrank(bob);
-        // Withdraw zero amount
+        // Try to withdraw zero amount, should revert with "ZA" (Zero Amount) error
+        vm.expectRevert(bytes("ZA"));
         LendefiInstance.withdrawCollateral(address(wethInstance), 0, positionId);
         vm.stopPrank();
-
-        // Verify nothing changed
-        uint256 finalCollateral = LendefiInstance.getCollateralAmount(bob, positionId, address(wethInstance));
-        assertEq(finalCollateral, initialCollateral, "Position collateral should remain unchanged");
     }
 
     // Test 14: Withdraw from another user's position should fail
@@ -470,9 +465,12 @@ contract WithdrawCollateralTest is BasicDeploy {
     function testFuzz_WithdrawVaryingAmounts(uint256 withdrawPct) public {
         uint256 collateralAmount = 10 ether;
 
-        // Bound withdrawal percentage to 0-100%
-        withdrawPct = bound(withdrawPct, 0, 100);
+        // Bound withdrawal percentage to 1-100% to avoid zero amounts
+        withdrawPct = bound(withdrawPct, 1, 100);
         uint256 withdrawAmount = (collateralAmount * withdrawPct) / 100;
+
+        // Ensure amount is at least 1 wei
+        if (withdrawAmount == 0) withdrawAmount = 1;
 
         // Create position and supply collateral
         uint256 positionId = _createPosition(bob, address(wethInstance), false);
@@ -494,7 +492,7 @@ contract WithdrawCollateralTest is BasicDeploy {
         uint256 borrowAmount = 5000e6; // $5,000 USDC
 
         // Bound withdrawal percentage to a safe range (0-50%), since we need to maintain collateral for the debt
-        withdrawPct = bound(withdrawPct, 0, 50);
+        withdrawPct = bound(withdrawPct, 1, 50);
         uint256 withdrawAmount = (collateralAmount * withdrawPct) / 100;
 
         // Create position and supply collateral
@@ -534,8 +532,8 @@ contract WithdrawCollateralTest is BasicDeploy {
         uint256 stableAmount = 1000 ether;
 
         // Bound withdrawal percentages to 0-100%
-        wethPct = bound(wethPct, 0, 100);
-        stablePct = bound(stablePct, 0, 100);
+        wethPct = bound(wethPct, 1, 100);
+        stablePct = bound(stablePct, 1, 100);
 
         uint256 wethWithdraw = (wethAmount * wethPct) / 100;
         uint256 stableWithdraw = (stableAmount * stablePct) / 100;
