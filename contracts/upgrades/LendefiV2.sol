@@ -65,7 +65,7 @@ import {IPROTOCOL} from "../interfaces/IProtocol.sol";
 import {IECOSYSTEM} from "../interfaces/IEcosystem.sol";
 import {IFlashLoanReceiver} from "../interfaces/IFlashLoanReceiver.sol";
 import {ILendefiYieldToken} from "../interfaces/ILendefiYieldToken.sol";
-import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import {IERC20, SafeERC20 as TH} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
@@ -85,7 +85,8 @@ contract LendefiV2 is
     /**
      * @dev Utility for set operations on address collections
      */
-    using EnumerableSet for EnumerableSet.AddressSet;
+    // using EnumerableSet for EnumerableSet.AddressSet;
+    using EnumerableMap for EnumerableMap.AddressToUintMap;
 
     // Constants
     /**
@@ -217,13 +218,7 @@ contract LendefiV2 is
      * @dev Tracks collateral amounts for each asset in each position
      * @dev Keys: User address, Position ID, Asset address, Value: Amount
      */
-    mapping(address => mapping(uint256 => mapping(address => uint256))) internal positionCollateralAmounts;
-
-    /**
-     * @dev Tracks the set of collateral assets for each position
-     * @dev Keys: User address, Position ID, Value: Set of asset addresses
-     */
-    mapping(address => mapping(uint256 => EnumerableSet.AddressSet)) internal positionCollateralAssets;
+    mapping(address => mapping(uint256 => EnumerableMap.AddressToUintMap)) internal positionCollateral;
 
     /**
      * @dev Tracks the last time rewards were accrued for each liquidity provider
@@ -234,7 +229,7 @@ contract LendefiV2 is
     /**
      * @dev Reserved storage gap for future upgrades
      */
-    uint256[8] private __gap;
+    uint256[20] private __gap;
 
     /**
      * @dev Ensures the position exists for the given user
@@ -625,9 +620,10 @@ contract LendefiV2 is
         newPosition.status = PositionStatus.ACTIVE;
 
         if (isIsolated) {
-            EnumerableSet.AddressSet storage assets =
-                positionCollateralAssets[msg.sender][positions[msg.sender].length - 1];
-            assets.add(asset);
+            // No need to add to a separate EnumerableSet, just initialize with zero amount
+            EnumerableMap.AddressToUintMap storage collaterals =
+                positionCollateral[msg.sender][positions[msg.sender].length - 1];
+            collaterals.set(asset, 0); // Register the asset with zero initial amount
         }
 
         emit PositionCreated(msg.sender, positions[msg.sender].length - 1, isIsolated);
@@ -812,8 +808,8 @@ contract LendefiV2 is
 
         // For isolated positions, check debt cap
         if (position.isIsolated) {
-            EnumerableSet.AddressSet storage posAssets = positionCollateralAssets[msg.sender][positionId];
-            address posAsset = posAssets.at(0);
+            EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
+            (address posAsset,) = collaterals.at(0);
             ILendefiAssets.Asset memory asset = assetsModule.getAssetInfo(posAsset);
             require(currentDebt + amount <= asset.isolationDebtCap, "IDC");
         }
@@ -1121,7 +1117,9 @@ contract LendefiV2 is
         validPosition(user, positionId)
         returns (uint256)
     {
-        return positionCollateralAmounts[user][positionId][asset];
+        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
+        (bool exists, uint256 amount) = collaterals.tryGet(asset);
+        return exists ? amount : 0;
     }
 
     /**
@@ -1137,12 +1135,13 @@ contract LendefiV2 is
         validPosition(user, positionId)
         returns (address[] memory)
     {
-        EnumerableSet.AddressSet storage posAssets = positionCollateralAssets[user][positionId];
-        uint256 length = posAssets.length();
+        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
+        uint256 length = collaterals.length();
         address[] memory assets = new address[](length);
 
         for (uint256 i = 0; i < length; i++) {
-            assets[i] = posAssets.at(i);
+            (address asset,) = collaterals.at(i);
+            assets[i] = asset;
         }
 
         return assets;
@@ -1174,10 +1173,7 @@ contract LendefiV2 is
         UserPosition storage position = positions[user][positionId];
         if (position.debtAmount == 0) return 0;
 
-        ILendefiAssets.CollateralTier tier = position.isIsolated
-            ? assetsModule.getAssetInfo(positionCollateralAssets[user][positionId].at(0)).tier
-            : getPositionTier(user, positionId);
-
+        ILendefiAssets.CollateralTier tier = getPositionTier(user, positionId);
         uint256 borrowRate = getBorrowRate(tier);
         uint256 timeElapsed = block.timestamp - position.lastInterestAccrual;
 
@@ -1233,21 +1229,25 @@ contract LendefiV2 is
         public
         view
         validPosition(user, positionId)
-        returns (uint256 credit)
+        returns (uint256)
     {
-        EnumerableSet.AddressSet storage assets = positionCollateralAssets[user][positionId];
-        if (assets.length() == 0) return 0;
+        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
+        if (collaterals.length() == 0) return 0;
 
-        uint256 len = assets.length();
+        uint256 credit;
+        uint256 len = collaterals.length();
+
         for (uint256 i; i < len; i++) {
-            address asset = assets.at(i);
-            uint256 amount = positionCollateralAmounts[user][positionId][asset];
+            (address asset, uint256 amount) = collaterals.at(i);
+
             if (amount > 0) {
                 ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
                 credit += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * item.borrowThreshold * WAD)
                     / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
             }
         }
+
+        return credit;
     }
 
     /**
@@ -1263,19 +1263,19 @@ contract LendefiV2 is
         validPosition(user, positionId)
         returns (uint256 value)
     {
-        EnumerableSet.AddressSet storage assets = positionCollateralAssets[user][positionId];
-        if (assets.length() == 0) return 0;
-        uint256 len = assets.length();
+        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
+        if (collaterals.length() == 0) return 0;
+
+        uint256 len = collaterals.length();
         for (uint256 i; i < len; i++) {
-            address asset = assets.at(i);
-            uint256 amount = positionCollateralAmounts[user][positionId][asset];
+            (address asset, uint256 amount) = collaterals.at(i);
+
             if (amount > 0) {
                 ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
                 value += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * WAD)
                     / (10 ** item.decimals * 10 ** item.oracleDecimals);
             }
         }
-        return value;
     }
 
     /**
@@ -1317,13 +1317,13 @@ contract LendefiV2 is
     {
         uint256 debt = calculateDebtWithInterest(user, positionId);
         if (debt == 0) return type(uint256).max;
-        EnumerableSet.AddressSet storage assets = positionCollateralAssets[user][positionId];
 
+        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
         uint256 liqLevel;
-        uint256 len = assets.length();
+        uint256 len = collaterals.length();
+
         for (uint256 i; i < len; i++) {
-            address asset = assets.at(i);
-            uint256 amount = positionCollateralAmounts[user][positionId][asset];
+            (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount != 0) {
                 ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
@@ -1398,13 +1398,12 @@ contract LendefiV2 is
         validPosition(user, positionId)
         returns (ILendefiAssets.CollateralTier)
     {
-        EnumerableSet.AddressSet storage assets = positionCollateralAssets[user][positionId];
-        uint256 len = assets.length();
+        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
+        uint256 len = collaterals.length();
         ILendefiAssets.CollateralTier tier = ILendefiAssets.CollateralTier.STABLE;
 
         for (uint256 i; i < len; i++) {
-            address asset = assets.at(i);
-            uint256 amount = positionCollateralAmounts[user][positionId][asset];
+            (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount > 0) {
                 ILendefiAssets.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
@@ -1469,22 +1468,27 @@ contract LendefiV2 is
         activePosition(msg.sender, positionId)
     {
         ILendefiAssets.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
-
         require(!assetsModule.isAssetAtCapacity(asset, amount), "AC"); // Asset capacity reached
 
         UserPosition storage position = positions[msg.sender][positionId];
-        EnumerableSet.AddressSet storage posAssets = positionCollateralAssets[msg.sender][positionId];
+        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
 
-        require(!(assetConfig.tier == ILendefiAssets.CollateralTier.ISOLATED && !position.isIsolated), "ISO"); // Isolated asset in cross position
+        require(!(assetConfig.tier == ILendefiAssets.CollateralTier.ISOLATED && !position.isIsolated), "ISO");
 
-        require(!(position.isIsolated && posAssets.length() > 0 && asset != posAssets.at(0)), "IA"); // Isolated asset mismatch
-
-        if (!posAssets.contains(asset)) {
-            require(posAssets.length() < 20, "MA"); // Maximum assets reached
-            posAssets.add(asset);
+        // For isolated positions, check we're using the correct asset
+        if (position.isIsolated && collaterals.length() > 0) {
+            (address firstAsset,) = collaterals.at(0);
+            require(asset == firstAsset, "IA"); // Isolated asset mismatch
         }
 
-        positionCollateralAmounts[msg.sender][positionId][asset] += amount;
+        // Check or add the asset
+        (bool exists, uint256 currentAmount) = collaterals.tryGet(asset);
+        if (!exists) {
+            require(collaterals.length() < 20, "MA"); // Maximum assets reached
+            collaterals.set(asset, amount);
+        } else {
+            collaterals.set(asset, currentAmount + amount);
+        }
 
         assetTVL[asset] += amount;
         emit TVLUpdated(address(asset), assetTVL[asset]);
@@ -1502,20 +1506,30 @@ contract LendefiV2 is
         activePosition(msg.sender, positionId)
     {
         UserPosition storage position = positions[msg.sender][positionId];
-        EnumerableSet.AddressSet storage posAssets = positionCollateralAssets[msg.sender][positionId];
+        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
 
-        require(!(position.isIsolated && asset != posAssets.at(0)), "IA"); // Isolated asset mismatch
-        require(positionCollateralAmounts[msg.sender][positionId][asset] >= amount, "LB"); // Insufficient balance
+        // For isolated positions, verify asset
+        if (position.isIsolated && collaterals.length() > 0) {
+            (address firstAsset,) = collaterals.at(0);
+            require(asset == firstAsset, "IA"); // Isolated asset mismatch
+        }
 
-        positionCollateralAmounts[msg.sender][positionId][asset] -= amount;
+        // Check and update balance
+        (bool exists, uint256 currentAmount) = collaterals.tryGet(asset);
+        require(exists && currentAmount >= amount, "LB"); // Insufficient balance
+
+        uint256 newAmount = currentAmount - amount;
+        if (newAmount == 0 && !position.isIsolated) {
+            collaterals.remove(asset);
+        } else {
+            collaterals.set(asset, newAmount);
+        }
+
         assetTVL[asset] -= amount;
         emit TVLUpdated(address(asset), assetTVL[asset]);
 
-        require(calculateCreditLimit(msg.sender, positionId) >= position.debtAmount, "CM"); // Credit limit exceeded
-
-        if (positionCollateralAmounts[msg.sender][positionId][asset] == 0 && !position.isIsolated) {
-            posAssets.remove(asset);
-        }
+        // Verify collateralization after withdrawal
+        require(calculateCreditLimit(msg.sender, positionId) >= position.debtAmount, "CM");
     }
 
     /**
@@ -1584,14 +1598,14 @@ contract LendefiV2 is
      * @custom:events Emits WithdrawCollateral events for each asset
      */
     function _withdrawAllCollateral(address owner, uint256 positionId, address recipient) internal {
-        EnumerableSet.AddressSet storage posAssets = positionCollateralAssets[owner][positionId];
+        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[owner][positionId];
 
-        while (posAssets.length() > 0) {
-            address asset = posAssets.at(0);
-            uint256 amount = positionCollateralAmounts[owner][positionId][asset];
-            posAssets.remove(asset);
+        // Iterate and remove all assets
+        while (collaterals.length() > 0) {
+            (address asset, uint256 amount) = collaterals.at(0);
+            collaterals.remove(asset);
+
             if (amount > 0) {
-                positionCollateralAmounts[owner][positionId][asset] = 0;
                 assetTVL[asset] -= amount;
                 emit TVLUpdated(address(asset), assetTVL[asset]);
                 emit WithdrawCollateral(owner, positionId, asset, amount);
