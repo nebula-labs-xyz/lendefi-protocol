@@ -1176,9 +1176,7 @@ contract LendefiV2 is
 
         ILendefiAssets.CollateralTier tier = position.isIsolated
             ? assetsModule.getAssetInfo(positionCollateralAssets[user][positionId].at(0)).tier
-            : LendefiRates.getHighestTier(
-                positionCollateralAssets[user][positionId], positionCollateralAmounts[user][positionId], assetsModule
-            );
+            : getPositionTier(user, positionId);
 
         uint256 borrowRate = getBorrowRate(tier);
         uint256 timeElapsed = block.timestamp - position.lastInterestAccrual;
@@ -1219,9 +1217,7 @@ contract LendefiV2 is
         validPosition(user, positionId)
         returns (uint256)
     {
-        ILendefiAssets.CollateralTier tier = LendefiRates.getHighestTier(
-            positionCollateralAssets[user][positionId], positionCollateralAmounts[user][positionId], assetsModule
-        );
+        ILendefiAssets.CollateralTier tier = getPositionTier(user, positionId);
         return assetsModule.tierLiquidationFee(tier);
     }
 
@@ -1230,18 +1226,28 @@ contract LendefiV2 is
      * @dev Based on collateral values and their respective borrow thresholds
      * @param user Address of the position owner
      * @param positionId ID of the position to calculate limit for
-     * @return The maximum amount of USDC that can be borrowed against the position
+     * @return credit - The maximum amount of USDC that can be borrowed against the position
      * @custom:access-control Available to any caller, read-only
      */
     function calculateCreditLimit(address user, uint256 positionId)
         public
         view
         validPosition(user, positionId)
-        returns (uint256)
+        returns (uint256 credit)
     {
-        return LendefiRates.calculateCreditLimit(
-            positionCollateralAssets[user][positionId], positionCollateralAmounts[user][positionId], assetsModule
-        );
+        EnumerableSet.AddressSet storage assets = positionCollateralAssets[user][positionId];
+        if (assets.length() == 0) return 0;
+
+        uint256 len = assets.length();
+        for (uint256 i; i < len; i++) {
+            address asset = assets.at(i);
+            uint256 amount = positionCollateralAmounts[user][positionId][asset];
+            if (amount > 0) {
+                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
+                credit += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * item.borrowThreshold * WAD)
+                    / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
+            }
+        }
     }
 
     /**
@@ -1249,17 +1255,27 @@ contract LendefiV2 is
      * @dev Uses oracle prices to convert collateral amounts to USD value
      * @param user Address of the position owner
      * @param positionId ID of the position to calculate value for
-     * @return The total USD value of all collateral assets in the position
+     * @return value - The total USD value of all collateral assets in the position
      */
     function calculateCollateralValue(address user, uint256 positionId)
         public
         view
         validPosition(user, positionId)
-        returns (uint256)
+        returns (uint256 value)
     {
-        return LendefiRates.calculateCollateralValue(
-            positionCollateralAssets[user][positionId], positionCollateralAmounts[user][positionId], assetsModule
-        );
+        EnumerableSet.AddressSet storage assets = positionCollateralAssets[user][positionId];
+        if (assets.length() == 0) return 0;
+        uint256 len = assets.length();
+        for (uint256 i; i < len; i++) {
+            address asset = assets.at(i);
+            uint256 amount = positionCollateralAmounts[user][positionId][asset];
+            if (amount > 0) {
+                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
+                value += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * WAD)
+                    / (10 ** item.decimals * 10 ** item.oracleDecimals);
+            }
+        }
+        return value;
     }
 
     /**
@@ -1300,9 +1316,24 @@ contract LendefiV2 is
         returns (uint256)
     {
         uint256 debt = calculateDebtWithInterest(user, positionId);
-        return LendefiRates.healthFactor(
-            positionCollateralAssets[user][positionId], positionCollateralAmounts[user][positionId], debt, assetsModule
-        );
+        if (debt == 0) return type(uint256).max;
+        EnumerableSet.AddressSet storage assets = positionCollateralAssets[user][positionId];
+
+        uint256 liqLevel;
+        uint256 len = assets.length();
+        for (uint256 i; i < len; i++) {
+            address asset = assets.at(i);
+            uint256 amount = positionCollateralAmounts[user][positionId][asset];
+
+            if (amount != 0) {
+                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
+                liqLevel += (
+                    amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * item.liquidationThreshold * WAD
+                ) / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
+            }
+        }
+
+        return (liqLevel * WAD) / debt;
     }
 
     /**
@@ -1367,9 +1398,23 @@ contract LendefiV2 is
         validPosition(user, positionId)
         returns (ILendefiAssets.CollateralTier)
     {
-        return LendefiRates.getHighestTier(
-            positionCollateralAssets[user][positionId], positionCollateralAmounts[user][positionId], assetsModule
-        );
+        EnumerableSet.AddressSet storage assets = positionCollateralAssets[user][positionId];
+        uint256 len = assets.length();
+        ILendefiAssets.CollateralTier tier = ILendefiAssets.CollateralTier.STABLE;
+
+        for (uint256 i; i < len; i++) {
+            address asset = assets.at(i);
+            uint256 amount = positionCollateralAmounts[user][positionId][asset];
+
+            if (amount > 0) {
+                ILendefiAssets.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
+                if (uint8(assetConfig.tier) > uint8(tier)) {
+                    tier = assetConfig.tier;
+                }
+            }
+        }
+
+        return tier;
     }
 
     //////////////////////////////////////////////////
@@ -1377,11 +1422,46 @@ contract LendefiV2 is
     //////////////////////////////////////////////////
 
     /**
-     * @notice Processes a collateral deposit operation
-     * @dev Enforces asset capacity limits, isolation mode rules, and asset count limits
+     * @notice Processes collateral deposit operations with validation and state updates
+     * @dev Internal function that handles the core logic for adding collateral to a position,
+     *      enforcing protocol rules about isolation mode, asset capacity limits, and asset counts.
+     *      This function is called by both supplyCollateral and interpositionalTransfer.
+     *
+     * The function performs several validations to ensure the deposit complies with
+     * protocol rules:
+     * 1. Verifies the asset hasn't reached its global capacity limit
+     * 2. Enforces isolation mode rules (isolated assets can't be added to cross positions)
+     * 3. Ensures isolated positions only contain a single asset type
+     * 4. Limits positions to a maximum of 20 different asset types
+     *
      * @param asset Address of the collateral asset to deposit
-     * @param amount Amount of the asset to deposit
+     * @param amount Amount of the asset to deposit (in the asset's native units)
      * @param positionId ID of the position to receive the collateral
+     *
+     * @custom:requirements
+     *   - Asset must be whitelisted in the protocol (validated by validAsset modifier)
+     *   - Position must exist and be in ACTIVE status (validated by activePosition modifier)
+     *   - Asset must not be at its global capacity limit
+     *   - For isolated assets: position must not be a cross-collateral position
+     *   - For isolated positions: asset must match the position's initial asset (if any exists)
+     *   - Position must have fewer than 20 different asset types (if adding a new asset type)
+     *
+     * @custom:state-changes
+     *   - Adds asset to positionCollateralAssets[msg.sender][positionId] if not already present
+     *   - Increases positionCollateralAmounts[msg.sender][positionId][asset] by amount
+     *   - Increases global assetTVL[asset] by amount
+     *
+     * @custom:emits
+     *   - TVLUpdated(asset, newTVL)
+     *
+     * @custom:error-codes
+     *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
+     *   - "IN": Invalid position (from activePosition modifier)
+     *   - "INA": Inactive position (from activePosition modifier)
+     *   - "AC": Asset capacity reached (asset has reached its global capacity limit)
+     *   - "ISO": Isolated asset in cross position (supplying isolated-tier asset to a cross position)
+     *   - "IA": Invalid asset for isolation (supplying an asset that doesn't match the isolated position's asset)
+     *   - "MA": Maximum assets reached (position already has 20 different asset types)
      */
     function _processDeposit(address asset, uint256 amount, uint256 positionId)
         internal
