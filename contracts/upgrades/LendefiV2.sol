@@ -1236,10 +1236,7 @@ contract LendefiV2 is
         returns (uint256)
     {
         return LendefiRates.calculateCreditLimit(
-            positions[user][positionId].isIsolated,
-            positionCollateralAssets[user][positionId],
-            positionCollateralAmounts[user][positionId],
-            assetsModule
+            positionCollateralAssets[user][positionId], positionCollateralAmounts[user][positionId], assetsModule
         );
     }
 
@@ -1257,10 +1254,7 @@ contract LendefiV2 is
         returns (uint256)
     {
         return LendefiRates.calculateCollateralValue(
-            positions[user][positionId].isIsolated,
-            positionCollateralAssets[user][positionId],
-            positionCollateralAmounts[user][positionId],
-            assetsModule
+            positionCollateralAssets[user][positionId], positionCollateralAmounts[user][positionId], assetsModule
         );
     }
 
