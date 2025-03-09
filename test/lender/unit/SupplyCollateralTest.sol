@@ -172,8 +172,8 @@ contract SupplyCollateralTest is BasicDeploy {
         // Mint collateral tokens
         _mintTokens(bob, address(wethInstance), collateralAmount);
 
-        uint256 initialTVL = assetsInstance.assetTVL(address(wethInstance));
-        uint256 initialTotalCollateral = assetsInstance.assetTVL(address(wethInstance));
+        uint256 initialTVL = LendefiInstance.assetTVL(address(wethInstance));
+        uint256 initialTotalCollateral = LendefiInstance.assetTVL(address(wethInstance));
 
         vm.startPrank(bob);
         wethInstance.approve(address(LendefiInstance), collateralAmount);
@@ -191,8 +191,8 @@ contract SupplyCollateralTest is BasicDeploy {
         vm.stopPrank();
 
         // Verify state changes
-        uint256 finalTVL = assetsInstance.assetTVL(address(wethInstance));
-        uint256 finalTotalCollateral = assetsInstance.assetTVL(address(wethInstance));
+        uint256 finalTVL = LendefiInstance.assetTVL(address(wethInstance));
+        uint256 finalTotalCollateral = LendefiInstance.assetTVL(address(wethInstance));
         uint256 positionCollateral = LendefiInstance.getCollateralAmount(bob, positionId, address(wethInstance));
 
         assertEq(finalTVL, initialTVL + collateralAmount, "TVL should increase");
