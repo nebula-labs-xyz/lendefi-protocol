@@ -87,11 +87,7 @@ library LendefiRates {
      * @param time duration
      * @return amount (principal + compounded interest)
      */
-    function accrueInterest(
-        uint256 principal,
-        uint256 rateRay,
-        uint256 time
-    ) internal pure returns (uint256) {
+    function accrueInterest(uint256 principal, uint256 rateRay, uint256 time) internal pure returns (uint256) {
         return rmul(principal, rpow(rateRay, time));
     }
 
@@ -102,11 +98,7 @@ library LendefiRates {
      * @param time duration
      * @return amount (compounded interest)
      */
-    function getInterest(
-        uint256 principal,
-        uint256 rateRay,
-        uint256 time
-    ) internal pure returns (uint256) {
+    function getInterest(uint256 principal, uint256 rateRay, uint256 time) internal pure returns (uint256) {
         return rmul(principal, rpow(rateRay, time)) - principal;
     }
 
@@ -116,10 +108,7 @@ library LendefiRates {
      * @param supplyInterest amount
      * @return breakeven borrow rate
      */
-    function breakEvenRate(
-        uint256 loan,
-        uint256 supplyInterest
-    ) internal pure returns (uint256) {
+    function breakEvenRate(uint256 loan, uint256 supplyInterest) internal pure returns (uint256) {
         return ((WAD * (loan + supplyInterest)) / loan) - WAD;
     }
 
@@ -130,110 +119,62 @@ library LendefiRates {
      * @param timeElapsed Time since last accrual
      * @return Total debt with interest
      */
-    function calculateDebtWithInterest(
-        uint256 debtAmount,
-        uint256 borrowRate,
-        uint256 timeElapsed
-    ) internal pure returns (uint256) {
+    function calculateDebtWithInterest(uint256 debtAmount, uint256 borrowRate, uint256 timeElapsed)
+        internal
+        pure
+        returns (uint256)
+    {
         if (debtAmount == 0) return 0;
-        return
-            accrueInterest(
-                debtAmount,
-                annualRateToRay(borrowRate),
-                timeElapsed
-            );
+        return accrueInterest(debtAmount, annualRateToRay(borrowRate), timeElapsed);
     }
 
     /**
      * @notice Calculates credit limit for a position
-     * @param isIsolated Whether position is in isolation mode
      * @param assets Set of assets in the position
      * @param positionCollateralAmounts Mapping of asset to collateral amount
      * @param assetsModule Interface to the assets module
-     * @return Credit limit in USD
+     * @return credit limit in USD
      */
     function calculateCreditLimit(
-        bool isIsolated,
         EnumerableSet.AddressSet storage assets,
         mapping(address => uint256) storage positionCollateralAmounts,
         ILendefiAssets assetsModule
-    ) internal view returns (uint256) {
+    ) internal view returns (uint256 credit) {
         if (assets.length() == 0) return 0;
-
-        // Fast path for isolated positions
-        if (isIsolated) {
-            address asset = assets.at(0);
-            ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
-            uint256 amount = positionCollateralAmounts[asset];
-            return
-                (amount *
-                    assetsModule.getAssetPriceOracle(item.oracleUSD) *
-                    item.borrowThreshold *
-                    WAD) /
-                (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
-        }
-
-        // Cross-collateral calculation
-        uint256 credit;
-        for (uint256 i; i < assets.length(); i++) {
+        // Works for both isolated and cross-collateral positions
+        uint256 len = assets.length();
+        for (uint256 i; i < len; i++) {
             address asset = assets.at(i);
             uint256 amount = positionCollateralAmounts[asset];
             if (amount > 0) {
-                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(
-                    asset
-                );
-                credit +=
-                    (amount *
-                        assetsModule.getAssetPriceOracle(item.oracleUSD) *
-                        item.borrowThreshold *
-                        WAD) /
-                    (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
+                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
+                credit += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * item.borrowThreshold * WAD)
+                    / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
             }
         }
-        return credit;
     }
 
     /**
      * @notice Calculates raw collateral value
-     * @param isIsolated Whether position is in isolation mode
      * @param assets Set of assets in the position
      * @param positionCollateralAmounts Mapping of asset to collateral amount
      * @param assetsModule Interface to the assets module
-     * @return Collateral value in USD
+     * @return value Collateral value in USD
      */
     function calculateCollateralValue(
-        bool isIsolated,
         EnumerableSet.AddressSet storage assets,
         mapping(address => uint256) storage positionCollateralAmounts,
         ILendefiAssets assetsModule
-    ) internal view returns (uint256) {
+    ) internal view returns (uint256 value) {
         if (assets.length() == 0) return 0;
-
-        // Fast path for isolated positions
-        if (isIsolated) {
-            address asset = assets.at(0);
-            uint256 amount = positionCollateralAmounts[asset];
-            ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
-            return
-                (amount *
-                    assetsModule.getAssetPriceOracle(item.oracleUSD) *
-                    WAD) / (10 ** item.decimals * 10 ** item.oracleDecimals);
-        }
-
-        // Cross-collateral calculation
-        uint256 value;
-        for (uint256 i; i < assets.length(); i++) {
+        uint256 len = assets.length();
+        for (uint256 i; i < len; i++) {
             address asset = assets.at(i);
             uint256 amount = positionCollateralAmounts[asset];
             if (amount > 0) {
-                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(
-                    asset
-                );
-                value +=
-                    (amount *
-                        assetsModule.getAssetPriceOracle(item.oracleUSD) *
-                        WAD) /
-                    (10 ** item.decimals * 10 ** item.oracleDecimals);
+                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
+                value += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * WAD)
+                    / (10 ** item.decimals * 10 ** item.oracleDecimals);
             }
         }
         return value;
@@ -262,15 +203,10 @@ library LendefiRates {
             uint256 amount = positionCollateralAmounts[asset];
 
             if (amount != 0) {
-                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(
-                    asset
-                );
-                liqLevel +=
-                    (amount *
-                        assetsModule.getAssetPriceOracle(item.oracleUSD) *
-                        item.liquidationThreshold *
-                        WAD) /
-                    (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
+                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
+                liqLevel += (
+                    amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * item.liquidationThreshold * WAD
+                ) / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
             }
         }
 
@@ -290,17 +226,14 @@ library LendefiRates {
         ILendefiAssets assetsModule
     ) internal view returns (ILendefiAssets.CollateralTier) {
         uint256 len = assets.length();
-        ILendefiAssets.CollateralTier tier = ILendefiAssets
-            .CollateralTier
-            .STABLE;
+        ILendefiAssets.CollateralTier tier = ILendefiAssets.CollateralTier.STABLE;
 
         for (uint256 i; i < len; i++) {
             address asset = assets.at(i);
             uint256 amount = positionCollateralAmounts[asset];
 
             if (amount > 0) {
-                ILendefiAssets.Asset memory assetConfig = assetsModule
-                    .getAssetInfo(asset);
+                ILendefiAssets.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
                 if (uint8(assetConfig.tier) > uint8(tier)) {
                     tier = assetConfig.tier;
                 }
@@ -363,11 +296,7 @@ library LendefiRates {
 
         // Calculate base rate from supply rate
         uint256 supplyRateRay = annualRateToRay(supplyRate);
-        uint256 supplyInterest = getInterest(
-            defaultSupply,
-            supplyRateRay,
-            duration
-        );
+        uint256 supplyInterest = getInterest(defaultSupply, supplyRateRay, duration);
         uint256 breakEven = breakEvenRate(loan, supplyInterest);
 
         // Calculate final rate with tier premium
@@ -383,10 +312,7 @@ library LendefiRates {
      * @param totalSuppliedLiquidity Total supplied liquidity
      * @return Utilization rate scaled by WAD
      */
-    function getUtilization(
-        uint256 totalBorrow,
-        uint256 totalSuppliedLiquidity
-    ) internal pure returns (uint256) {
+    function getUtilization(uint256 totalBorrow, uint256 totalSuppliedLiquidity) internal pure returns (uint256) {
         if (totalSuppliedLiquidity == 0) return 0;
         return (totalBorrow * WAD) / totalSuppliedLiquidity;
     }
@@ -404,11 +330,7 @@ library LendefiRates {
         ILendefiAssets assetsModule
     ) internal view returns (uint256) {
         // For non-isolated positions, use highest tier
-        ILendefiAssets.CollateralTier tier = getHighestTier(
-            assets,
-            positionCollateralAmounts,
-            assetsModule
-        );
+        ILendefiAssets.CollateralTier tier = getHighestTier(assets, positionCollateralAmounts, assetsModule);
         return assetsModule.getLiquidationFee(tier);
     }
 }
