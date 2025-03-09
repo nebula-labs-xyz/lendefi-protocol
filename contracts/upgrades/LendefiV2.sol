@@ -612,9 +612,11 @@ contract LendefiV2 is
      *
      * @custom:access-control Available to any caller when protocol is not paused
      * @custom:error-codes
+     *   - "MPL": Max position limit (user has reached the maximum position count)
      *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
      */
     function createPosition(address asset, bool isIsolated) external validAsset(asset) nonReentrant whenNotPaused {
+        require(positions[msg.sender].length < 1000, "MPL"); // Max position limit
         UserPosition storage newPosition = positions[msg.sender].push();
         newPosition.isIsolated = isIsolated;
         newPosition.status = PositionStatus.ACTIVE;
