@@ -119,12 +119,6 @@ contract LendefiAssets is
     }
 
     /**
-     * @notice Updates the core Lendefi contract address
-     * @param newCore New Lendefi core address
-     * @dev Only callable by accounts with DEFAULT_ADMIN_ROLE
-     */
-
-    /**
      * @notice Updates the oracle module address
      * @param newOracle New oracle module address
      * @dev Only callable by accounts with MANAGER_ROLE
