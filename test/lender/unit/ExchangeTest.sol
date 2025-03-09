@@ -265,7 +265,8 @@ contract ExchangeTest is BasicDeploy {
     }
 
     // Test 7: Exchange with zero amount
-    function test_ExchangeZeroAmount() public {
+    // Update from test_ExchangeZeroAmount to testRevert_ExchangeZeroAmount
+    function testRevert_ExchangeZeroAmount() public {
         uint256 supplyAmount = 10_000e6;
         uint256 exchangeAmount = 0;
 
@@ -273,11 +274,13 @@ contract ExchangeTest is BasicDeploy {
         _supplyLiquidity(alice, supplyAmount);
 
         vm.startPrank(alice);
-        // Exchange zero tokens
+        // Exchange zero tokens should now revert with "ZA" error
+        vm.expectRevert(bytes("ZA")); // Zero amount validation error
         LendefiInstance.exchange(exchangeAmount);
         vm.stopPrank();
 
-        // Verify state remains unchanged
+        // No need for assertions because the call will revert
+        // (Still checking state remains unchanged after revert)
         uint256 aliceTokens = yieldTokenInstance.balanceOf(alice);
         assertEq(aliceTokens, supplyAmount, "Token balance should remain unchanged");
     }
