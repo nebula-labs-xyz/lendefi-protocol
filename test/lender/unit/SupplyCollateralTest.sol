@@ -510,19 +510,16 @@ contract SupplyCollateralTest is BasicDeploy {
     }
 
     // Test 14: Supply zero amount
-    function test_SupplyZeroAmount() public {
+    function testRevert_SupplyZeroAmount() public {
         uint256 positionId = _createPosition(bob, address(wethInstance), false);
 
         vm.startPrank(bob);
         wethInstance.approve(address(LendefiInstance), 0);
 
         // Supply zero amount
+        vm.expectRevert(bytes("ZA"));
         LendefiInstance.supplyCollateral(address(wethInstance), 0, positionId);
         vm.stopPrank();
-
-        // Verify no change
-        uint256 positionCollateral = LendefiInstance.getCollateralAmount(bob, positionId, address(wethInstance));
-        assertEq(positionCollateral, 0, "Position collateral should remain zero");
     }
 
     // Test 15: Supply different asset to an isolated position should fail
