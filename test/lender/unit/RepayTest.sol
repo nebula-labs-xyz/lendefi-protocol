@@ -319,9 +319,13 @@ contract RepayTest is BasicDeploy {
         LendefiInstance.supplyCollateral(address(wethInstance), 10 ether, positionId);
 
         // Try to repay when there's no debt
-        // Updated to use correct error code format
-        vm.expectRevert(bytes("ND")); // No debt to repay
+        // This should now just execute without error, as the position's debt is zero,
+        // so _processRepay will return 0 as actualAmount and repay() won't transfer any tokens
         LendefiInstance.repay(positionId, 1000e6);
+
+        // Verify position state remains unchanged
+        IPROTOCOL.UserPosition memory position = LendefiInstance.getUserPosition(bob, positionId);
+        assertEq(position.debtAmount, 0, "Position should still have zero debt");
         vm.stopPrank();
     }
 
@@ -348,7 +352,7 @@ contract RepayTest is BasicDeploy {
     }
 
     // Test 8: Repay zero amount (edge case)
-    function test_RepayZeroAmount() public {
+    function testRevert_RepayZeroAmount() public {
         uint256 collateralAmount = 10 ether;
         uint256 borrowAmount = 15_000e6;
 
@@ -359,13 +363,12 @@ contract RepayTest is BasicDeploy {
         vm.startPrank(bob);
         usdcInstance.approve(address(LendefiInstance), 0);
 
-        // Should emit event with zero amount
-        vm.expectEmit(true, true, false, true);
-        emit Repay(bob, positionId, 0);
+        // Should revert with "ZA" error due to validAmount modifier
+        vm.expectRevert(bytes("ZA")); // Zero amount
         LendefiInstance.repay(positionId, 0);
         vm.stopPrank();
 
-        // No state change expected
+        // Verify debt is unchanged
         uint256 finalDebt = LendefiInstance.calculateDebtWithInterest(bob, positionId);
         assertGt(finalDebt, 0, "Debt should remain unchanged");
     }
