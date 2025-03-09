@@ -57,13 +57,6 @@ interface ILendefiAssets {
     event AssetTierUpdated(address indexed asset, CollateralTier tier);
 
     /**
-     * @notice Emitted when an asset's total value locked (TVL) is updated
-     * @param asset The address of the asset that was updated
-     * @param amount The new TVL amount
-     */
-    event TVLUpdated(address indexed asset, uint256 amount);
-
-    /**
      * @notice Emitted when the core protocol address is updated
      * @param newCore The address of the new core protocol contract
      */
@@ -103,13 +96,6 @@ interface ILendefiAssets {
      * @param maximum The maximum allowed fee value
      */
     error FeeTooHigh(uint256 provided, uint256 maximum);
-
-    /**
-     * @notice Error thrown when a function restricted to the core contract is called by another address
-     * @param caller The address that attempted the call
-     * @param expectedCore The address of the core contract that should be calling
-     */
-    error OnlyCoreAllowed(address caller, address expectedCore);
 
     /**
      * @notice Error thrown when attempting to interact with an asset that is not listed in the protocol
@@ -234,14 +220,6 @@ interface ILendefiAssets {
     function updateOracleTimeThresholds(uint256 freshness, uint256 volatility) external;
 
     /**
-     * @notice Updates the TVL for an asset
-     * @param asset Address of the asset
-     * @param newAmount New total amount of the asset in protocol
-     * @dev Only callable by the core contract
-     */
-    function updateAssetTVL(address asset, uint256 newAmount) external;
-
-    /**
      * @notice Validates asset is listed and active
      * @param asset Address of the asset to check
      * @return True if asset exists and is active
@@ -330,11 +308,11 @@ interface ILendefiAssets {
     function oracleModule() external view returns (ILendefiOracle);
 
     /**
-     * @notice Returns the total value locked for a specific asset
-     * @param asset The address of the asset to query
-     * @return Total amount of the asset held in the protocol
+     * @notice Updates the core Lendefi contract address
+     * @param newCore New Lendefi core address
+     * @dev Only callable by accounts with DEFAULT_ADMIN_ROLE
      */
-    function assetTVL(address asset) external view returns (uint256);
+    function setCoreAddress(address newCore) external;
 
     /**
      * @notice Gets the interest rate jump multiplier for a specific collateral tier
