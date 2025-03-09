@@ -47,25 +47,23 @@ pragma solidity 0.8.23;
  * - UPGRADER_ROLE: Contract upgrades
  *
  * @custom:tiers Collateral tiers in ascending order of risk:
- * - STABLE: Lowest risk, stablecoins (5% liquidation bonus)
- * - CROSS_A: Low risk assets (8% liquidation bonus)
- * - CROSS_B: Medium risk assets (10% liquidation bonus)
- * - ISOLATED: High risk assets (15% liquidation bonus)
+ * - STABLE: Lowest risk, stablecoins
+ * - CROSS_A: Low risk assets
+ * - CROSS_B: Medium risk assets
+ * - ISOLATED: High risk assets
  *
  * @custom:inheritance
  * - IPROTOCOL: Protocol interface
- * - ERC20Upgradeable: Base token functionality
- * - ERC20PausableUpgradeable: Pausable token operations
+ * - PausableUpgradeable: Pausable token operations
  * - AccessControlUpgradeable: Role-based access
  * - ReentrancyGuardUpgradeable: Reentrancy protection
  * - UUPSUpgradeable: Upgrade pattern
- * - YodaMath: Interest calculations
+ * - LendefiRates: Interest calculations
  */
 
 import {IPROTOCOL} from "../interfaces/IProtocol.sol";
 import {IECOSYSTEM} from "../interfaces/IEcosystem.sol";
 import {IFlashLoanReceiver} from "../interfaces/IFlashLoanReceiver.sol";
-import {ILendefiOracle} from "../interfaces/ILendefiOracle.sol";
 import {ILendefiYieldToken} from "../interfaces/ILendefiYieldToken.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IERC20, SafeERC20 as TH} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -234,7 +232,7 @@ contract Lendefi is
     /**
      * @dev Reserved storage gap for future upgrades
      */
-    uint256[10] private __gap;
+    uint256[8] private __gap;
 
     /**
      * @dev Ensures the position exists for the given user
@@ -266,6 +264,15 @@ contract Lendefi is
         _;
     }
 
+    /**
+     * @dev Ensures the amount is greater than zero
+     * @param amount The amount to check
+     */
+    modifier validAmount(uint256 amount) {
+        require(amount > 0, "ZA"); // Zero amount check
+        _;
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -291,7 +298,6 @@ contract Lendefi is
         address ecosystem,
         address treasury_,
         address timelock_,
-        // address oracle_,
         address yieldToken,
         address assetsModule_,
         address guardian
@@ -310,7 +316,6 @@ contract Lendefi is
         tokenInstance = IERC20(govToken);
         ecosystemInstance = IECOSYSTEM(payable(ecosystem));
         treasury = treasury_;
-        // oracleModule = ILendefiOracle(oracle_);
         yieldTokenInstance = ILendefiYieldToken(yieldToken);
         assetsModule = ILendefiAssets(assetsModule_);
 
@@ -384,9 +389,12 @@ contract Lendefi is
      *   - "FLF": Flash loan failed (executeOperation returned false)
      *   - "RPF": Repay failed (final balance less than required amount)
      */
-    function flashLoan(address receiver, uint256 amount, bytes calldata params) external nonReentrant whenNotPaused {
-        // Check available liquidity and valid parameters
-        require(amount > 0, "ZA"); // Zero amount check
+    function flashLoan(address receiver, uint256 amount, bytes calldata params)
+        external
+        validAmount(amount)
+        nonReentrant
+        whenNotPaused
+    {
         uint256 initialBalance = usdcInstance.balanceOf(address(this));
         require(amount <= initialBalance, "LL"); // Low liquidity
 
@@ -463,7 +471,7 @@ contract Lendefi is
      *   - Reverts on reentrancy (from nonReentrant modifier)
      *   - Reverts if USDC transfer fails
      */
-    function supplyLiquidity(uint256 amount) external nonReentrant whenNotPaused {
+    function supplyLiquidity(uint256 amount) external validAmount(amount) nonReentrant whenNotPaused {
         uint256 total = usdcInstance.balanceOf(address(this)) + totalBorrow;
         uint256 supply = yieldTokenInstance.totalSupply();
         uint256 value = (amount * supply) / (total > 0 ? total : WAD);
@@ -517,11 +525,12 @@ contract Lendefi is
      *
      * @custom:access-control Available to any caller when protocol is not paused
      * @custom:error-codes
+     *   - "ZA": Zero amount (amount is zero) validAmount modifier
      *   - Reverts if protocol is paused (from whenNotPaused modifier)
      *   - Reverts on reentrancy (from nonReentrant modifier)
      *   - Reverts if yield token transfer or USDC transfer fails
      */
-    function exchange(uint256 amount) external nonReentrant whenNotPaused {
+    function exchange(uint256 amount) external validAmount(amount) nonReentrant whenNotPaused {
         uint256 supply = yieldTokenInstance.totalSupply();
         uint256 baseAmount = (amount * totalSuppliedLiquidity) / supply;
         uint256 total = usdcInstance.balanceOf(address(this)) + totalBorrow;
@@ -660,6 +669,7 @@ contract Lendefi is
      *
      * @custom:access-control Available to position owners when protocol is not paused
      * @custom:error-codes
+     *   - "ZA": Zero amount (amount is zero) validAmount modifier
      *   - "IN": Invalid position (from activePosition modifier)
      *   - "INA": Inactive position (from activePosition modifier)
      *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
@@ -668,7 +678,12 @@ contract Lendefi is
      *   - "IA": Invalid asset for isolation (supplying an asset that doesn't match the isolated position's asset)
      *   - "MA": Maximum assets reached (position already has 20 different asset types)
      */
-    function supplyCollateral(address asset, uint256 amount, uint256 positionId) external nonReentrant whenNotPaused {
+    function supplyCollateral(address asset, uint256 amount, uint256 positionId)
+        external
+        validAmount(amount)
+        nonReentrant
+        whenNotPaused
+    {
         _processDeposit(asset, amount, positionId);
         emit SupplyCollateral(msg.sender, positionId, asset, amount);
         TH.safeTransferFrom(IERC20(asset), msg.sender, address(this), amount);
@@ -707,6 +722,7 @@ contract Lendefi is
      *
      * @custom:access-control Available to position owners when protocol is not paused
      * @custom:error-codes
+     *   - "ZA": Zero amount (amount is zero)
      *   - "IN": Invalid position (from activePosition modifier)
      *   - "INA": Inactive position (from activePosition modifier)
      *   - "IA": Invalid asset for isolation (withdrawing an asset that doesn't match the isolated position's asset)
@@ -771,27 +787,21 @@ contract Lendefi is
      */
     function borrow(uint256 positionId, uint256 amount)
         external
+        validAmount(amount)
         activePosition(msg.sender, positionId)
         nonReentrant
         whenNotPaused
     {
-        require(amount > 0, "ZA"); // Zero amount check
-
-        UserPosition storage position = positions[msg.sender][positionId];
-
-        // Calculate current debt with interest
         uint256 currentDebt = 0;
         uint256 accruedInterest = 0;
+        UserPosition storage position = positions[msg.sender][positionId];
 
         if (position.debtAmount > 0) {
             currentDebt = calculateDebtWithInterest(msg.sender, positionId);
             accruedInterest = currentDebt - position.debtAmount;
 
-            // Update the interest accrual statistics
-            if (accruedInterest > 0) {
-                totalAccruedBorrowerInterest += accruedInterest;
-                emit InterestAccrued(msg.sender, positionId, accruedInterest);
-            }
+            totalAccruedBorrowerInterest += accruedInterest;
+            emit InterestAccrued(msg.sender, positionId, accruedInterest);
         }
 
         // Check if there's enough protocol liquidity
@@ -851,6 +861,7 @@ contract Lendefi is
      *
      * @custom:access-control Available to position owners when protocol is not paused
      * @custom:error-codes
+     *   - "ZA": Zero amount (amount is zero)
      *   - "ND": No debt (position has no debt to repay)
      *   - "IN": Invalid position (from activePosition modifier)
      *   - "INA": Inactive position (from activePosition modifier)
@@ -861,10 +872,8 @@ contract Lendefi is
         nonReentrant
         whenNotPaused
     {
-        UserPosition storage position = positions[msg.sender][positionId];
-        require(position.debtAmount > 0, "ND"); // No debt
-        uint256 actualAmount = _processRepay(positionId, amount, position);
-        TH.safeTransferFrom(usdcInstance, msg.sender, address(this), actualAmount);
+        uint256 actualAmount = _processRepay(positionId, amount);
+        if (actualAmount > 0) TH.safeTransferFrom(usdcInstance, msg.sender, address(this), actualAmount);
     }
 
     /**
@@ -900,6 +909,7 @@ contract Lendefi is
      *
      * @custom:access-control Available to position owners when protocol is not paused
      * @custom:error-codes
+     *   - "ZA": Zero amount (amount is zero)
      *   - "IN": Invalid position (from activePosition modifier)
      *   - "INA": Inactive position (from activePosition modifier)
      */
@@ -910,15 +920,9 @@ contract Lendefi is
         whenNotPaused
     {
         UserPosition storage position = positions[msg.sender][positionId];
-
-        if (position.debtAmount > 0) {
-            // For full repayment, we pass type(uint256).max to signal "repay all"
-            uint256 actualAmount = _processRepay(positionId, type(uint256).max, position);
-            TH.safeTransferFrom(usdcInstance, msg.sender, address(this), actualAmount);
-        }
-
+        uint256 actualAmount = _processRepay(positionId, type(uint256).max);
+        if (actualAmount > 0) TH.safeTransferFrom(usdcInstance, msg.sender, address(this), actualAmount);
         _withdrawAllCollateral(msg.sender, positionId, msg.sender);
-
         position.status = PositionStatus.CLOSED;
         emit PositionClosed(msg.sender, positionId);
     }
@@ -962,7 +966,7 @@ contract Lendefi is
      *
      * @custom:access-control Available to any caller with sufficient governance tokens when protocol is not paused
      * @custom:error-codes
-     *   - "NLQDR": Not a liquidator (caller doesn't have enough governance tokens)
+     *   - "GTL": Not a liquidator (caller doesn't have enough governance tokens)
      *   - "NLQ": Not liquidatable (position's health factor is above 1.0)
      *   - "IN": Invalid position (from activePosition modifier)
      *   - "INA": Inactive position (from activePosition modifier)
@@ -973,8 +977,8 @@ contract Lendefi is
         nonReentrant
         whenNotPaused
     {
-        require(tokenInstance.balanceOf(msg.sender) >= liquidatorThreshold, "NLQDR");
-        require(isLiquidatable(user, positionId), "NLQ");
+        require(tokenInstance.balanceOf(msg.sender) >= liquidatorThreshold, "GTL"); // Not enough governance tokens
+        require(isLiquidatable(user, positionId), "NLQ"); // Not liquidatable
 
         UserPosition storage position = positions[user][positionId];
         uint256 debtWithInterest = calculateDebtWithInterest(user, positionId);
@@ -985,11 +989,9 @@ contract Lendefi is
         uint256 liquidationFee = getPositionLiquidationFee(user, positionId);
         uint256 fee = ((debtWithInterest * liquidationFee) / WAD);
 
-        position.isIsolated = false;
-        position.debtAmount = 0;
-        position.lastInterestAccrual = 0;
-        position.status = PositionStatus.LIQUIDATED;
         totalBorrow -= position.debtAmount;
+        position.debtAmount = 0;
+        position.status = PositionStatus.LIQUIDATED;
 
         emit Liquidated(user, positionId, msg.sender);
 
@@ -1020,6 +1022,7 @@ contract Lendefi is
      *   - Increases the collateral amount of the specified asset in the destination position
      *   - Updates protocol-wide TVL for the asset
      * @custom:error-codes
+     *   - "ZA": Zero amount (amount is zero)
      *   - "IN": Invalid position (from activePosition modifier)
      *   - "INA": Inactive position (from activePosition modifier)
      *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
@@ -1334,9 +1337,8 @@ contract Lendefi is
      * @return The current annual borrow interest rate in WAD format
      */
     function getBorrowRate(ILendefiAssets.CollateralTier tier) public view returns (uint256) {
-        uint256 utilization = getUtilization();
         return LendefiRates.getBorrowRate(
-            utilization, baseBorrowRate, baseProfitTarget, getSupplyRate(), assetsModule.getTierJumpRate(tier)
+            getUtilization(), baseBorrowRate, baseProfitTarget, getSupplyRate(), assetsModule.getTierJumpRate(tier)
         );
     }
 
@@ -1348,9 +1350,8 @@ contract Lendefi is
      */
     function isRewardable(address user) public view returns (bool) {
         if (liquidityAccrueTimeIndex[user] == 0) return false;
-        uint256 supply = yieldTokenInstance.totalSupply(); // Call yield token
-        uint256 baseAmount = (yieldTokenInstance.balanceOf(user) * totalSuppliedLiquidity) / supply; // Call yield token
-
+        uint256 baseAmount =
+            (yieldTokenInstance.balanceOf(user) * totalSuppliedLiquidity) / yieldTokenInstance.totalSupply();
         return block.timestamp - rewardInterval >= liquidityAccrueTimeIndex[user] && baseAmount >= rewardableSupply;
     }
 
@@ -1377,7 +1378,7 @@ contract Lendefi is
     //////////////////////////////////////////////////
 
     /**
-     * @notice Validates a collateral deposit operation
+     * @notice Processes a collateral deposit operation
      * @dev Enforces asset capacity limits, isolation mode rules, and asset count limits
      * @param asset Address of the collateral asset to deposit
      * @param amount Amount of the asset to deposit
@@ -1385,22 +1386,22 @@ contract Lendefi is
      */
     function _processDeposit(address asset, uint256 amount, uint256 positionId)
         internal
-        activePosition(msg.sender, positionId)
         validAsset(asset)
+        activePosition(msg.sender, positionId)
     {
         ILendefiAssets.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
 
-        require(!assetsModule.isAssetAtCapacity(asset, amount), "AC");
+        require(!assetsModule.isAssetAtCapacity(asset, amount), "AC"); // Asset capacity reached
 
         UserPosition storage position = positions[msg.sender][positionId];
         EnumerableSet.AddressSet storage posAssets = positionCollateralAssets[msg.sender][positionId];
 
-        require(!(assetConfig.tier == ILendefiAssets.CollateralTier.ISOLATED && !position.isIsolated), "ISO");
+        require(!(assetConfig.tier == ILendefiAssets.CollateralTier.ISOLATED && !position.isIsolated), "ISO"); // Isolated asset in cross position
 
-        require(!(position.isIsolated && posAssets.length() > 0 && asset != posAssets.at(0)), "IA");
+        require(!(position.isIsolated && posAssets.length() > 0 && asset != posAssets.at(0)), "IA"); // Isolated asset mismatch
 
         if (!posAssets.contains(asset)) {
-            require(posAssets.length() < 20, "MA");
+            require(posAssets.length() < 20, "MA"); // Maximum assets reached
             posAssets.add(asset);
         }
 
@@ -1409,7 +1410,7 @@ contract Lendefi is
     }
 
     /**
-     * @notice Validates a collateral withdrawal operation
+     * @notice Processes a collateral withdrawal operation
      * @dev Ensures the position remains sufficiently collateralized after withdrawal
      * @param asset Address of the collateral asset to withdraw
      * @param amount Amount of the asset to withdraw
@@ -1417,21 +1418,19 @@ contract Lendefi is
      */
     function _processWithdrawal(address asset, uint256 amount, uint256 positionId)
         internal
+        validAmount(amount)
         activePosition(msg.sender, positionId)
     {
         UserPosition storage position = positions[msg.sender][positionId];
         EnumerableSet.AddressSet storage posAssets = positionCollateralAssets[msg.sender][positionId];
 
-        require(!(position.isIsolated && asset != posAssets.at(0)), "IA");
-
-        uint256 currentBalance = positionCollateralAmounts[msg.sender][positionId][asset];
-        require(currentBalance >= amount, "LB");
+        require(!(position.isIsolated && asset != posAssets.at(0)), "IA"); // Isolated asset mismatch
+        require(positionCollateralAmounts[msg.sender][positionId][asset] >= amount, "LB"); // Insufficient balance
 
         positionCollateralAmounts[msg.sender][positionId][asset] -= amount;
         assetsModule.updateAssetTVL(asset, assetsModule.assetTVL(asset) - amount);
 
-        uint256 creditLimit = calculateCreditLimit(msg.sender, positionId);
-        require(creditLimit >= position.debtAmount, "CM");
+        require(calculateCreditLimit(msg.sender, positionId) >= position.debtAmount, "CM"); // Credit limit exceeded
 
         if (positionCollateralAmounts[msg.sender][positionId][asset] == 0 && !position.isIsolated) {
             posAssets.remove(asset);
@@ -1454,7 +1453,6 @@ contract Lendefi is
      *
      * @param positionId The ID of the position being repaid
      * @param proposedAmount The amount the user is offering to repay (uncapped)
-     * @param position Storage reference to the user's position
      * @return actualAmount The actual amount that should be transferred from the user,
      *         which is the lesser of proposedAmount and the outstanding debt
      *
@@ -1466,14 +1464,15 @@ contract Lendefi is
      *        - Repay(msg.sender, positionId, actualAmount)
      *        - InterestAccrued(msg.sender, positionId, accruedInterest)
      */
-    function _processRepay(uint256 positionId, uint256 proposedAmount, UserPosition storage position)
+    function _processRepay(uint256 positionId, uint256 proposedAmount)
         internal
+        validAmount(proposedAmount)
         returns (uint256 actualAmount)
     {
-        // Calculate current debt with interest
-        uint256 balance = calculateDebtWithInterest(msg.sender, positionId);
-
-        if (balance > 0) {
+        UserPosition storage position = positions[msg.sender][positionId];
+        if (position.debtAmount > 0) {
+            // Calculate current debt with interest
+            uint256 balance = calculateDebtWithInterest(msg.sender, positionId);
             // Calculate interest accrued
             uint256 accruedInterest = balance - position.debtAmount;
             totalAccruedBorrowerInterest += accruedInterest;
