@@ -342,7 +342,7 @@ contract CalculateCollateralValueTest is BasicDeploy {
     // Test 7: Invalid position reverts - UPDATED: use string error code
     function test_CalculateCollateralValueInvalidPosition() public {
         // Try to calculate value for non-existent position
-        vm.expectRevert(bytes("IN")); // "IN" code for InvalidPosition
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.calculateCollateralValue(bob, 999);
     }
 
