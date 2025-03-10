@@ -144,7 +144,7 @@ contract LendefiTest is BasicDeploy {
         uint256 borrowAmount = 60_000e6; // Within 65% LTV but above 50k isolation cap
 
         // Updated to use bytes error code
-        vm.expectRevert(bytes("IDC")); // Isolation Debt Cap exceeded
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.IsolationDebtCapExceeded.selector));
         LendefiInstance.borrow(positionId, borrowAmount);
         vm.stopPrank();
     }
@@ -171,7 +171,7 @@ contract LendefiTest is BasicDeploy {
         LendefiInstance.borrow(positionId, expectedCreditLimit);
 
         // Now try to borrow $1 more - this should revert
-        vm.expectRevert(bytes("CLM")); // Credit Limit Missing
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.CreditLimitExceeded.selector));
         LendefiInstance.borrow(positionId, 1e6);
         vm.stopPrank();
     }
@@ -211,7 +211,7 @@ contract LendefiTest is BasicDeploy {
         uint256 excessBorrowAmount = 200_000e6; // $200,000 is definitely more than 65% of $100,000
 
         // Updated to use bytes error code
-        vm.expectRevert(bytes("CLM")); // Credit Limit Missing
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.CreditLimitExceeded.selector));
         LendefiInstance.borrow(positionId, excessBorrowAmount);
         vm.stopPrank();
     }
@@ -234,7 +234,7 @@ contract LendefiTest is BasicDeploy {
         uint256 excessBorrowAmount = 65_001e6; // Just $1 over the limit
 
         // Updated to use bytes error code
-        vm.expectRevert(bytes("CLM")); // Credit Limit Missing
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.CreditLimitExceeded.selector));
         LendefiInstance.borrow(positionId, excessBorrowAmount);
         vm.stopPrank();
     }
@@ -295,12 +295,7 @@ contract LendefiTest is BasicDeploy {
         uint256 borrowAmount = 65_000e6; // 65000 USDC (65% of $100,000)
         LendefiInstance.borrow(positionId, borrowAmount);
 
-        // Attempt to withdraw collateral should fail due to existing debt
-        // uint256 withdrawAmount = 30 ether;
-        // uint256 remainingCollateral = 100 ether - withdrawAmount;
-        // uint256 newCreditLimit = LendefiInstance.calculateCreditLimit(bob, positionId) * remainingCollateral / 100 ether;
-
-        vm.expectRevert(bytes("CM"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.CreditLimitExceeded.selector));
         LendefiInstance.withdrawCollateral(address(rwaToken), 30 ether, positionId);
 
         // Repay debt first
@@ -332,7 +327,7 @@ contract LendefiTest is BasicDeploy {
 
         // Try to add RWA token to cross position (should revert)
         rwaToken.approve(address(LendefiInstance), 100 ether);
-        vm.expectRevert(bytes("ISO"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.IsolatedAssetViolation.selector));
         LendefiInstance.supplyCollateral(address(rwaToken), 100 ether, positionId);
 
         // Add more WETH
@@ -471,7 +466,7 @@ contract LendefiTest is BasicDeploy {
 
         // Try to borrow more than total liquidity (1_000_000e6)
 
-        vm.expectRevert(bytes("LL"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.LowLiquidity.selector));
         LendefiInstance.borrow(0, 1_000_001e6); // Trying to borrow more than total supply
 
         // Now borrow exactly at the total liquidity
@@ -494,7 +489,7 @@ contract LendefiTest is BasicDeploy {
         // uint256 creditLimit = LendefiInstance.calculateCreditLimit(bob, 0);
         uint256 requestedAmount = 500_000e6;
         // Try to borrow more than collateral is worth
-        vm.expectRevert(bytes("CLM"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.CreditLimitExceeded.selector));
         LendefiInstance.borrow(0, requestedAmount);
     }
 }
