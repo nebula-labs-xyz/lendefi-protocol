@@ -111,8 +111,8 @@ contract UpdateProtocolParametersTest is BasicDeploy {
     function testRevert_UpdateProtocolMetrics_ProfitTargetTooLow() public {
         vm.prank(address(timelockInstance));
 
-        // Profit target too low error code is "I1"
-        vm.expectRevert(bytes("I1"));
+        // Use custom error format
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidProfitTarget.selector));
 
         LendefiInstance.updateProtocolMetrics(
             MIN_BASE_PROFIT_TARGET - 1, // Too low
@@ -127,8 +127,8 @@ contract UpdateProtocolParametersTest is BasicDeploy {
     function testRevert_UpdateProtocolMetrics_BorrowRateTooLow() public {
         vm.prank(address(timelockInstance));
 
-        // Borrow rate too low error code is "I2"
-        vm.expectRevert(bytes("I2"));
+        // Use custom error format
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidBorrowRate.selector));
 
         LendefiInstance.updateProtocolMetrics(
             DEFAULT_BASE_PROFIT_TARGET,
@@ -143,8 +143,8 @@ contract UpdateProtocolParametersTest is BasicDeploy {
     function test_UpdateProtocolMetrics_TargetRewardLimit() public {
         vm.prank(address(timelockInstance));
 
-        // Target reward has upper limit (10,000 ether); error code is "I3"
-        vm.expectRevert(bytes("I3"));
+        // Use custom error format
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidRewardAmount.selector));
 
         LendefiInstance.updateProtocolMetrics(
             DEFAULT_BASE_PROFIT_TARGET,
@@ -159,8 +159,8 @@ contract UpdateProtocolParametersTest is BasicDeploy {
     function testRevert_UpdateProtocolMetrics_RewardIntervalTooShort() public {
         vm.prank(address(timelockInstance));
 
-        // Reward interval too short error code is "I4"
-        vm.expectRevert(bytes("I4"));
+        // Use custom error format
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidInterval.selector));
 
         LendefiInstance.updateProtocolMetrics(
             DEFAULT_BASE_PROFIT_TARGET,
@@ -175,8 +175,8 @@ contract UpdateProtocolParametersTest is BasicDeploy {
     function testRevert_UpdateProtocolMetrics_RewardableSupplyTooLow() public {
         vm.prank(address(timelockInstance));
 
-        // Rewardable supply too low error code is "I5"
-        vm.expectRevert(bytes("I5"));
+        // Use custom error format
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidSupplyAmount.selector));
 
         LendefiInstance.updateProtocolMetrics(
             DEFAULT_BASE_PROFIT_TARGET,
@@ -191,8 +191,8 @@ contract UpdateProtocolParametersTest is BasicDeploy {
     function testRevert_UpdateProtocolMetrics_LiquidatorThresholdTooLow() public {
         vm.prank(address(timelockInstance));
 
-        // Liquidator threshold too low error code is "I6"
-        vm.expectRevert(bytes("I6"));
+        // Use custom error format
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidLiquidatorThreshold.selector));
 
         LendefiInstance.updateProtocolMetrics(
             DEFAULT_BASE_PROFIT_TARGET,
