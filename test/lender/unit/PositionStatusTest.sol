@@ -162,15 +162,16 @@ contract PositionStatusTest is BasicDeploy {
         // First, borrow amount must be non-zero, otherwise we'll get InvalidBorrowAmount error
         uint256 borrowAmount = 100e6;
 
-        vm.expectRevert(bytes("INA")); // Changed from "IN" to "INA"
+        // Use custom error for InactivePosition
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InactivePosition.selector));
         LendefiInstance.borrow(positionId, borrowAmount);
 
         // For supply collateral
-        vm.expectRevert(bytes("INA")); // Changed from "IN" to "INA"
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InactivePosition.selector));
         LendefiInstance.supplyCollateral(address(wethInstance), 1 ether, positionId);
 
         // For withdraw collateral
-        vm.expectRevert(bytes("INA")); // Changed from "IN" to "INA"
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InactivePosition.selector));
         LendefiInstance.withdrawCollateral(address(wethInstance), 0.1 ether, positionId);
 
         vm.stopPrank();
@@ -186,16 +187,16 @@ contract PositionStatusTest is BasicDeploy {
         // Attempt operations on liquidated position
         vm.startPrank(bob);
 
-        vm.expectRevert(bytes("INA")); // Changed from "IN" to "INA"
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InactivePosition.selector));
         LendefiInstance.borrow(positionId, 100e6);
 
-        vm.expectRevert(bytes("INA")); // Changed from "IN" to "INA"
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InactivePosition.selector));
         LendefiInstance.supplyCollateral(address(wethInstance), 1 ether, positionId);
 
-        vm.expectRevert(bytes("INA")); // Changed from "IN" to "INA"
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InactivePosition.selector));
         LendefiInstance.withdrawCollateral(address(wethInstance), 0.1 ether, positionId);
 
-        vm.expectRevert(bytes("INA")); // Changed from "IN" to "INA"
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InactivePosition.selector));
         LendefiInstance.exitPosition(positionId);
 
         vm.stopPrank();
