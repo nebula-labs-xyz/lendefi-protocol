@@ -275,7 +275,7 @@ contract ExchangeTest is BasicDeploy {
 
         vm.startPrank(alice);
         // Exchange zero tokens should now revert with "ZA" error
-        vm.expectRevert(bytes("ZA")); // Zero amount validation error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.ZeroAmount.selector));
         LendefiInstance.exchange(exchangeAmount);
         vm.stopPrank();
 
