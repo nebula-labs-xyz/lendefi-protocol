@@ -237,7 +237,7 @@ contract LendefiV2 is
      * @param positionId ID of the position to check
      */
     modifier validPosition(address user, uint256 positionId) {
-        require(positionId < positions[user].length, "IN");
+        if (positionId >= positions[user].length) revert InvalidPosition();
         _;
     }
 
@@ -247,8 +247,9 @@ contract LendefiV2 is
      * @param positionId ID of the position to check
      */
     modifier activePosition(address user, uint256 positionId) {
-        require(positionId < positions[user].length, "IN");
-        require(positions[user][positionId].status == PositionStatus.ACTIVE, "INA");
+        if (positionId >= positions[user].length) revert InvalidPosition();
+        if (positions[user][positionId].status != PositionStatus.ACTIVE) revert InactivePosition();
+
         _;
     }
 
@@ -257,7 +258,7 @@ contract LendefiV2 is
      * @param asset Address of the asset to validate
      */
     modifier validAsset(address asset) {
-        require(assetsModule.isAssetValid(asset), "NL");
+        if (!assetsModule.isAssetValid(asset)) revert NotListed();
         _;
     }
 
@@ -266,7 +267,7 @@ contract LendefiV2 is
      * @param amount The amount to check
      */
     modifier validAmount(uint256 amount) {
-        require(amount > 0, "ZA"); // Zero amount check
+        if (amount == 0) revert ZeroAmount();
         _;
     }
 
@@ -393,7 +394,7 @@ contract LendefiV2 is
         whenNotPaused
     {
         uint256 initialBalance = usdcInstance.balanceOf(address(this));
-        require(amount <= initialBalance, "LL"); // Low liquidity
+        if (amount > initialBalance) revert LowLiquidity();
 
         // Calculate fee and record initial balance
         uint256 fee = (amount * flashLoanFee) / 10000;
@@ -407,10 +408,10 @@ contract LendefiV2 is
             IFlashLoanReceiver(receiver).executeOperation(address(usdcInstance), amount, fee, msg.sender, params);
 
         // Verify both the return value AND the actual balance
-        require(success, "FLF"); // Flash loan failed (incorrect return value)
+        if (!success) revert FlashLoanFailed(); // Flash loan failed (incorrect return value)
 
         uint256 currentBalance = usdcInstance.balanceOf(address(this));
-        require(currentBalance >= requiredBalance, "RPF"); // Repay failed (insufficient funds returned)
+        if (currentBalance < requiredBalance) revert RepaymentFailed(); // Repay failed (insufficient funds returned)
 
         // Update protocol state only after all verifications succeed
         totalFlashLoanFees += fee;
@@ -425,7 +426,7 @@ contract LendefiV2 is
      * @custom:events Emits an UpdateFlashLoanFee event
      */
     function updateFlashLoanFee(uint256 newFee) external onlyRole(MANAGER_ROLE) {
-        require(newFee <= 100, "IF"); // Fee too high
+        if (newFee > 100) revert InvalidFee(); // Fee too high
 
         flashLoanFee = newFee;
         emit UpdateFlashLoanFee(newFee);
@@ -616,7 +617,7 @@ contract LendefiV2 is
      *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
      */
     function createPosition(address asset, bool isIsolated) external validAsset(asset) nonReentrant whenNotPaused {
-        require(positions[msg.sender].length < 1000, "MPL"); // Max position limit
+        if (positions[msg.sender].length >= 1000) revert MaxPositionLimitReached(); // Max position limit
         UserPosition storage newPosition = positions[msg.sender].push();
         newPosition.isIsolated = isIsolated;
         newPosition.status = PositionStatus.ACTIVE;
@@ -805,19 +806,19 @@ contract LendefiV2 is
         }
 
         // Check if there's enough protocol liquidity
-        require(totalBorrow + accruedInterest + amount <= totalSuppliedLiquidity, "LL");
+        if (totalBorrow + accruedInterest + amount > totalSuppliedLiquidity) revert LowLiquidity();
 
         // For isolated positions, check debt cap
         if (position.isIsolated) {
             EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
             (address posAsset,) = collaterals.at(0);
             ILendefiAssets.Asset memory asset = assetsModule.getAssetInfo(posAsset);
-            require(currentDebt + amount <= asset.isolationDebtCap, "IDC");
+            if (currentDebt + amount > asset.isolationDebtCap) revert IsolationDebtCapExceeded();
         }
 
         // Check credit limit
         uint256 creditLimit = calculateCreditLimit(msg.sender, positionId);
-        require(currentDebt + amount <= creditLimit, "CLM");
+        if (currentDebt + amount > creditLimit) revert CreditLimitExceeded();
 
         // Update total protocol debt (including accrued interest)
         totalBorrow += accruedInterest + amount;
@@ -978,8 +979,8 @@ contract LendefiV2 is
         nonReentrant
         whenNotPaused
     {
-        require(tokenInstance.balanceOf(msg.sender) >= liquidatorThreshold, "GTL"); // Not enough governance tokens
-        require(isLiquidatable(user, positionId), "NLQ"); // Not liquidatable
+        if (tokenInstance.balanceOf(msg.sender) < liquidatorThreshold) revert NotEnoughGovernanceTokens();
+        if (!isLiquidatable(user, positionId)) revert NotLiquidatable();
 
         UserPosition storage position = positions[user][positionId];
         uint256 debtWithInterest = calculateDebtWithInterest(user, positionId);
@@ -1066,12 +1067,12 @@ contract LendefiV2 is
         uint256 liquidatorAmount
     ) external onlyRole(MANAGER_ROLE) {
         // Validate all parameters
-        require(profitTargetRate >= 0.0025e6, "I1");
-        require(borrowRate >= 0.01e6, "I2");
-        require(rewardAmount <= 10_000 ether, "I3");
-        require(interval >= 90 days, "I4");
-        require(supplyAmount >= 20_000 * WAD, "I5");
-        require(liquidatorAmount >= 10 ether, "I6");
+        if (profitTargetRate < 0.0025e6) revert InvalidProfitTarget();
+        if (borrowRate < 0.01e6) revert InvalidBorrowRate();
+        if (rewardAmount > 10_000 ether) revert InvalidRewardAmount();
+        if (interval < 90 days) revert InvalidInterval();
+        if (supplyAmount < 20_000 * WAD) revert InvalidSupplyAmount();
+        if (liquidatorAmount < 10 ether) revert InvalidLiquidatorThreshold();
 
         // Update all state variables
         baseProfitTarget = profitTargetRate;
@@ -1470,23 +1471,25 @@ contract LendefiV2 is
         activePosition(msg.sender, positionId)
     {
         ILendefiAssets.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
-        require(!assetsModule.isAssetAtCapacity(asset, amount), "AC"); // Asset capacity reached
+        if (assetsModule.isAssetAtCapacity(asset, amount)) revert AssetCapacityReached(); // Asset capacity reached
 
         UserPosition storage position = positions[msg.sender][positionId];
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
 
-        require(!(assetConfig.tier == ILendefiAssets.CollateralTier.ISOLATED && !position.isIsolated), "ISO");
+        if (assetConfig.tier == ILendefiAssets.CollateralTier.ISOLATED && !position.isIsolated) {
+            revert IsolatedAssetViolation();
+        }
 
         // For isolated positions, check we're using the correct asset
         if (position.isIsolated && collaterals.length() > 0) {
             (address firstAsset,) = collaterals.at(0);
-            require(asset == firstAsset, "IA"); // Isolated asset mismatch
+            if (asset != firstAsset) revert InvalidAssetForIsolation();
         }
 
         // Check or add the asset
         (bool exists, uint256 currentAmount) = collaterals.tryGet(asset);
         if (!exists) {
-            require(collaterals.length() < 20, "MA"); // Maximum assets reached
+            if (!exists && collaterals.length() >= 20) revert MaximumAssetsReached(); // Maximum assets reached
             collaterals.set(asset, amount);
         } else {
             collaterals.set(asset, currentAmount + amount);
@@ -1513,12 +1516,12 @@ contract LendefiV2 is
         // For isolated positions, verify asset
         if (position.isIsolated && collaterals.length() > 0) {
             (address firstAsset,) = collaterals.at(0);
-            require(asset == firstAsset, "IA"); // Isolated asset mismatch
+            if (asset != firstAsset) revert InvalidAssetForIsolation(); // Isolated asset mismatch
         }
 
         // Check and update balance
         (bool exists, uint256 currentAmount) = collaterals.tryGet(asset);
-        require(exists && currentAmount >= amount, "LB"); // Insufficient balance
+        if (!exists || currentAmount < amount) revert LowBalance(); // Insufficient balance
 
         uint256 newAmount = currentAmount - amount;
         if (newAmount == 0 && !position.isIsolated) {
@@ -1531,7 +1534,7 @@ contract LendefiV2 is
         emit TVLUpdated(address(asset), assetTVL[asset]);
 
         // Verify collateralization after withdrawal
-        require(calculateCreditLimit(msg.sender, positionId) >= position.debtAmount, "CM"); // Credit limit maxed out
+        if (calculateCreditLimit(msg.sender, positionId) < position.debtAmount) revert CreditLimitExceeded(); // Credit limit maxed out
     }
 
     /**
