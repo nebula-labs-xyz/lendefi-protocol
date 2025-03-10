@@ -291,7 +291,7 @@ contract getPositionCollateralAssetsTest is BasicDeploy {
 
     function testRevert_getPositionCollateralAssets_InvalidPosition() public {
         // This should fail since position ID 999 doesn't exist
-        vm.expectRevert(bytes("IN"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.getPositionCollateralAssets(alice, 999);
     }
 
@@ -301,7 +301,7 @@ contract getPositionCollateralAssetsTest is BasicDeploy {
         _addCollateralToPosition(alice, positionId, address(wethInstance), 1 ether);
 
         // Try to access Alice's position as Bob (should fail)
-        vm.expectRevert(bytes("IN"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.getPositionCollateralAssets(bob, positionId);
     }
 }
