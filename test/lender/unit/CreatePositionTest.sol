@@ -182,7 +182,7 @@ contract CreatePositionTest is BasicDeploy {
         vm.startPrank(bob);
 
         // Try to create a position with an unlisted asset - UPDATED: use short error code
-        vm.expectRevert(bytes("NL")); // "NL" = Asset Not Listed
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.NotListed.selector));
         LendefiInstance.createPosition(notListedAsset, false);
 
         // Verify no position was created
