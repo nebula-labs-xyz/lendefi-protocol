@@ -436,7 +436,7 @@ contract ExitPositionTest is BasicDeploy {
         _mintTokens(bob, address(stableToken), 1000 ether);
         IERC20(address(stableToken)).approve(address(LendefiInstance), 1000 ether);
 
-        vm.expectRevert(bytes("INA")); // INA = Inactive Position
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InactivePosition.selector));
         LendefiInstance.supplyCollateral(address(stableToken), 1000 ether, positionId);
         vm.stopPrank();
 
@@ -474,7 +474,7 @@ contract ExitPositionTest is BasicDeploy {
         uint256 invalidPositionId = 999;
 
         // Try to exit a non-existent position - UPDATED: use string error code
-        vm.expectRevert(bytes("IN")); // IN = Invalid Position
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.exitPosition(invalidPositionId);
         vm.stopPrank();
     }
