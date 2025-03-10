@@ -157,7 +157,7 @@ contract getCollateralAmountTest is BasicDeploy {
     // Test 3: Try to get collateral for an invalid position
     function test_getCollateralAmount_InvalidPosition() public {
         // Try to access an invalid position
-        vm.expectRevert(bytes("IN"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.getCollateralAmount(alice, 0, address(wethInstance));
     }
 
