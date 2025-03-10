@@ -171,6 +171,160 @@ interface IPROTOCOL {
      * @param amount The new TVL amount
      */
     event TVLUpdated(address indexed asset, uint256 amount);
+
+    //////////////////////////////////////////////////
+    // -------------------Errors-------------------//
+    /////////////////////////////////////////////////
+
+    /**
+     * @notice Thrown when attempting to create more positions than the protocol limit
+     * @dev The protocol enforces a maximum number of positions per user
+     */
+    error MaxPositionLimitReached();
+
+    /**
+     * @notice Thrown when attempting to interact with a non-existent position
+     * @dev Functions that require a valid position ID will throw this error
+     */
+    error InvalidPosition();
+
+    /**
+     * @notice Thrown when attempting to modify a position that is closed or liquidated
+     * @dev Operations are only allowed on positions with ACTIVE status
+     */
+    error InactivePosition();
+
+    /**
+     * @notice Thrown when attempting to use an asset that isn't listed in the protocol
+     * @dev Assets must be configured through governance before they can be used
+     */
+    error NotListed();
+
+    /**
+     * @notice Thrown when an operation is attempted with a zero amount
+     * @dev Used in borrow, repay, supply and withdraw operations
+     */
+    error ZeroAmount();
+
+    /**
+     * @notice Thrown when attempting to set an invalid flash loan fee
+     * @dev Fee must be within the allowed range (0-100 basis points)
+     */
+    error InvalidFee();
+
+    /**
+     * @notice Thrown when the protocol does not have enough liquidity for an operation
+     * @dev Used in borrow and flash loan operations
+     */
+    error LowLiquidity();
+
+    /**
+     * @notice Thrown when a flash loan operation fails to execute properly
+     * @dev The receiver contract must return true from executeOperation
+     */
+    error FlashLoanFailed();
+
+    /**
+     * @notice Thrown when a flash loan isn't repaid in the same transaction
+     * @dev The full amount plus fee must be returned to the protocol
+     */
+    error RepaymentFailed();
+
+    /**
+     * @notice Thrown when attempting to supply an asset beyond its protocol-wide capacity
+     * @dev Each asset has a maximum supply limit for risk management
+     */
+    error AssetCapacityReached();
+
+    /**
+     * @notice Thrown when attempting to violate isolation mode rules
+     * @dev Isolated assets cannot be used in cross-collateralized positions
+     */
+    error IsolatedAssetViolation();
+
+    /**
+     * @notice Thrown when attempting to add an incompatible asset to an isolated position
+     * @dev Isolated positions can only contain one asset type
+     */
+    error InvalidAssetForIsolation();
+
+    /**
+     * @notice Thrown when attempting to add more assets than the position limit
+     * @dev Each position has a maximum number of different asset types it can hold
+     */
+    error MaximumAssetsReached();
+
+    /**
+     * @notice Thrown when attempting to withdraw more than the available balance
+     * @dev Used in withdrawCollateral and interpositionalTransfer operations
+     */
+    error LowBalance();
+
+    /**
+     * @notice Thrown when a liquidator doesn't hold enough governance tokens
+     * @dev Liquidators must meet a minimum governance token threshold
+     */
+    error NotEnoughGovernanceTokens();
+
+    /**
+     * @notice Thrown when attempting to liquidate a healthy position
+     * @dev Positions must be below liquidation threshold to be liquidated
+     */
+    error NotLiquidatable();
+
+    /**
+     * @notice Thrown when attempting to set an invalid profit target
+     * @dev Profit target must be above the minimum threshold
+     */
+    error InvalidProfitTarget();
+
+    /**
+     * @notice Thrown when attempting to set an invalid borrow rate
+     * @dev Borrow rate must be above the minimum threshold
+     */
+    error InvalidBorrowRate();
+
+    /**
+     * @notice Thrown when attempting to set an invalid reward amount
+     * @dev Reward amount must be within allowed limits
+     */
+    error InvalidRewardAmount();
+
+    /**
+     * @notice Thrown when attempting to set an invalid reward interval
+     * @dev Reward interval must be above the minimum threshold
+     */
+    error InvalidInterval();
+
+    /**
+     * @notice Thrown when attempting to set an invalid rewardable supply amount
+     * @dev Rewardable supply must be above the minimum threshold
+     */
+    error InvalidSupplyAmount();
+
+    /**
+     * @notice Thrown when attempting to set an invalid liquidator threshold
+     * @dev Liquidator threshold must be above the minimum value
+     */
+    error InvalidLiquidatorThreshold();
+
+    /**
+     * @notice Thrown when attempting to borrow beyond an isolated asset's debt cap
+     * @dev Isolated assets have maximum protocol-wide debt limits
+     */
+    error IsolationDebtCapExceeded();
+
+    /**
+     * @notice Thrown when attempting to borrow or withdraw beyond a position's credit limit
+     * @dev The operation would make the position undercollateralized
+     */
+    error CreditLimitExceeded();
+
+    /**
+     * @notice Thrown when attempting an operation that requires debt on a position with no debt
+     * @dev Used in operations that require an active debt position
+     */
+    error NoDebt();
     //////////////////////////////////////////////////
     // ---------------Core functions---------------//
     /////////////////////////////////////////////////
