@@ -227,8 +227,8 @@ contract GetUserPositionTest is BasicDeploy {
 
     function test_GetUserPosition_InvalidPosition() public {
         // Try to get a position that doesn't exist
-        // Updated error message to match new implementation
-        vm.expectRevert(bytes("IN"));
+        // Use custom error instead of string error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.getUserPosition(alice, 0);
 
         // Create a position
@@ -240,8 +240,8 @@ contract GetUserPositionTest is BasicDeploy {
         LendefiInstance.getUserPosition(alice, 0);
 
         // But invalid with position ID 1
-        // Updated error message to match new implementation
-        vm.expectRevert(bytes("IN"));
+        // Use custom error instead of string error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.getUserPosition(alice, 1);
     }
 
