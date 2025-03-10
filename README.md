@@ -107,14 +107,15 @@ The contract demonstrates the technical maturity expected in a production-grade 
 ## Features
 
 1. Supports more than 200 collateral assets.
-2. Supports up to 1000 user positions.
-3. Up to 20 collateral assets per position at a time.
+2. Allows multiple independent user positions.
+3. Up to 20 collateral assets per user postion.
 4. Compounds interest.
 5. Gas Efficient.
 6. Issues ERC20 yield token to lenders.
 7. Completely upgradeable.
 8. DAO Managed.
 9. Reward Ecosystem.
+10. Flash loan functionality.
 
 ## Advanced Features
 
