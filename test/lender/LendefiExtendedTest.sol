@@ -318,7 +318,7 @@ contract LendefiExtendedTest is BasicDeploy {
         uint256 initialLastAccrual = LendefiInstance.getUserPosition(bob, 0).lastInterestAccrual;
 
         // Borrow with zero amount - SHOULD revert with "ZA" error
-        vm.expectRevert(bytes("ZA"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.ZeroAmount.selector));
         LendefiInstance.borrow(0, 0);
 
         // Verify state hasn't changed (these assertions won't execute if the revert works properly)
@@ -354,7 +354,7 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.startPrank(bob);
 
         // Try to borrow from non-existent position
-        vm.expectRevert(bytes("IN")); // IN = Invalid position
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.borrow(999, 1000e6);
 
         vm.stopPrank();
@@ -387,9 +387,7 @@ contract LendefiExtendedTest is BasicDeploy {
         // First supply 5 ETH (at limit)
         LendefiInstance.supplyCollateral(address(wethInstance), 5 ether, 0);
 
-        // Use "AC" instead of "MS" to match the actual error in Lendefi.sol
-        // In _validateDeposit(): require(!assetsModule.isAssetAtCapacity(asset, amount), "AC");
-        vm.expectRevert(bytes("AC")); // AC = Asset Capacity
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.AssetCapacityReached.selector));
         LendefiInstance.supplyCollateral(address(wethInstance), 1 ether, 0);
         vm.stopPrank();
     }
