@@ -266,7 +266,7 @@ contract WithdrawCollateralTest is BasicDeploy {
 
         vm.startPrank(bob);
         // Try to withdraw more than available
-        vm.expectRevert(bytes("LB")); // Changed from InsufficientCollateralBalance to "LB" (Low Balance)
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.LowBalance.selector));
         LendefiInstance.withdrawCollateral(address(rwaToken), 11 ether, positionId);
         vm.stopPrank();
     }
@@ -312,7 +312,7 @@ contract WithdrawCollateralTest is BasicDeploy {
         LendefiInstance.borrow(positionId, borrowAmount);
 
         // Try to withdraw too much collateral
-        vm.expectRevert(bytes("CM")); // Changed from WithdrawalExceedsCreditLimit to "CM" (Credit limit Missing)
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.CreditLimitExceeded.selector));
         LendefiInstance.withdrawCollateral(address(wethInstance), tooMuchWithdraw, positionId);
         vm.stopPrank();
 
@@ -392,7 +392,7 @@ contract WithdrawCollateralTest is BasicDeploy {
 
         vm.startPrank(bob);
         // Try to withdraw more than available
-        vm.expectRevert(bytes("LB")); // Changed from InsufficientCollateralBalance to "LB" (Low Balance)
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.LowBalance.selector));
         LendefiInstance.withdrawCollateral(address(wethInstance), withdrawAmount, positionId);
         vm.stopPrank();
 
@@ -406,7 +406,7 @@ contract WithdrawCollateralTest is BasicDeploy {
         uint256 invalidPositionId = 999;
         vm.startPrank(bob);
         // Try to withdraw from nonexistent position
-        vm.expectRevert(bytes("IN")); // Changed from InvalidPosition to "IN"
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.withdrawCollateral(address(wethInstance), 1 ether, invalidPositionId);
         vm.stopPrank();
     }
@@ -440,8 +440,8 @@ contract WithdrawCollateralTest is BasicDeploy {
         _supplyCollateral(bob, address(wethInstance), collateralAmount, positionId);
 
         vm.startPrank(bob);
-        // Try to withdraw zero amount, should revert with "ZA" (Zero Amount) error
-        vm.expectRevert(bytes("ZA"));
+        // Try to withdraw zero amount, should revert with ZeroAmount error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.ZeroAmount.selector));
         LendefiInstance.withdrawCollateral(address(wethInstance), 0, positionId);
         vm.stopPrank();
     }
@@ -456,7 +456,7 @@ contract WithdrawCollateralTest is BasicDeploy {
 
         // Bob tries to withdraw from Alice's position
         vm.startPrank(bob);
-        vm.expectRevert(bytes("IN")); // Changed from InvalidPosition to "IN"
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.withdrawCollateral(address(wethInstance), 1 ether, alicePositionId);
         vm.stopPrank();
     }
