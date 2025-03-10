@@ -192,7 +192,7 @@ contract InterPositionalTransferTest is BasicDeploy {
 
         // Try to transfer more than available
         vm.startPrank(bob);
-        vm.expectRevert(bytes("LB")); // Fixed: Use bytes() for string error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.LowBalance.selector));
         LendefiInstance.interpositionalTransfer(fromPositionId, toPositionId, address(wethInstance), 2 ether);
         vm.stopPrank();
     }
@@ -227,7 +227,6 @@ contract InterPositionalTransferTest is BasicDeploy {
         assertEq(sourceAssets[0], address(stableToken), "Stable token should remain in source position");
     }
 
-    // Test 7: Transfer with zero amount is allowed
     // Replace test_ZeroTransferAllowed with testRevert_ZeroTransferNotAllowed
     function testRevert_ZeroTransferNotAllowed() public {
         // Create two cross-collateral positions
@@ -237,9 +236,9 @@ contract InterPositionalTransferTest is BasicDeploy {
         // Supply collateral to source position
         _mintAndSupply(bob, address(wethInstance), fromPositionId, 5 ether);
 
-        // Transfer zero amount should now revert with ZA error
+        // Transfer zero amount should now revert with ZeroAmount error
         vm.prank(bob);
-        vm.expectRevert(bytes("ZA")); // Zero amount validation error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.ZeroAmount.selector));
         LendefiInstance.interpositionalTransfer(fromPositionId, toPositionId, address(wethInstance), 0);
 
         // Verify balances remain unchanged (this won't execute after revert, but including for clarity)
@@ -258,7 +257,7 @@ contract InterPositionalTransferTest is BasicDeploy {
 
         // Try to transfer unlisted asset
         vm.startPrank(bob);
-        vm.expectRevert(bytes("NL")); // Fixed: Use bytes() for string error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.NotListed.selector));
         LendefiInstance.interpositionalTransfer(fromPositionId, toPositionId, address(unlistedToken), 1 ether);
         vm.stopPrank();
     }
@@ -275,7 +274,7 @@ contract InterPositionalTransferTest is BasicDeploy {
         LendefiInstance.borrow(fromPositionId, 12000e6); // $12,000 (80% of collateral value)
 
         // Try to transfer most of collateral - would make position undercollateralized
-        vm.expectRevert(bytes("CM")); // Fixed: Use bytes() for string error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.CreditLimitExceeded.selector));
         LendefiInstance.interpositionalTransfer(fromPositionId, toPositionId, address(wethInstance), 7.5 ether);
 
         // Transfer a smaller amount that maintains collateralization
@@ -363,7 +362,7 @@ contract InterPositionalTransferTest is BasicDeploy {
 
         // Now try to transfer it, which would exceed the 20 asset limit
         vm.prank(bob);
-        vm.expectRevert(bytes("MA")); // Fixed: Use bytes() for string error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.MaximumAssetsReached.selector));
         LendefiInstance.interpositionalTransfer(fromPositionId, toPositionId, address(extraToken), 0.5 ether);
     }
 
@@ -379,7 +378,7 @@ contract InterPositionalTransferTest is BasicDeploy {
 
         // Attempt transfer - should revert because you can't add ISOLATED tier assets to cross positions
         vm.startPrank(bob);
-        vm.expectRevert(bytes("ISO"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.IsolatedAssetViolation.selector));
         LendefiInstance.interpositionalTransfer(fromPositionId, toPositionId, address(rwaToken), 2 ether);
         vm.stopPrank();
     }
@@ -399,7 +398,7 @@ contract InterPositionalTransferTest is BasicDeploy {
 
         // Try to transfer WETH to isolated position (should fail)
         vm.startPrank(bob);
-        vm.expectRevert(bytes("IA")); // Fixed: Use bytes() for string error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidAssetForIsolation.selector));
         LendefiInstance.interpositionalTransfer(fromPositionId, toPositionId, address(wethInstance), 1 ether);
         vm.stopPrank();
     }
@@ -421,7 +420,7 @@ contract InterPositionalTransferTest is BasicDeploy {
         rwaToken.approve(address(LendefiInstance), 5 ether);
 
         // This should revert because RWA is an ISOLATED tier asset that can't be added to cross positions
-        vm.expectRevert(bytes("ISO"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.IsolatedAssetViolation.selector));
         LendefiInstance.supplyCollateral(address(rwaToken), 5 ether, fromPositionId);
         vm.stopPrank();
 
@@ -444,7 +443,7 @@ contract InterPositionalTransferTest is BasicDeploy {
 
         // Try to transfer - should revert with isolation-related error
         // The contract prevents transfer between isolated and cross positions
-        vm.expectRevert(bytes("ISO"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.IsolatedAssetViolation.selector));
         LendefiInstance.interpositionalTransfer(fromPositionId, toPositionId, address(rwaToken), 2 ether);
         vm.stopPrank();
 
@@ -463,7 +462,7 @@ contract InterPositionalTransferTest is BasicDeploy {
 
         // Transfer attempt should revert for isolation mode
         vm.startPrank(bob);
-        vm.expectRevert(bytes("ISO"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.IsolatedAssetViolation.selector));
         LendefiInstance.interpositionalTransfer(fromPositionId, toPositionId, address(rwaToken), 3 ether);
         vm.stopPrank();
 
@@ -583,7 +582,7 @@ contract InterPositionalTransferTest is BasicDeploy {
 
         // Try to transfer RWA token to the other isolated position - should fail
         vm.startPrank(bob);
-        vm.expectRevert(bytes("IA")); // Isolated Asset error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidAssetForIsolation.selector));
         LendefiInstance.interpositionalTransfer(fromPositionId, toPositionId, address(rwaToken), 2 ether);
         vm.stopPrank();
     }
