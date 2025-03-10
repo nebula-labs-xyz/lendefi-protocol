@@ -243,7 +243,7 @@ contract GetPositionDebtTest is BasicDeploy {
 
     function testRevert_GetPositionDebt_InvalidPosition() public {
         // This should fail since position ID 999 doesn't exist
-        vm.expectRevert(bytes("IN"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.getUserPosition(alice, 999);
     }
 
@@ -252,7 +252,7 @@ contract GetPositionDebtTest is BasicDeploy {
         uint256 positionId = _setupBorrowPosition(alice, COLLATERAL_AMOUNT, BORROW_AMOUNT_SMALL);
 
         // Try to access Alice's position debt as Bob (should fail)
-        vm.expectRevert(bytes("IN"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.getUserPosition(bob, positionId);
     }
 }
