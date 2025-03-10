@@ -382,10 +382,11 @@ contract LendefiV2 is
      *   - FlashLoan(msg.sender, receiver, address(usdcInstance), amount, fee)
      *
      * @custom:access-control Available to any caller when protocol is not paused
-     * @custom:error-codes
-     *   - "LL": Low liquidity (amount exceeds available protocol liquidity)
-     *   - "FLF": Flash loan failed (executeOperation returned false)
-     *   - "RPF": Repay failed (final balance less than required amount)
+     * @custom:error-cases
+     *   - LowLiquidity: Thrown when amount exceeds available protocol liquidity
+     *   - FlashLoanFailed: Thrown when executeOperation returns false
+     *   - RepaymentFailed: Thrown when final balance is less than required amount
+     *   - ZeroAmount: Thrown when trying to borrow zero amount
      */
     function flashLoan(address receiver, uint256 amount, bytes calldata params)
         external
@@ -424,6 +425,8 @@ contract LendefiV2 is
      * @param newFee New flash loan fee in basis points, capped at 1% (100 basis points)
      * @custom:access-control Restricted to MANAGER_ROLE
      * @custom:events Emits an UpdateFlashLoanFee event
+     * @custom:error-cases
+     *   - InvalidFee: Thrown when fee exceeds the maximum allowed (100 basis points)
      */
     function updateFlashLoanFee(uint256 newFee) external onlyRole(MANAGER_ROLE) {
         if (newFee > 100) revert InvalidFee(); // Fee too high
@@ -522,11 +525,8 @@ contract LendefiV2 is
      *   - Reward(msg.sender, rewardAmount) if rewards are issued
      *
      * @custom:access-control Available to any caller when protocol is not paused
-     * @custom:error-codes
-     *   - "ZA": Zero amount (amount is zero) validAmount modifier
-     *   - Reverts if protocol is paused (from whenNotPaused modifier)
-     *   - Reverts on reentrancy (from nonReentrant modifier)
-     *   - Reverts if yield token transfer or USDC transfer fails
+     * @custom:error-cases
+     *   - ZeroAmount: Thrown when amount is zero
      */
     function exchange(uint256 amount) external validAmount(amount) nonReentrant whenNotPaused {
         uint256 supply = yieldTokenInstance.totalSupply();
@@ -612,9 +612,9 @@ contract LendefiV2 is
      *   - PositionCreated(msg.sender, positionId, isIsolated)
      *
      * @custom:access-control Available to any caller when protocol is not paused
-     * @custom:error-codes
-     *   - "MPL": Max position limit (user has reached the maximum position count)
-     *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
+     * @custom:error-cases
+     *   - MaxPositionLimitReached: Thrown when user has reached the maximum position count
+     *   - NotListed: Thrown when asset is not whitelisted
      */
     function createPosition(address asset, bool isIsolated) external validAsset(asset) nonReentrant whenNotPaused {
         if (positions[msg.sender].length >= 1000) revert MaxPositionLimitReached(); // Max position limit
@@ -668,15 +668,15 @@ contract LendefiV2 is
      *   - SupplyCollateral(msg.sender, positionId, asset, amount)
      *
      * @custom:access-control Available to position owners when protocol is not paused
-     * @custom:error-codes
-     *   - "ZA": Zero amount (amount is zero) validAmount modifier
-     *   - "IN": Invalid position (from activePosition modifier)
-     *   - "INA": Inactive position (from activePosition modifier)
-     *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
-     *   - "AC": Asset at capacity (asset has reached global capacity limit)
-     *   - "ISO": Isolated asset in cross-collateral position (supplying isolated-tier asset to a cross position)
-     *   - "IA": Invalid asset for isolation (supplying an asset that doesn't match the isolated position's asset)
-     *   - "MA": Maximum assets reached (position already has 20 different asset types)
+     * @custom:error-cases
+     *   - ZeroAmount: Thrown when amount is zero
+     *   - InvalidPosition: Thrown when position doesn't exist
+     *   - InactivePosition: Thrown when position is not in ACTIVE status
+     *   - NotListed: Thrown when asset is not whitelisted
+     *   - AssetCapacityReached: Thrown when asset has reached global capacity limit
+     *   - IsolatedAssetViolation: Thrown when supplying isolated-tier asset to a cross position
+     *   - InvalidAssetForIsolation: Thrown when supplying an asset that doesn't match the isolated position's asset
+     *   - MaximumAssetsReached: Thrown when position already has 20 different asset types
      */
     function supplyCollateral(address asset, uint256 amount, uint256 positionId)
         external
@@ -714,20 +714,20 @@ contract LendefiV2 is
      * @custom:state-changes
      *   - Decreases positionCollateralAmounts[msg.sender][positionId][asset] by amount
      *   - Updates protocol-wide TVL for the asset
-     *   - For non-isolated positions: Removes asset from positionCollateralAssets if balance becomes zero
+     *   - For non-isolated positions: Removes asset entirely if balance becomes zero
      *   - Transfers asset tokens from the contract to msg.sender
      *
      * @custom:emits
      *   - WithdrawCollateral(msg.sender, positionId, asset, amount)
      *
      * @custom:access-control Available to position owners when protocol is not paused
-     * @custom:error-codes
-     *   - "ZA": Zero amount (amount is zero)
-     *   - "IN": Invalid position (from activePosition modifier)
-     *   - "INA": Inactive position (from activePosition modifier)
-     *   - "IA": Invalid asset for isolation (withdrawing an asset that doesn't match the isolated position's asset)
-     *   - "LB": Low balance (not enough collateral balance to withdraw)
-     *   - "CM": Collateral minimum (withdrawal would leave position undercollateralized)
+     * @custom:error-cases
+     *   - ZeroAmount: Thrown when amount is zero
+     *   - InvalidPosition: Thrown when position doesn't exist
+     *   - InactivePosition: Thrown when position is not in ACTIVE status
+     *   - InvalidAssetForIsolation: Thrown when withdrawing an asset that doesn't match the isolated position's asset
+     *   - LowBalance: Thrown when not enough collateral balance to withdraw
+     *   - CreditLimitExceeded: Thrown when withdrawal would leave position undercollateralized
      */
     function withdrawCollateral(address asset, uint256 amount, uint256 positionId)
         external
@@ -778,13 +778,13 @@ contract LendefiV2 is
      *   - InterestAccrued(msg.sender, positionId, accruedInterest) if interest was accrued
      *
      * @custom:access-control Available to position owners when protocol is not paused
-     * @custom:error-codes
-     *   - "ZA": Zero amount (amount is zero)
-     *   - "LL": Low liquidity (not enough protocol liquidity)
-     *   - "IDC": Isolation debt cap exceeded
-     *   - "CLM": Credit limit exceeded
-     *   - "IN": Invalid position (from activePosition modifier)
-     *   - "INA": Inactive position (from activePosition modifier)
+     * @custom:error-cases
+     *   - ZeroAmount: Thrown when amount is zero
+     *   - LowLiquidity: Thrown when protocol doesn't have enough available liquidity
+     *   - IsolationDebtCapExceeded: Thrown when exceeding an isolated asset's debt cap
+     *   - CreditLimitExceeded: Thrown when total debt would exceed position's credit limit
+     *   - InvalidPosition: Thrown when position doesn't exist
+     *   - InactivePosition: Thrown when position is not in ACTIVE status
      */
     function borrow(uint256 positionId, uint256 amount)
         external
@@ -861,11 +861,11 @@ contract LendefiV2 is
      *   - InterestAccrued(msg.sender, positionId, accruedInterest)
      *
      * @custom:access-control Available to position owners when protocol is not paused
-     * @custom:error-codes
-     *   - "ZA": Zero amount (amount is zero)
-     *   - "ND": No debt (position has no debt to repay)
-     *   - "IN": Invalid position (from activePosition modifier)
-     *   - "INA": Inactive position (from activePosition modifier)
+     * @custom:error-cases
+     *   - ZeroAmount: Thrown when amount is zero
+     *   - NoDebt: Thrown when position has no debt to repay
+     *   - InvalidPosition: Thrown when position doesn't exist
+     *   - InactivePosition: Thrown when position is not in ACTIVE status
      */
     function repay(uint256 positionId, uint256 amount)
         external
@@ -910,10 +910,10 @@ contract LendefiV2 is
      *   - WithdrawCollateral(msg.sender, positionId, asset, amount) for each collateral asset
      *
      * @custom:access-control Available to position owners when protocol is not paused
-     * @custom:error-codes
-     *   - "ZA": Zero amount (amount is zero)
-     *   - "IN": Invalid position (from activePosition modifier)
-     *   - "INA": Inactive position (from activePosition modifier)
+     * @custom:error-cases
+     *   - ZeroAmount: Thrown when amount is zero (from validAmount modifier in _processRepay)
+     *   - InvalidPosition: Thrown when position doesn't exist (from activePosition modifier)
+     *   - InactivePosition: Thrown when position is not in ACTIVE status (from activePosition modifier)
      */
     function exitPosition(uint256 positionId)
         external
@@ -967,11 +967,11 @@ contract LendefiV2 is
      *   - WithdrawCollateral(user, positionId, asset, amount) for each collateral asset
      *
      * @custom:access-control Available to any caller with sufficient governance tokens when protocol is not paused
-     * @custom:error-codes
-     *   - "GTL": Not a liquidator (caller doesn't have enough governance tokens)
-     *   - "NLQ": Not liquidatable (position's health factor is above 1.0)
-     *   - "IN": Invalid position (from activePosition modifier)
-     *   - "INA": Inactive position (from activePosition modifier)
+     * @custom:error-cases
+     *   - NotEnoughGovernanceTokens: Thrown when caller doesn't have enough governance tokens
+     *   - NotLiquidatable: Thrown when position's health factor is above 1.0
+     *   - InvalidPosition: Thrown when position doesn't exist
+     *   - InactivePosition: Thrown when position is not in ACTIVE status
      */
     function liquidate(address user, uint256 positionId)
         external
@@ -1024,15 +1024,15 @@ contract LendefiV2 is
      *   - Decreases the collateral amount of the specified asset in the source position
      *   - Increases the collateral amount of the specified asset in the destination position
      *   - Updates protocol-wide TVL for the asset
-     * @custom:error-codes
-     *   - "ZA": Zero amount (amount is zero)
-     *   - "IN": Invalid position (from activePosition modifier)
-     *   - "INA": Inactive position (from activePosition modifier)
-     *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
-     *   - "LB": Low balance (not enough collateral balance to transfer)
-     *   - "ISO": Isolated asset in cross-collateral position (transferring isolated-tier asset to a cross position)
-     *   - "IA": Invalid asset for isolation (transferring an asset that doesn't match the isolated position's asset)
-     *   - "MA": Maximum assets reached (destination position already has 20 different asset types)
+     * @custom:error-cases
+     *   - ZeroAmount: Thrown when amount is zero
+     *   - InvalidPosition: Thrown when position doesn't exist
+     *   - InactivePosition: Thrown when position is not in ACTIVE status
+     *   - NotListed: Thrown when asset is not whitelisted
+     *   - LowBalance: Thrown when position doesn't have sufficient asset balance
+     *   - IsolatedAssetViolation: Thrown when transferring isolated-tier asset to a cross position
+     *   - InvalidAssetForIsolation: Thrown when asset doesn't match isolated position's asset
+     *   - MaximumAssetsReached: Thrown when destination position already has 20 different assets
      */
     function interpositionalTransfer(uint256 fromPositionId, uint256 toPositionId, address asset, uint256 amount)
         external
@@ -1057,6 +1057,13 @@ contract LendefiV2 is
      * @param liquidatorAmount New minimum liquidator token threshold (min 10 tokens)
      * @custom:access-control Restricted to MANAGER_ROLE
      * @custom:events Emits a ProtocolMetricsUpdated event
+     * @custom:error-cases
+     *   - InvalidProfitTarget: Thrown when profit target rate is below minimum
+     *   - InvalidBorrowRate: Thrown when borrow rate is below minimum
+     *   - InvalidRewardAmount: Thrown when reward amount exceeds maximum
+     *   - InvalidInterval: Thrown when interval is below minimum
+     *   - InvalidSupplyAmount: Thrown when supply amount is below minimum
+     *   - InvalidLiquidatorThreshold: Thrown when liquidator threshold is below minimum
      */
     function updateProtocolMetrics(
         uint256 profitTargetRate,
@@ -1095,6 +1102,8 @@ contract LendefiV2 is
      * @param positionId ID of the position to query
      * @return UserPosition struct containing the position's details
      * @custom:access-control Available to any caller, read-only
+     * @custom:error-cases
+     *   - InvalidPosition: Thrown when position doesn't exist
      */
     function getUserPosition(address user, uint256 positionId)
         external
@@ -1311,6 +1320,8 @@ contract LendefiV2 is
      * @param user Address of the position owner
      * @param positionId ID of the position to calculate health for
      * @return The position's health factor in WAD format (1.0 = 1e6)
+     * @custom:error-cases
+     *   - InvalidPosition: Thrown when position doesn't exist
      */
     function healthFactor(address user, uint256 positionId)
         public
@@ -1456,14 +1467,14 @@ contract LendefiV2 is
      * @custom:emits
      *   - TVLUpdated(asset, newTVL)
      *
-     * @custom:error-codes
-     *   - "NL": Not listed (from validAsset modifier if asset is not whitelisted)
-     *   - "IN": Invalid position (from activePosition modifier)
-     *   - "INA": Inactive position (from activePosition modifier)
-     *   - "AC": Asset capacity reached (asset has reached its global capacity limit)
-     *   - "ISO": Isolated asset in cross position (supplying isolated-tier asset to a cross position)
-     *   - "IA": Invalid asset for isolation (supplying an asset that doesn't match the isolated position's asset)
-     *   - "MA": Maximum assets reached (position already has 20 different asset types)
+     * @custom:error-cases
+     *   - NotListed: Thrown when asset is not whitelisted
+     *   - InvalidPosition: Thrown when position doesn't exist
+     *   - InactivePosition: Thrown when position is not in ACTIVE status
+     *   - AssetCapacityReached: Thrown when asset has reached its global capacity limit
+     *   - IsolatedAssetViolation: Thrown when supplying isolated-tier asset to a cross position
+     *   - InvalidAssetForIsolation: Thrown when asset doesn't match isolated position's asset
+     *   - MaximumAssetsReached: Thrown when position already has 20 different asset types
      */
     function _processDeposit(address asset, uint256 amount, uint256 positionId)
         internal
@@ -1500,11 +1511,40 @@ contract LendefiV2 is
     }
 
     /**
-     * @notice Processes a collateral withdrawal operation
-     * @dev Ensures the position remains sufficiently collateralized after withdrawal
+     * @notice Processes a collateral withdrawal operation with validation and state updates
+     * @dev Internal function that handles the core logic for removing collateral from a position,
+     *      enforcing position solvency and validating withdrawal amounts.
+     *      This function is called by both withdrawCollateral and interpositionalTransfer.
+     *
+     * The function performs several validations to ensure the withdrawal complies with
+     * protocol rules:
+     * 1. For isolated positions, verifies the asset matches the position's designated asset
+     * 2. Checks that the position has sufficient balance of the asset
+     * 3. Updates the position's collateral tracking based on withdrawal amount
+     * 4. Ensures the position remains sufficiently collateralized after withdrawal
+     *
      * @param asset Address of the collateral asset to withdraw
-     * @param amount Amount of the asset to withdraw
+     * @param amount Amount of the asset to withdraw (in the asset's native units)
      * @param positionId ID of the position to withdraw from
+     *
+     * @custom:requirements
+     *   - Position must exist and be in ACTIVE status (validated by activePosition modifier)
+     *   - For isolated positions: asset must match the position's designated asset
+     *   - Position must have sufficient balance of the specified asset
+     *   - After withdrawal, position must maintain sufficient collateral for any outstanding debt
+     *
+     * @custom:state-changes
+     *   - Decreases positionCollateralAmounts[msg.sender][positionId][asset] by amount
+     *   - For non-isolated positions: Removes asset entirely if balance becomes zero
+     *   - Decreases global assetTVL[asset] by amount
+     *
+     * @custom:emits
+     *   - TVLUpdated(asset, newTVL)
+     *
+     * @custom:error-cases
+     *   - InvalidAssetForIsolation: Thrown when trying to withdraw an asset that doesn't match the isolated position's asset
+     *   - LowBalance: Thrown when position doesn't have sufficient balance of the asset
+     *   - CreditLimitExceeded: Thrown when withdrawal would leave position undercollateralized
      */
     function _processWithdrawal(address asset, uint256 amount, uint256 positionId)
         internal
@@ -1595,12 +1635,27 @@ contract LendefiV2 is
     }
 
     /**
-     * @notice Withdraws all collateral assets from a position
-     * @dev Used in exitPosition and liquidate functions
+     * @notice Withdraws all collateral assets from a position to a specified recipient
+     * @dev Internal function used during position closure and liquidation to remove and transfer
+     *      all collateral assets from a position. Iterates through all assets in the position,
+     *      clears them from the position's storage, and transfers them to the recipient.
+     *
+     * The function handles the complete extraction of all assets regardless of the position's
+     * state or collateralization ratio, and is intended for use only in terminal operations
+     * like complete position closure or liquidation.
+     *
      * @param owner Address of the position owner
-     * @param positionId ID of the position to withdraw from
-     * @param recipient Address to receive the withdrawn collateral
-     * @custom:events Emits WithdrawCollateral events for each asset
+     * @param positionId ID of the position to withdraw all collateral from
+     * @param recipient Address that will receive the withdrawn collateral assets
+     *
+     * @custom:state-changes
+     *   - Clears all assets from the position's collateral mapping
+     *   - Updates assetTVL for each asset withdrawn
+     *   - Transfers all assets to the recipient
+     *
+     * @custom:emits
+     *   - WithdrawCollateral(owner, positionId, asset, amount) for each asset
+     *   - TVLUpdated(asset, newTVL) for each asset
      */
     function _withdrawAllCollateral(address owner, uint256 positionId, address recipient) internal {
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[owner][positionId];
