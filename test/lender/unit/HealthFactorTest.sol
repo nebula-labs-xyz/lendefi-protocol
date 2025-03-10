@@ -141,7 +141,7 @@ contract HealthFactorTest is BasicDeploy {
     // Test 1: Invalid position ID reverts
     function test_HealthFactorInvalidPosition() public {
         // Try to get health factor for non-existent position
-        vm.expectRevert(bytes("IN"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.healthFactor(bob, 999);
     }
 
