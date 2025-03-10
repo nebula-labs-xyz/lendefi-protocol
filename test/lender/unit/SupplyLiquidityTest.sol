@@ -162,8 +162,8 @@ contract SupplyLiquidityTest is BasicDeploy {
         // Approve USDC spending
         usdcInstance.approve(address(LendefiInstance), amount);
 
-        // Supply zero liquidity should now be rejected with "ZA" error
-        vm.expectRevert(bytes("ZA"));
+        // Supply zero liquidity should now be rejected with ZeroAmount() custom error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.ZeroAmount.selector));
         LendefiInstance.supplyLiquidity(amount);
         vm.stopPrank();
     }
