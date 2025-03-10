@@ -270,7 +270,7 @@ contract LiquidateTest is BasicDeploy {
         usdcInstance.approve(address(LendefiInstance), 100_000e6);
 
         // Attempt liquidation without enough governance tokens
-        vm.expectRevert(bytes("GTL")); // Using new error code for insufficient gov tokens
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.NotEnoughGovernanceTokens.selector));
         LendefiInstance.liquidate(bob, positionId);
         vm.stopPrank();
     }
@@ -295,7 +295,7 @@ contract LiquidateTest is BasicDeploy {
         vm.startPrank(charlie);
 
         // Attempt to liquidate a healthy position
-        vm.expectRevert(bytes("NLQ")); // Using new error code for not liquidatable
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.NotLiquidatable.selector));
         LendefiInstance.liquidate(bob, positionId);
         vm.stopPrank();
     }
@@ -311,7 +311,7 @@ contract LiquidateTest is BasicDeploy {
         vm.startPrank(charlie);
 
         // Attempt to liquidate nonexistent position
-        vm.expectRevert(bytes("IN")); // Using new error code for invalid position
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.liquidate(bob, 0);
         vm.stopPrank();
     }
@@ -504,7 +504,7 @@ contract LiquidateTest is BasicDeploy {
             assertEq(charlieWethBalance, collateralAmount, "Liquidator should receive all collateral");
         } else {
             // Attempt liquidation of non-liquidatable position should revert
-            vm.expectRevert(bytes("NLQ"));
+            vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.NotLiquidatable.selector));
             LendefiInstance.liquidate(bob, positionId);
         }
         vm.stopPrank();
