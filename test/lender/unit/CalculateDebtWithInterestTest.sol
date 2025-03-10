@@ -341,7 +341,7 @@ contract CalculateDebtWithInterestTest is BasicDeploy {
     function test_InvalidPositionReverts() public {
         // Try to calculate debt for a position that doesn't exist
         // UPDATED: use specific error code "IN" for invalid position
-        vm.expectRevert(bytes("IN"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.calculateDebtWithInterest(alice, 999);
     }
 }
