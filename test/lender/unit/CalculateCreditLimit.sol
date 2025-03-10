@@ -142,7 +142,7 @@ contract CalculateCreditLimitTest is BasicDeploy {
         uint256 invalidPositionId = 999;
 
         // Updated to use string error code
-        vm.expectRevert(bytes("IN"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.calculateCreditLimit(alice, invalidPositionId);
     }
 
@@ -326,7 +326,7 @@ contract CalculateCreditLimitTest is BasicDeploy {
 
         // Try to borrow 1 more USDC - should revert with CLM (credit limit maximum)
         vm.startPrank(alice);
-        vm.expectRevert(bytes("CLM"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.CreditLimitExceeded.selector));
         LendefiInstance.borrow(positionId, 1);
         vm.stopPrank();
     }
