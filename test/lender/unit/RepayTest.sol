@@ -302,7 +302,7 @@ contract RepayTest is BasicDeploy {
 
         vm.startPrank(bob);
         // Updated to use correct error code format
-        vm.expectRevert(bytes("IN")); // Invalid position
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.repay(invalidPositionId, 1000e6);
         vm.stopPrank();
     }
@@ -363,8 +363,8 @@ contract RepayTest is BasicDeploy {
         vm.startPrank(bob);
         usdcInstance.approve(address(LendefiInstance), 0);
 
-        // Should revert with "ZA" error due to validAmount modifier
-        vm.expectRevert(bytes("ZA")); // Zero amount
+        // Updated to use correct error code format
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.ZeroAmount.selector));
         LendefiInstance.repay(positionId, 0);
         vm.stopPrank();
 
