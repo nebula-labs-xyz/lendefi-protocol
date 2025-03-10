@@ -220,8 +220,7 @@ contract BorrowTest is BasicDeploy {
         uint256 borrowAmount = 10_000e6;
 
         vm.startPrank(bob);
-        // Change: Use "IN" error code instead of InvalidPosition error
-        vm.expectRevert(bytes("IN"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.borrow(invalidPositionId, borrowAmount);
         vm.stopPrank();
     }
@@ -260,8 +259,7 @@ contract BorrowTest is BasicDeploy {
         uint256 creditLimit = LendefiInstance.calculateCreditLimit(bob, positionId);
         uint256 excessiveAmount = creditLimit + 1e6; // Exceed by 1 USDC
 
-        // Change: Use "CLM" error code instead of ExceedsCreditLimit error
-        vm.expectRevert(bytes("CLM"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.CreditLimitExceeded.selector));
         LendefiInstance.borrow(positionId, excessiveAmount);
         vm.stopPrank();
     }
@@ -310,8 +308,7 @@ contract BorrowTest is BasicDeploy {
         vm.startPrank(bob);
         uint256 borrowAmount = 2000e6;
 
-        // Change: Use "LL" error code instead of InsufficientLiquidity error
-        vm.expectRevert(bytes("LL"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.LowLiquidity.selector));
         LendefiInstance.borrow(positionId, borrowAmount);
         vm.stopPrank();
     }
@@ -331,8 +328,7 @@ contract BorrowTest is BasicDeploy {
         console2.log("Isolation debt cap (USDC):", isolationDebtCap / 1e6);
 
         // Try to borrow slightly more than the isolation debt cap
-        // Change: Use "IDC" error code instead of IsolationDebtCapExceeded error
-        vm.expectRevert(bytes("IDC"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.IsolationDebtCapExceeded.selector));
         LendefiInstance.borrow(positionId, isolationDebtCap + 1);
 
         // Borrow exactly at the isolation debt cap
@@ -355,8 +351,7 @@ contract BorrowTest is BasicDeploy {
         uint256 positionId = 0;
 
         // Try to borrow without collateral
-        // Change: Use "CLM" error code instead of ExceedsCreditLimit error
-        vm.expectRevert(bytes("CLM"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.CreditLimitExceeded.selector));
         LendefiInstance.borrow(positionId, 1000e6);
         vm.stopPrank();
 
@@ -399,12 +394,7 @@ contract BorrowTest is BasicDeploy {
         }
 
         // Try to borrow once more (should fail)
-        // Change: Use direct position debt access instead of getPositionDebt
-        // IPROTOCOL.UserPosition memory currentPosition = LendefiInstance.getUserPosition(bob, positionId);
-        // uint256 currentDebt = currentPosition.debtAmount;
-
-        // Change: Use "CLM" error code instead of ExceedsCreditLimit error
-        vm.expectRevert(bytes("CLM"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.CreditLimitExceeded.selector));
         LendefiInstance.borrow(positionId, borrowPerTx);
 
         vm.stopPrank();
@@ -450,8 +440,8 @@ contract BorrowTest is BasicDeploy {
 
         vm.startPrank(bob);
 
-        // Expect the transaction to revert with "ZA" (Zero Amount) error
-        vm.expectRevert(bytes("ZA"));
+        // Expect the transaction to revert with ZeroAmount error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.ZeroAmount.selector));
         LendefiInstance.borrow(positionId, 0);
 
         // Verify state hasn't changed since the transaction reverted
