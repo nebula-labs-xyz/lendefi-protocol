@@ -1,4 +1,4 @@
-# Lendefi DAO
+# Lendefi Protocol
 
 ```
  *      ,,,          ,,     ,,,    ,,,      ,,   ,,,  ,,,      ,,,    ,,,   ,,,    ,,,   ,,,
@@ -49,10 +49,10 @@ The contract demonstrates strong security practices:
 One of the contract's standout features is its sophisticated risk management framework:
 
 - **Multi-tier Collateral Classification**:
-  - STABLE: Lowest risk assets (5% liquidation bonus)
-  - CROSS_A: Low risk assets (8% liquidation bonus)
-  - CROSS_B: Medium risk assets (10% liquidation bonus)
-  - ISOLATED: High risk assets (15% liquidation bonus)
+  - STABLE: Lowest risk assets (1% liquidation bonus)
+  - CROSS_A: Low risk assets (2% liquidation bonus)
+  - CROSS_B: Medium risk assets (3% liquidation bonus)
+  - ISOLATED: High risk assets (4% liquidation bonus)
 
 - **Asset-Specific Parameters**:
   - Individual borrow thresholds
@@ -64,6 +64,7 @@ One of the contract's standout features is its sophisticated risk management fra
   - Support for both isolated and cross-collateral positions
   - Granular health factor calculations
   - Dynamic interest rate model based on utilization and risk tier
+  - Allows transfer of assets between positions to help mitigate risk
 
 ## Economic Model
 
@@ -79,7 +80,7 @@ The protocol implements a sustainable economic model with multiple components:
    - Protocol fees based on profit target (typically 1%)
 
 3. **Liquidation Incentives**:
-   - Tier-based liquidation bonuses (5-15%)
+   - Tier-based liquidation bonuses (1-4%)
    - Governance token staking requirement (20,000 tokens minimum)
 
 4. **Liquidity Provider Rewards**:
@@ -106,13 +107,62 @@ The contract demonstrates the technical maturity expected in a production-grade 
 ## Features
 
 1. Supports more than 200 collateral assets.
-2. Up to 20 collateral assets per user at a time.
-3. Compounds interest.
-4. Gas Efficient.
-5. Issues ERC20 yield token to lenders.
-6. Completely upgradeable.
-7. DAO Managed.
-8. Reward Ecosystem.
+2. Supports up to 1000 user positions.
+3. Up to 20 collateral assets per position at a time.
+4. Compounds interest.
+5. Gas Efficient.
+6. Issues ERC20 yield token to lenders.
+7. Completely upgradeable.
+8. DAO Managed.
+9. Reward Ecosystem.
+
+## Advanced Features
+
+### Flash Loans
+
+The protocol offers flash loans with:
+- Configurable fees (default: 9 basis points)
+- Support for callbacks to borrower contracts
+- Validation of return funds plus fees
+- Fee accrual to protocol treasury
+
+### Interpositional Transfers
+
+A gas-optimized feature allowing users to move collateral between their positions:
+- No token transfers occur (purely accounting changes)
+- Subject to the same risk checks as withdrawals/deposits
+- Enforces maximum asset limits per position
+
+### Oracle Integration
+
+The protocol integrates with Chainlink price oracles:
+- Support for multiple oracles per asset
+- Median price calculation for robust pricing
+- Freshness thresholds for price data
+- Special handling for volatile assets
+- Tiered oracle fallback system
+
+## Technical Safeguards
+
+Several security mechanisms are implemented:
+- Comprehensive input validation
+- Reentrancy guards on all state-modifying functions
+- Circuit breaker (pause) functionality
+- Supply caps per asset
+- Debt caps for isolated assets
+- Maximum asset limit per position
+- Minimum/maximum parameter constraints
+
+## Protocol Metrics and Transparency
+
+The protocol provides extensive on-chain metrics:
+- Current utilization rate
+- Total borrow and supply amounts
+- Interest accrual tracking
+- Position health factors
+- Asset TVL (Total Value Locked)
+- Individual position summaries
+- Collateral valuations
 
 ## Technical Architecture
 
@@ -134,7 +184,7 @@ The Lendefi protocol is built with security and flexibility as core principles. 
    - Cross-collateralization across multiple assets
    - Isolated positions for higher risk assets
    - Custom liquidation parameters per risk tier
-   - Flexible collateral addition/withdrawal
+   - Interpositional asset transfers
 
 4. **Economic Model**:
    - Utilization-based interest rates
@@ -185,10 +235,7 @@ require GPL-v3.0. The smart contracts are labeled accordingly.
 
 You need to hold 20_000 governance tokens to be able to run liquidations on the Lendefi Protocol.
 
-## Running tests
 
-This is a foundry repository. To get more information visit [Foundry](https://github.com/foundry-rs/foundry/blob/master/foundryup/README.md).
-You must have foundry installed.
 
 
 ## Running tests
