@@ -292,7 +292,7 @@ contract GetUserPositionsCountTest is BasicDeploy {
 
         // Try to access position at count (should revert)
         vm.startPrank(bob);
-        vm.expectRevert(bytes("IN")); // Updated error message to match contract implementation
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidPosition.selector));
         LendefiInstance.exitPosition(count);
         vm.stopPrank();
     }
