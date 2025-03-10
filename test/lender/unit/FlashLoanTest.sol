@@ -79,15 +79,14 @@ contract FlashLoanTest is BasicDeploy {
     }
 
     // Test flash loan when receiver doesn't return funds
-    // Test flash loan when receiver doesn't return funds
     function test_FlashLoanWithoutFundReturn() public {
         uint256 flashLoanAmount = 100_000e6;
 
         // Configure receiver to not repay
         flashLoanReceiver.setShouldRepay(false);
 
-        // UPDATED: Expect revert with RepayFailed error, not Flash Loan Failed
-        vm.expectRevert(bytes("RPF")); // "RPF" = Repay Failed
+        // Expect revert with RepaymentFailed error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.RepaymentFailed.selector));
 
         // Attempt flash loan
         LendefiInstance.flashLoan(address(flashLoanReceiver), flashLoanAmount, "");
@@ -99,8 +98,8 @@ contract FlashLoanTest is BasicDeploy {
 
         vm.startPrank(address(timelockInstance));
 
-        // Expect revert with FeeTooHigh error
-        vm.expectRevert(bytes("IF"));
+        // Expect revert with InvalidFee error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidFee.selector));
 
         // Attempt to update fee beyond max
         LendefiInstance.updateFlashLoanFee(newFee);
@@ -112,8 +111,8 @@ contract FlashLoanTest is BasicDeploy {
         uint256 totalLiquidity = usdcInstance.balanceOf(address(LendefiInstance));
         uint256 flashLoanAmount = totalLiquidity + 1e6; // More than available
 
-        // Expect revert with InsufficientFlashLoanLiquidity error
-        vm.expectRevert(bytes("LL"));
+        // Expect revert with LowLiquidity error
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.LowLiquidity.selector));
 
         // Attempt flash loan with too much amount
         LendefiInstance.flashLoan(address(flashLoanReceiver), flashLoanAmount, "");
@@ -127,7 +126,7 @@ contract FlashLoanTest is BasicDeploy {
         flashLoanReceiver.setShouldFail(true);
 
         // Expect revert with FlashLoanFailed error
-        vm.expectRevert(bytes("FLF"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.FlashLoanFailed.selector));
 
         // Attempt flash loan
         LendefiInstance.flashLoan(address(flashLoanReceiver), flashLoanAmount, abi.encodePacked(msg.sender));
