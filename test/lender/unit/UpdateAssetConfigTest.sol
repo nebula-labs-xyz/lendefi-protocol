@@ -266,9 +266,9 @@ contract UpdateAssetConfigTest is BasicDeploy {
             ISOLATION_DEBT_CAP
         );
 
-        // Try supplying more collateral - should revert with NL (Not Listed/active) error
+        // Try supplying more collateral - should revert with NotListed error
         vm.startPrank(alice);
-        vm.expectRevert(bytes("NL"));
+        vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.NotListed.selector));
         LendefiInstance.supplyCollateral(address(testToken), 5 ether, 0);
         vm.stopPrank();
     }
