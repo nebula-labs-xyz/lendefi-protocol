@@ -34,24 +34,20 @@ contract IsRewardableTest is BasicDeploy {
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
-        // Initialize reward parameters via timelock using the consolidated updateProtocolMetrics function
-        // Keep existing values for parameters we're not testing
+        // Initialize reward parameters via timelock using the config approach
         vm.startPrank(address(timelockInstance));
 
-        // Get current values to preserve them in parameters we don't want to change
-        uint256 currentBaseProfitTarget = LendefiInstance.baseProfitTarget();
-        uint256 currentBaseBorrowRate = LendefiInstance.baseBorrowRate();
-        uint256 currentLiquidatorThreshold = LendefiInstance.liquidatorThreshold();
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
 
-        // Update using consolidated function
-        LendefiInstance.updateProtocolMetrics(
-            currentBaseProfitTarget, // Keep current profit target
-            currentBaseBorrowRate, // Keep current borrow rate
-            1_000e18, // Set target reward to 1000 tokens (previously updateTargetReward)
-            180 days, // Set reward interval to 180 days (previously updateRewardInterval)
-            100_000e6, // Set rewardable supply to 100k USDC (previously updateRewardableSupply)
-            currentLiquidatorThreshold // Keep current liquidator threshold
-        );
+        // Update specific parameters while keeping others
+        config.rewardAmount = 1_000e18; // Set target reward to 1000 tokens
+        config.rewardInterval = 180 days; // Set reward interval to 180 days
+        config.rewardableSupply = 100_000e6; // Set rewardable supply to 100k USDC
+
+        // Apply updated config
+        LendefiInstance.loadProtocolConfig(config);
+
         vm.stopPrank();
     }
 
@@ -79,12 +75,15 @@ contract IsRewardableTest is BasicDeploy {
 
     // Test 2: User with insufficient balance should not be eligible
     function test_InsufficientBalanceNotRewardable() public {
+        // Get config to check threshold
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
         // Supply amount less than threshold
-        uint256 smallSupply = 50_000e6; // 50k USDC (less than 100k threshold)
+        uint256 smallSupply = config.rewardableSupply / 2; // 50% of threshold
         _supplyLiquidity(user1, smallSupply);
 
         // Fast-forward beyond reward interval
-        vm.warp(block.timestamp + 181 days);
+        vm.warp(block.timestamp + config.rewardInterval + 1);
 
         bool isEligible = LendefiInstance.isRewardable(user1);
         assertFalse(isEligible, "User with insufficient balance should not be rewardable");
@@ -92,11 +91,14 @@ contract IsRewardableTest is BasicDeploy {
 
     // Test 3: User with sufficient balance but insufficient time should not be eligible
     function test_InsufficientTimeNotRewardable() public {
+        // Get config to check interval
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
         // Supply above threshold
         _supplyLiquidity(user1, LARGE_SUPPLY);
 
         // Fast-forward but not enough time
-        vm.warp(block.timestamp + 179 days);
+        vm.warp(block.timestamp + config.rewardInterval - 1 days);
 
         bool isEligible = LendefiInstance.isRewardable(user1);
         assertFalse(isEligible, "User with insufficient time should not be rewardable");
@@ -104,11 +106,14 @@ contract IsRewardableTest is BasicDeploy {
 
     // Test 4: User meets all criteria and should be eligible
     function test_UserIsRewardable() public {
+        // Get config to check parameters
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
         // Supply above threshold
         _supplyLiquidity(user1, LARGE_SUPPLY);
 
         // Fast-forward beyond reward interval
-        vm.warp(block.timestamp + 181 days);
+        vm.warp(block.timestamp + config.rewardInterval + 1);
 
         bool isEligible = LendefiInstance.isRewardable(user1);
         assertTrue(isEligible, "User with sufficient balance and time should be rewardable");
@@ -116,11 +121,14 @@ contract IsRewardableTest is BasicDeploy {
 
     // Test 5: Edge case - User exactly at the reward threshold
     function test_ExactThresholdRewardable() public {
-        uint256 thresholdAmount = LendefiInstance.rewardableSupply();
+        // Get config to check threshold
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
+        uint256 thresholdAmount = config.rewardableSupply;
         _supplyLiquidity(user1, thresholdAmount);
 
         // Fast-forward beyond reward interval
-        vm.warp(block.timestamp + 180 days + 1);
+        vm.warp(block.timestamp + config.rewardInterval + 1);
 
         bool isEligible = LendefiInstance.isRewardable(user1);
         assertTrue(isEligible, "User with exact threshold balance should be rewardable");
@@ -128,18 +136,23 @@ contract IsRewardableTest is BasicDeploy {
 
     // Test 6: Edge case - User exactly at the time threshold
     function test_ExactTimeThresholdRewardable() public {
+        // Get config to check interval
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
         _supplyLiquidity(user1, LARGE_SUPPLY);
 
         // Fast-forward to exactly the reward interval
-        vm.warp(block.timestamp + 180 days);
+        vm.warp(block.timestamp + config.rewardInterval);
 
         bool isEligible = LendefiInstance.isRewardable(user1);
         assertTrue(isEligible, "User at exact time threshold should be rewardable");
     }
 
-
     // Test 7: Multiple users with different eligibility
     function test_MultipleUsersDifferentEligibility() public {
+        // Get config for parameters
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
         // User1: Enough balance, enough time
         _supplyLiquidity(user1, LARGE_SUPPLY);
 
@@ -150,14 +163,14 @@ contract IsRewardableTest is BasicDeploy {
         _supplyLiquidity(user3, SMALL_SUPPLY);
 
         // Fast-forward beyond reward interval for User1 and User3
-        vm.warp(block.timestamp + 181 days);
+        vm.warp(block.timestamp + config.rewardInterval + 1);
 
         assertTrue(LendefiInstance.isRewardable(user1), "User1 should be eligible");
         assertFalse(LendefiInstance.isRewardable(user3), "User3 should be ineligible due to balance");
 
         // For User2, we need to check if they're actually eligible
         uint256 lastAccrualTime = LendefiInstance.getLiquidityAccrueTimeIndex(user2);
-        bool shouldBeEligible = block.timestamp - LendefiInstance.rewardInterval() >= lastAccrualTime;
+        bool shouldBeEligible = block.timestamp - config.rewardInterval >= lastAccrualTime;
         assertEq(LendefiInstance.isRewardable(user2), shouldBeEligible, "User2 eligibility check");
     }
 
@@ -172,25 +185,18 @@ contract IsRewardableTest is BasicDeploy {
         // Initially eligible
         assertTrue(LendefiInstance.isRewardable(user1), "User should initially be eligible");
 
-        // Increase the threshold using the consolidated function
+        // Increase the threshold using the config approach
         vm.startPrank(address(timelockInstance));
 
-        // Get current values to preserve them
-        uint256 currentBaseProfitTarget = LendefiInstance.baseProfitTarget();
-        uint256 currentBaseBorrowRate = LendefiInstance.baseBorrowRate();
-        uint256 currentTargetReward = LendefiInstance.targetReward();
-        uint256 currentRewardInterval = LendefiInstance.rewardInterval();
-        uint256 currentLiquidatorThreshold = LendefiInstance.liquidatorThreshold();
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
 
-        // Update just the rewardable supply parameter
-        LendefiInstance.updateProtocolMetrics(
-            currentBaseProfitTarget,
-            currentBaseBorrowRate,
-            currentTargetReward,
-            currentRewardInterval,
-            150_000e6, // Increase threshold to 150k USDC
-            currentLiquidatorThreshold
-        );
+        // Update the rewardable supply parameter while keeping others
+        config.rewardableSupply = 150_000e6; // Increase threshold to 150k USDC
+
+        // Apply updated config
+        LendefiInstance.loadProtocolConfig(config);
+
         vm.stopPrank();
 
         // Should no longer be eligible
@@ -199,11 +205,14 @@ contract IsRewardableTest is BasicDeploy {
 
     // Test 9: Protocol actions reset the timer
     function test_SupplyResetsRewardTimer() public {
+        // Get config for parameters
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
         // Initial supply
         _supplyLiquidity(user1, LARGE_SUPPLY);
 
         // Fast-forward almost to eligibility
-        vm.warp(block.timestamp + 179 days);
+        vm.warp(block.timestamp + config.rewardInterval - 1 days);
 
         // Supply more, which should reset the timer
         _supplyLiquidity(user1, MEDIUM_SUPPLY);
@@ -215,7 +224,7 @@ contract IsRewardableTest is BasicDeploy {
         assertFalse(LendefiInstance.isRewardable(user1), "User should not be eligible after timer reset");
 
         // Fast-forward the full interval after the second supply
-        vm.warp(block.timestamp + 180 days);
+        vm.warp(block.timestamp + config.rewardInterval);
 
         // Now should be eligible
         assertTrue(LendefiInstance.isRewardable(user1), "User should be eligible after full interval");
@@ -236,6 +245,9 @@ contract IsRewardableTest is BasicDeploy {
 
     // Test 11: Multiple deposits and their effect on reward timer
     function test_MultipleDepositsTimerBehavior() public {
+        // Get config for parameters
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
         // First deposit
         _supplyLiquidity(user1, 50_000e6); // 50k (below threshold)
 
@@ -251,21 +263,24 @@ contract IsRewardableTest is BasicDeploy {
         assertEq(newAccrualTime, block.timestamp, "Accrual time should be set to current block timestamp");
 
         // Fast-forward another full interval from the latest deposit
-        vm.warp(block.timestamp + 180 days);
+        vm.warp(block.timestamp + config.rewardInterval);
 
         // Should be eligible now because:
         // 1. User has more than rewardableSupply (110k > 100k)
-        // 2. It's been 180 days since the last deposit (which reset the timer)
+        // 2. It's been the full reward interval since the last deposit (which reset the timer)
         assertTrue(LendefiInstance.isRewardable(user1), "User should be eligible after full interval from last deposit");
     }
 
     // Test 12: Multiple partial withdrawals and eligibility
     function test_MultiplePartialWithdrawals() public {
+        // Get config for parameters
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
         // Supply 200k USDC (well above threshold)
         _supplyLiquidity(user1, 200_000e6);
 
         // Fast-forward past reward interval
-        vm.warp(block.timestamp + 181 days);
+        vm.warp(block.timestamp + config.rewardInterval + 1);
 
         // Should be eligible
         assertTrue(LendefiInstance.isRewardable(user1), "User should be eligible initially");
