@@ -58,16 +58,18 @@ contract GetLPInfoTest is BasicDeploy {
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
-        // Setup target reward and interval in Lendefi
+        // Setup target reward and interval in Lendefi using the new config approach
         vm.startPrank(address(timelockInstance));
-        LendefiInstance.updateProtocolMetrics(
-            LendefiInstance.baseProfitTarget(),
-            LendefiInstance.baseBorrowRate(),
-            1_000 ether, // 1k reward (targetReward)
-            180 days, // 6 month interval (rewardInterval)
-            LendefiInstance.rewardableSupply(),
-            LendefiInstance.liquidatorThreshold()
-        );
+
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
+        // Update specific parameters while keeping others
+        config.rewardAmount = 1_000 ether; // 1k reward
+        config.rewardInterval = 180 days; // 6 month interval
+
+        // Apply updated config
+        LendefiInstance.loadProtocolConfig(config);
 
         // Configure WETH as an asset - Use assetsInstance instead
         assetsInstance.updateAssetConfig(
@@ -195,7 +197,8 @@ contract GetLPInfoTest is BasicDeploy {
         _addLiquidity(alice, LP_AMOUNT_LARGE);
 
         // User might be eligible immediately if their base amount exceeds the threshold
-        uint256 rewardableSupply = LendefiInstance.rewardableSupply();
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        uint256 rewardableSupply = config.rewardableSupply;
         console2.log("Rewardable Supply Threshold:", rewardableSupply);
 
         // Move time forward beyond reward interval
@@ -209,8 +212,8 @@ contract GetLPInfoTest is BasicDeploy {
         // If user is eligible, check the pending rewards calculation
         if (isRewardEligible) {
             uint256 duration = block.timestamp - lastAccrualTime;
-            uint256 targetReward = LendefiInstance.targetReward();
-            uint256 rewardInterval = LendefiInstance.rewardInterval();
+            uint256 targetReward = config.rewardAmount;
+            uint256 rewardInterval = config.rewardInterval;
 
             uint256 expectedRewards = (targetReward * duration) / rewardInterval;
             console2.log("Expected rewards:", expectedRewards);
@@ -241,14 +244,14 @@ contract GetLPInfoTest is BasicDeploy {
             / yieldTokenInstance.totalSupply();
         uint256 newSupplyThreshold = baseAmount - 1;
 
-        LendefiInstance.updateProtocolMetrics(
-            LendefiInstance.baseProfitTarget(),
-            LendefiInstance.baseBorrowRate(),
-            LendefiInstance.targetReward(),
-            LendefiInstance.rewardInterval(),
-            newSupplyThreshold, // Set rewardableSupply threshold below user's amount
-            LendefiInstance.liquidatorThreshold()
-        );
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
+        // Update rewardableSupply to be below user's amount while keeping other parameters
+        config.rewardableSupply = newSupplyThreshold;
+
+        // Apply updated config
+        LendefiInstance.loadProtocolConfig(config);
         vm.stopPrank();
 
         // Move time forward way beyond reward interval (multiple intervals)
@@ -269,8 +272,9 @@ contract GetLPInfoTest is BasicDeploy {
 
         if (isRewardEligible) {
             // Calculate uncapped rewards
-            uint256 targetReward = LendefiInstance.targetReward();
-            uint256 rewardInterval = LendefiInstance.rewardInterval();
+            // IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+            uint256 targetReward = config.rewardAmount;
+            uint256 rewardInterval = config.rewardInterval;
             (,, uint256 lastAccrualTime,,) = viewInstance.getLPInfo(alice);
             uint256 duration = block.timestamp - lastAccrualTime;
             uint256 uncappedRewards = (targetReward * duration) / rewardInterval;
@@ -298,7 +302,8 @@ contract GetLPInfoTest is BasicDeploy {
         vm.warp(block.timestamp + 181 days);
 
         // Get rewardable supply threshold once
-        uint256 rewardableSupply = LendefiInstance.rewardableSupply();
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        uint256 rewardableSupply = config.rewardableSupply;
 
         // Use helper function to get LP data for each user
         UserLPData memory aliceData = _getLPDataAndCheckEligibility(alice);
@@ -433,6 +438,9 @@ contract GetLPInfoTest is BasicDeploy {
         // Get protocol snapshot
         LendefiView.ProtocolSnapshot memory snapshot = viewInstance.getProtocolSnapshot();
 
+        // Get config for verification
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
         // Check that snapshot values match expected values
         assertEq(snapshot.totalBorrow, BORROW_AMOUNT, "Total borrow should match setup amount");
         assertEq(
@@ -440,8 +448,8 @@ contract GetLPInfoTest is BasicDeploy {
             LendefiInstance.totalSuppliedLiquidity(),
             "Total supplied liquidity mismatch"
         );
-        assertEq(snapshot.targetReward, 1_000 ether, "Target reward should be 1000 ether");
-        assertEq(snapshot.rewardInterval, 180 days, "Reward interval should be 180 days");
+        assertEq(snapshot.targetReward, config.rewardAmount, "Target reward should be 1000 ether");
+        assertEq(snapshot.rewardInterval, config.rewardInterval, "Reward interval should be 180 days");
 
         // Log snapshot information
         console2.log("Utilization:", snapshot.utilization);
