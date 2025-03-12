@@ -4,6 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
+import {ILendefiView} from "../../../contracts/interfaces/ILendefiView.sol";
 import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {LendefiView} from "../../../contracts/lender/LendefiView.sol";
@@ -145,32 +146,33 @@ contract GetPositionSummaryTest is BasicDeploy {
         uint256 borrowAmount = 10_000e6; // $10,000
         _borrowUSDC(alice, positionId, borrowAmount);
 
-        // Get position summary using view contract instead
-        (
-            uint256 totalCollateralValue,
-            uint256 currentDebt,
-            uint256 availableCredit,
-            bool isIsolated,
-            IPROTOCOL.PositionStatus status
-        ) = viewInstance.getPositionSummary(alice, positionId);
+        // Get position summary using view contract
+        LendefiView.PositionSummary memory summary = viewInstance.getPositionSummary(alice, positionId);
 
         // Log results
-        console2.log("Total collateral value:", totalCollateralValue);
-        console2.log("Current debt:", currentDebt);
-        console2.log("Available credit:", availableCredit);
-        console2.log("Is isolated:", isIsolated ? "Yes" : "No");
-        console2.log("Position status:", uint256(status));
+        console2.log("Total collateral value:", summary.totalCollateralValue);
+        console2.log("Current debt:", summary.currentDebt);
+        console2.log("Available credit:", summary.availableCredit);
+        console2.log("Health factor:", summary.healthFactor);
+        console2.log("Is isolated:", summary.isIsolated ? "Yes" : "No");
+        console2.log("Position status:", uint256(summary.status));
 
         // Calculate expected collateral value
         // 10 ETH * $2500 * WAD / 1e18 / 1e8 = $25,000
         uint256 expectedCollateralValue = (10 ether * 2500e8 * 1e6) / 1e18 / 1e8;
 
+        // In the Lendefi.sol contract, the healthFactor function returns (liqLevel * WAD) / debt
+        // liqLevel = (10e18 * 2500e8 * 850 * 1e6) / (1e18 * 1000 * 1e8) = 21,250e6
+        // healthFactor = (21,250e6 * 1e6) / 10,000e6 = 2,125,000 (2.125e6)
+        uint256 expectedHealthFactor = (21_250e6 * 1e6) / 10_000e6; // 2.125e6
+
         // Verify returned values
-        assertEq(totalCollateralValue, expectedCollateralValue, "Total collateral value incorrect");
-        assertEq(currentDebt, borrowAmount, "Current debt incorrect"); // No interest has accrued yet
-        assertEq(availableCredit, (expectedCollateralValue * 800) / 1000, "Available credit incorrect");
-        assertFalse(isIsolated, "Position should not be isolated");
-        assertEq(uint256(status), uint256(IPROTOCOL.PositionStatus.ACTIVE), "Position should be active");
+        assertEq(summary.totalCollateralValue, expectedCollateralValue, "Total collateral value incorrect");
+        assertEq(summary.currentDebt, borrowAmount, "Current debt incorrect"); // No interest has accrued yet
+        assertEq(summary.availableCredit, (expectedCollateralValue * 800) / 1000, "Available credit incorrect");
+        assertEq(summary.healthFactor, expectedHealthFactor, "Health factor incorrect");
+        assertFalse(summary.isIsolated, "Position should not be isolated");
+        assertEq(uint256(summary.status), uint256(IPROTOCOL.PositionStatus.ACTIVE), "Position should be active");
     }
 
     function test_GetPositionSummary_IsolatedPosition() public {
@@ -184,31 +186,33 @@ contract GetPositionSummaryTest is BasicDeploy {
         _borrowUSDC(alice, positionId, borrowAmount);
 
         // Get position summary using view contract
-        (
-            uint256 totalCollateralValue,
-            uint256 currentDebt,
-            uint256 availableCredit,
-            bool isIsolated,
-            IPROTOCOL.PositionStatus status
-        ) = viewInstance.getPositionSummary(alice, positionId);
+        LendefiView.PositionSummary memory summary = viewInstance.getPositionSummary(alice, positionId);
 
         // Log results
-        console2.log("Total collateral value (isolated):", totalCollateralValue);
-        console2.log("Current debt (isolated):", currentDebt);
-        console2.log("Available credit (isolated):", availableCredit);
-        console2.log("Is isolated:", isIsolated ? "Yes" : "No");
-        console2.log("Position status:", uint256(status));
+        console2.log("Total collateral value (isolated):", summary.totalCollateralValue);
+        console2.log("Current debt (isolated):", summary.currentDebt);
+        console2.log("Available credit (isolated):", summary.availableCredit);
+        console2.log("Health factor (isolated):", summary.healthFactor);
+        console2.log("Is isolated:", summary.isIsolated ? "Yes" : "No");
+        console2.log("Position status:", uint256(summary.status));
 
         // Calculate expected collateral value
         // 5 ETH * $2500 * WAD / 1e18 / 1e8 = $12,500
         uint256 expectedCollateralValue = (5 ether * 2500e8 * 1e6) / 1e18 / 1e8;
 
+        // Based on how healthFactor is calculated in Lendefi.sol:
+        // For 5 ETH at $2500 with 85% liquidation threshold and $5,000 debt:
+        // liqLevel = (5e18 * 2500e8 * 850 * 1e6) / (1e18 * 1000 * 1e8) = 10,625e6
+        // healthFactor = (10,625e6 * 1e6) / 5,000e6 = 2,125,000 (2.125e6)
+        uint256 expectedHealthFactor = (10_625e6 * 1e6) / 5_000e6; // 2.125e6
+
         // Verify returned values
-        assertEq(totalCollateralValue, expectedCollateralValue, "Total collateral value incorrect");
-        assertEq(currentDebt, borrowAmount, "Current debt incorrect"); // No interest has accrued yet
-        assertEq(availableCredit, (expectedCollateralValue * 800) / 1000, "Available credit incorrect");
-        assertTrue(isIsolated, "Position should be isolated");
-        assertEq(uint256(status), uint256(IPROTOCOL.PositionStatus.ACTIVE), "Position should be active");
+        assertEq(summary.totalCollateralValue, expectedCollateralValue, "Total collateral value incorrect");
+        assertEq(summary.currentDebt, borrowAmount, "Current debt incorrect"); // No interest has accrued yet
+        assertEq(summary.availableCredit, (expectedCollateralValue * 800) / 1000, "Available credit incorrect");
+        assertEq(summary.healthFactor, expectedHealthFactor, "Health factor incorrect");
+        assertTrue(summary.isIsolated, "Position should be isolated");
+        assertEq(uint256(summary.status), uint256(IPROTOCOL.PositionStatus.ACTIVE), "Position should be active");
     }
 
     function test_GetPositionSummary_WithInterestAccrual() public {
@@ -221,11 +225,12 @@ contract GetPositionSummaryTest is BasicDeploy {
         _borrowUSDC(alice, positionId, borrowAmount);
 
         // Get position summary before time passes using view contract
-        (uint256 initialCollateralValue, uint256 initialDebt, uint256 initialCreditLimit,,) =
-            viewInstance.getPositionSummary(alice, positionId);
+        LendefiView.PositionSummary memory initialSummary = viewInstance.getPositionSummary(alice, positionId);
+        uint256 initialDebt = initialSummary.currentDebt;
+        uint256 initialHealthFactor = initialSummary.healthFactor;
 
         // Calculate initial remaining credit (what can still be borrowed)
-        uint256 initialRemainingCredit = initialCreditLimit - initialDebt;
+        uint256 initialRemainingCredit = initialSummary.availableCredit - initialDebt;
 
         // Time passes, interest accrues
         vm.warp(block.timestamp + 365 days); // 1 year passes
@@ -234,20 +239,18 @@ contract GetPositionSummaryTest is BasicDeploy {
         wethOracleInstance.setPrice(int256(ETH_PRICE)); // Same price, updated timestamp
 
         // Get position summary after time using view contract
-        (
-            uint256 finalCollateralValue,
-            uint256 finalDebt,
-            uint256 finalCreditLimit,
-            ,
-            IPROTOCOL.PositionStatus finalStatus
-        ) = viewInstance.getPositionSummary(alice, positionId);
+        LendefiView.PositionSummary memory finalSummary = viewInstance.getPositionSummary(alice, positionId);
+        uint256 finalDebt = finalSummary.currentDebt;
+        uint256 finalHealthFactor = finalSummary.healthFactor;
 
         // Calculate final remaining credit
-        uint256 finalRemainingCredit = finalCreditLimit - finalDebt;
+        uint256 finalRemainingCredit = finalSummary.availableCredit - finalDebt;
 
         // Log results
         console2.log("Initial debt:", initialDebt);
+        console2.log("Initial health factor:", initialHealthFactor);
         console2.log("Debt after 1 year:", finalDebt);
+        console2.log("Health factor after 1 year:", finalHealthFactor);
         console2.log("Interest accrued:", finalDebt - initialDebt);
         console2.log("Initial remaining credit:", initialRemainingCredit);
         console2.log("Final remaining credit:", finalRemainingCredit);
@@ -255,16 +258,27 @@ contract GetPositionSummaryTest is BasicDeploy {
         // Verify that debt has increased due to interest
         assertGt(finalDebt, initialDebt, "Debt should increase after time passes");
 
+        // Health factor should decrease as debt increases
+        assertLt(finalHealthFactor, initialHealthFactor, "Health factor should decrease as debt increases");
+
         // Collateral value should remain the same if price hasn't changed
         assertEq(
-            finalCollateralValue, initialCollateralValue, "Collateral value shouldn't change if price is unchanged"
+            finalSummary.totalCollateralValue,
+            initialSummary.totalCollateralValue,
+            "Collateral value shouldn't change if price is unchanged"
         );
 
         // Credit limit should remain the same since collateral value hasn't changed
-        assertEq(finalCreditLimit, initialCreditLimit, "Credit limit should remain the same if collateral unchanged");
+        assertEq(
+            finalSummary.availableCredit,
+            initialSummary.availableCredit,
+            "Credit limit should remain the same if collateral unchanged"
+        );
 
         // Status should remain ACTIVE
-        assertEq(uint256(finalStatus), uint256(IPROTOCOL.PositionStatus.ACTIVE), "Position should remain active");
+        assertEq(
+            uint256(finalSummary.status), uint256(IPROTOCOL.PositionStatus.ACTIVE), "Position should remain active"
+        );
 
         // The remaining credit (credit limit - debt) should decrease as debt increases
         assertLt(
@@ -280,26 +294,35 @@ contract GetPositionSummaryTest is BasicDeploy {
         uint256 positionId = _createPositionWithCollateral(alice, address(wethInstance), collateralAmount, false);
 
         // Get position summary with initial price using view contract
-        (uint256 initialCollateralValue,,,,) = viewInstance.getPositionSummary(alice, positionId);
+        LendefiView.PositionSummary memory initialSummary = viewInstance.getPositionSummary(alice, positionId);
+        uint256 initialCollateralValue = initialSummary.totalCollateralValue;
+        uint256 initialHealthFactor = initialSummary.healthFactor;
 
         // ETH price increases to $3000
         wethOracleInstance.setPrice(int256(3000e8));
 
         // Get position summary after price increase using view contract
-        (uint256 increasedCollateralValue,,,, IPROTOCOL.PositionStatus increasedStatus) =
-            viewInstance.getPositionSummary(alice, positionId);
+        LendefiView.PositionSummary memory increasedSummary = viewInstance.getPositionSummary(alice, positionId);
+        uint256 increasedCollateralValue = increasedSummary.totalCollateralValue;
+        uint256 increasedHealthFactor = increasedSummary.healthFactor;
+        IPROTOCOL.PositionStatus increasedStatus = increasedSummary.status;
 
         // ETH price drops to $2000
         wethOracleInstance.setPrice(int256(2000e8));
 
         // Get position summary after price decrease using view contract
-        (uint256 decreasedCollateralValue,,,, IPROTOCOL.PositionStatus decreasedStatus) =
-            viewInstance.getPositionSummary(alice, positionId);
+        LendefiView.PositionSummary memory decreasedSummary = viewInstance.getPositionSummary(alice, positionId);
+        uint256 decreasedCollateralValue = decreasedSummary.totalCollateralValue;
+        uint256 decreasedHealthFactor = decreasedSummary.healthFactor;
+        IPROTOCOL.PositionStatus decreasedStatus = decreasedSummary.status;
 
         // Log results
         console2.log("Collateral value at $2500:", initialCollateralValue);
+        console2.log("Health factor at $2500:", initialHealthFactor);
         console2.log("Collateral value at $3000:", increasedCollateralValue);
+        console2.log("Health factor at $3000:", increasedHealthFactor);
         console2.log("Collateral value at $2000:", decreasedCollateralValue);
+        console2.log("Health factor at $2000:", decreasedHealthFactor);
 
         // Verify changes in collateral value
         assertGt(increasedCollateralValue, initialCollateralValue, "Collateral value should increase with price");
@@ -313,6 +336,11 @@ contract GetPositionSummaryTest is BasicDeploy {
 
         assertEq(increasedCollateralValue, expectedValueAt3000, "Collateral value at $3000 incorrect");
         assertEq(decreasedCollateralValue, expectedValueAt2000, "Collateral value at $2000 incorrect");
+
+        // Since there's no debt, health factor should be max regardless of price
+        assertEq(initialHealthFactor, type(uint256).max, "Health factor should be max with no debt");
+        assertEq(increasedHealthFactor, type(uint256).max, "Health factor should be max with no debt");
+        assertEq(decreasedHealthFactor, type(uint256).max, "Health factor should be max with no debt");
 
         // Status should remain ACTIVE regardless of price changes
         assertEq(
@@ -335,20 +363,15 @@ contract GetPositionSummaryTest is BasicDeploy {
         vm.stopPrank();
 
         // Get position summary using view contract
-        (
-            uint256 totalCollateralValue,
-            uint256 currentDebt,
-            uint256 availableCredit,
-            bool isIsolated,
-            IPROTOCOL.PositionStatus status
-        ) = viewInstance.getPositionSummary(alice, positionId);
+        LendefiView.PositionSummary memory summary = viewInstance.getPositionSummary(alice, positionId);
 
         // Verify returned values for empty position
-        assertEq(totalCollateralValue, 0, "Total collateral value should be 0");
-        assertEq(currentDebt, 0, "Current debt should be 0");
-        assertEq(availableCredit, 0, "Available credit should be 0");
-        assertFalse(isIsolated, "Position should not be isolated");
-        assertEq(uint256(status), uint256(IPROTOCOL.PositionStatus.ACTIVE), "New position should be ACTIVE");
+        assertEq(summary.totalCollateralValue, 0, "Total collateral value should be 0");
+        assertEq(summary.currentDebt, 0, "Current debt should be 0");
+        assertEq(summary.availableCredit, 0, "Available credit should be 0");
+        assertEq(summary.healthFactor, type(uint256).max, "Health factor should be max with no debt");
+        assertFalse(summary.isIsolated, "Position should not be isolated");
+        assertEq(uint256(summary.status), uint256(IPROTOCOL.PositionStatus.ACTIVE), "New position should be ACTIVE");
     }
 
     function test_GetPositionSummary_MultipleAssets() public {
@@ -372,13 +395,7 @@ contract GetPositionSummaryTest is BasicDeploy {
         vm.stopPrank();
 
         // Get position summary using view contract
-        (
-            uint256 totalCollateralValue,
-            uint256 currentDebt,
-            uint256 availableCredit,
-            bool isIsolated,
-            IPROTOCOL.PositionStatus status
-        ) = viewInstance.getPositionSummary(alice, positionId);
+        LendefiView.PositionSummary memory summary = viewInstance.getPositionSummary(alice, positionId);
 
         // Calculate expected collateral values
         // WETH: 5 ETH * $2500 * 1e6 / 1e18 / 1e8 = $12,500
@@ -397,14 +414,16 @@ contract GetPositionSummaryTest is BasicDeploy {
         // Log results
         console2.log("WETH collateral value:", wethValue);
         console2.log("USDC collateral value:", usdcValue);
-        console2.log("Total collateral value:", totalCollateralValue);
+        console2.log("Total collateral value:", summary.totalCollateralValue);
+        console2.log("Health factor (multi-asset):", summary.healthFactor);
 
         // Verify returned values
-        assertEq(totalCollateralValue, expectedTotalValue, "Total collateral value incorrect");
-        assertEq(currentDebt, 0, "Current debt should be 0");
-        assertEq(availableCredit, expectedTotalCredit, "Available credit incorrect");
-        assertFalse(isIsolated, "Position should not be isolated");
-        assertEq(uint256(status), uint256(IPROTOCOL.PositionStatus.ACTIVE), "Position should be ACTIVE");
+        assertEq(summary.totalCollateralValue, expectedTotalValue, "Total collateral value incorrect");
+        assertEq(summary.currentDebt, 0, "Current debt should be 0");
+        assertEq(summary.availableCredit, expectedTotalCredit, "Available credit incorrect");
+        assertEq(summary.healthFactor, type(uint256).max, "Health factor should be max with no debt");
+        assertFalse(summary.isIsolated, "Position should not be isolated");
+        assertEq(uint256(summary.status), uint256(IPROTOCOL.PositionStatus.ACTIVE), "Position should be ACTIVE");
     }
 
     function test_GetPositionSummary_ClosedPosition() public {
@@ -418,20 +437,15 @@ contract GetPositionSummaryTest is BasicDeploy {
         vm.stopPrank();
 
         // Get position summary using view contract
-        (
-            uint256 totalCollateralValue,
-            uint256 currentDebt,
-            uint256 availableCredit,
-            bool isIsolated,
-            IPROTOCOL.PositionStatus status
-        ) = viewInstance.getPositionSummary(alice, positionId);
+        LendefiView.PositionSummary memory summary = viewInstance.getPositionSummary(alice, positionId);
 
         // Verify returned values for closed position
-        assertEq(totalCollateralValue, 0, "Collateral value should be 0 after closing");
-        assertEq(currentDebt, 0, "Debt should be 0 after closing");
-        assertEq(availableCredit, 0, "Available credit should be 0 after closing");
-        assertFalse(isIsolated, "Position should not be isolated");
-        assertEq(uint256(status), uint256(IPROTOCOL.PositionStatus.CLOSED), "Position status should be CLOSED");
+        assertEq(summary.totalCollateralValue, 0, "Collateral value should be 0 after closing");
+        assertEq(summary.currentDebt, 0, "Debt should be 0 after closing");
+        assertEq(summary.availableCredit, 0, "Available credit should be 0 after closing");
+        assertEq(summary.healthFactor, type(uint256).max, "Health factor should be max with no debt");
+        assertFalse(summary.isIsolated, "Position should not be isolated");
+        assertEq(uint256(summary.status), uint256(IPROTOCOL.PositionStatus.CLOSED), "Position status should be CLOSED");
     }
 
     function test_GetPositionSummary_LiquidatedPosition() public {
@@ -448,7 +462,8 @@ contract GetPositionSummaryTest is BasicDeploy {
         wethOracleInstance.setPrice(int256(2500e8 * 84 / 100)); // Liquidation threshold is 85%
 
         // Setup liquidator
-        uint256 liquidatorThreshold = LendefiInstance.liquidatorThreshold();
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        uint256 liquidatorThreshold = config.liquidatorThreshold;
         vm.prank(address(timelockInstance));
         treasuryInstance.release(address(tokenInstance), bob, liquidatorThreshold);
 
@@ -463,19 +478,18 @@ contract GetPositionSummaryTest is BasicDeploy {
         vm.stopPrank();
 
         // Get position summary using view contract
-        (
-            uint256 totalCollateralValue,
-            uint256 currentDebt,
-            uint256 availableCredit,
-            bool isIsolated,
-            IPROTOCOL.PositionStatus status
-        ) = viewInstance.getPositionSummary(alice, positionId);
+        LendefiView.PositionSummary memory summary = viewInstance.getPositionSummary(alice, positionId);
 
         // Verify returned values for liquidated position
-        assertEq(totalCollateralValue, 0, "Collateral value should be 0 after liquidation");
-        assertEq(currentDebt, 0, "Debt should be 0 after liquidation");
-        assertEq(availableCredit, 0, "Available credit should be 0 after liquidation");
-        assertFalse(isIsolated, "Position should not be isolated after liquidation");
-        assertEq(uint256(status), uint256(IPROTOCOL.PositionStatus.LIQUIDATED), "Position status should be LIQUIDATED");
+        assertEq(summary.totalCollateralValue, 0, "Collateral value should be 0 after liquidation");
+        assertEq(summary.currentDebt, 0, "Debt should be 0 after liquidation");
+        assertEq(summary.availableCredit, 0, "Available credit should be 0 after liquidation");
+        assertEq(summary.healthFactor, type(uint256).max, "Health factor should be max with no debt");
+        assertFalse(summary.isIsolated, "Position should not be isolated");
+        assertEq(
+            uint256(summary.status),
+            uint256(IPROTOCOL.PositionStatus.LIQUIDATED),
+            "Position status should be LIQUIDATED"
+        );
     }
 }
