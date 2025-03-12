@@ -14,7 +14,15 @@ contract FlashLoanTest is BasicDeploy {
     event FlashLoan(
         address indexed initiator, address indexed receiver, address indexed token, uint256 amount, uint256 fee
     );
-    event UpdateFlashLoanFee(uint256 newFee);
+    event ProtocolConfigUpdated(
+        uint256 profitTargetRate,
+        uint256 borrowRate,
+        uint256 rewardAmount,
+        uint256 interval,
+        uint256 supplyAmount,
+        uint256 liquidatorAmount,
+        uint256 flashLoanFee
+    );
 
     MockFlashLoanReceiver internal flashLoanReceiver;
 
@@ -26,9 +34,12 @@ contract FlashLoanTest is BasicDeploy {
         vm.prank(guardian);
         tokenInstance.initializeTGE(address(ecoInstance), address(treasuryInstance));
 
-        // Set up flash loan fee (Lendefi already deployed by deployCompleteWithOracle())
-        vm.prank(address(timelockInstance));
-        LendefiInstance.updateFlashLoanFee(9); // 9 basis points = 0.09%
+        // Set up flash loan fee using the config approach
+        vm.startPrank(address(timelockInstance));
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        config.flashLoanFee = 9; // 9 basis points = 0.09%
+        LendefiInstance.loadProtocolConfig(config);
+        vm.stopPrank();
 
         // Deploy flash loan receiver
         flashLoanReceiver = new MockFlashLoanReceiver();
@@ -98,11 +109,16 @@ contract FlashLoanTest is BasicDeploy {
 
         vm.startPrank(address(timelockInstance));
 
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        // Update fee in config to an invalid value
+        config.flashLoanFee = newFee;
+
         // Expect revert with InvalidFee error
         vm.expectRevert(abi.encodeWithSelector(IPROTOCOL.InvalidFee.selector));
 
         // Attempt to update fee beyond max
-        LendefiInstance.updateFlashLoanFee(newFee);
+        LendefiInstance.loadProtocolConfig(config);
         vm.stopPrank();
     }
 
@@ -138,16 +154,33 @@ contract FlashLoanTest is BasicDeploy {
 
         vm.startPrank(address(timelockInstance));
 
-        // Expect the UpdateFlashLoanFee event
-        vm.expectEmit(true, false, false, true);
-        emit UpdateFlashLoanFee(newFee);
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        uint256 oldFee = config.flashLoanFee;
 
-        // Update fee
-        LendefiInstance.updateFlashLoanFee(newFee);
+        // Update fee in config
+        config.flashLoanFee = newFee;
+
+        // Expect the ProtocolConfigUpdated event instead of UpdateFlashLoanFee
+        vm.expectEmit(true, true, true, true);
+        emit ProtocolConfigUpdated(
+            config.profitTargetRate,
+            config.borrowRate,
+            config.rewardAmount,
+            config.rewardInterval,
+            config.rewardableSupply,
+            config.liquidatorThreshold,
+            config.flashLoanFee
+        );
+
+        // Update config
+        LendefiInstance.loadProtocolConfig(config);
         vm.stopPrank();
 
         // Verify fee was updated
-        assertEq(LendefiInstance.flashLoanFee(), newFee, "Flash loan fee should be updated");
+        config = LendefiInstance.getConfig();
+        assertEq(config.flashLoanFee, newFee, "Flash loan fee should be updated");
+        assertNotEq(config.flashLoanFee, oldFee, "Flash loan fee should be different from original");
 
         // Test flash loan with new fee
         uint256 flashLoanAmount = 100_000e6;
@@ -168,13 +201,18 @@ contract FlashLoanTest is BasicDeploy {
 
         vm.startPrank(bob);
 
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        // Update fee in config
+        config.flashLoanFee = newFee;
+
         // Expect revert with AccessControl error
         bytes memory expectedError =
             abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", bob, keccak256("MANAGER_ROLE"));
         vm.expectRevert(expectedError);
 
         // Attempt to update fee as non-manager
-        LendefiInstance.updateFlashLoanFee(newFee);
+        LendefiInstance.loadProtocolConfig(config);
         vm.stopPrank();
     }
 
@@ -225,8 +263,10 @@ contract FlashLoanTest is BasicDeploy {
         // Skip if amount is too large for available liquidity
         uint256 availableLiquidity = usdcInstance.balanceOf(address(LendefiInstance));
         vm.assume(amount <= availableLiquidity);
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
 
-        uint256 flashLoanFee = (amount * LendefiInstance.flashLoanFee()) / 10000;
+        uint256 flashLoanFee = (amount * config.flashLoanFee) / 10000;
 
         // Fund the receiver
         usdcInstance.mint(address(this), flashLoanFee);
