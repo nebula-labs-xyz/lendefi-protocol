@@ -132,7 +132,8 @@ contract LendefiExtendedTest is BasicDeploy {
         uint256 utilization = LendefiInstance.getUtilization();
 
         // Get base borrow rate
-        uint256 baseRate = LendefiInstance.baseBorrowRate();
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        uint256 baseRate = config.borrowRate;
         uint256 tierRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
 
         console2.log("Initial utilization (%):", utilization * 100 / WAD);
@@ -246,24 +247,34 @@ contract LendefiExtendedTest is BasicDeploy {
     function test_ParameterUpdates() public {
         vm.startPrank(address(timelockInstance));
 
-        // Update protocol metrics - consolidated method
-        LendefiInstance.updateProtocolMetrics(
-            0.005e6, // base profit target
-            0.02e6, // base borrow rate
-            2_000 ether, // target reward
-            180 days, // reward interval
-            100_000e6, // rewardable supply
-            20_000 ether // liquidator threshold
-        );
+        // Create a ProtocolConfig struct with the new values
+        IPROTOCOL.ProtocolConfig memory config = IPROTOCOL.ProtocolConfig({
+            profitTargetRate: 0.005e6, // 0.5% profit target
+            borrowRate: 0.02e6, // 2% base borrow rate
+            rewardAmount: 2_000 ether, // 2,000 tokens reward
+            rewardInterval: 180 days, // 180 days reward interval
+            rewardableSupply: 100_000e6, // 100,000 USDC minimum supply
+            liquidatorThreshold: 20_000 ether, // 20,000 tokens to liquidate
+            flashLoanFee: 9 // 9 basis points (0.09%) flash loan fee
+        });
+
+        // Update protocol config using the new loadProtocolConfig function
+        LendefiInstance.loadProtocolConfig(config);
 
         // Update tier parameters - moved to assetsInstance
         assetsInstance.updateTierParameters(ILendefiAssets.CollateralTier.CROSS_A, 0.1e6, 0.1e6);
 
         vm.stopPrank();
 
-        // Verify updates
-        assertEq(LendefiInstance.baseProfitTarget(), 0.005e6);
-        assertEq(LendefiInstance.baseBorrowRate(), 0.02e6);
+        // Verify updates - get values from the mainConfig struct
+        IPROTOCOL.ProtocolConfig memory updatedConfig = LendefiInstance.getConfig();
+        assertEq(updatedConfig.profitTargetRate, 0.005e6);
+        assertEq(updatedConfig.borrowRate, 0.02e6);
+        assertEq(updatedConfig.rewardAmount, 2_000 ether);
+        assertEq(updatedConfig.rewardInterval, 180 days);
+        assertEq(updatedConfig.rewardableSupply, 100_000e6);
+        assertEq(updatedConfig.liquidatorThreshold, 20_000 ether);
+        assertEq(updatedConfig.flashLoanFee, 9);
     }
 
     function test_TVLTracking() public {
