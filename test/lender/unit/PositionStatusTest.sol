@@ -356,7 +356,8 @@ contract PositionStatusTest is BasicDeploy {
     // Helper to setup liquidator and execute liquidation
     function _setupLiquidatorAndExecute(address user, uint256 positionId, address liquidator) internal {
         // Give liquidator enough governance tokens
-        uint256 liquidatorThreshold = LendefiInstance.liquidatorThreshold();
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        uint256 liquidatorThreshold = config.liquidatorThreshold;
 
         vm.prank(address(timelockInstance));
         treasuryInstance.release(address(tokenInstance), liquidator, liquidatorThreshold); // Give enough gov tokens
