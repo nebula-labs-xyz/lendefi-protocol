@@ -18,9 +18,23 @@ interface IPROTOCOL {
     }
 
     /**
+     * @notice Configuration parameters for protocol operations and rewards
+     * @dev Centralized storage for all adjustable protocol parameters
+     */
+    struct ProtocolConfig {
+        uint256 profitTargetRate; // Target profit rate (min 0.25%)
+        uint256 borrowRate; // Base borrow rate (min 1%)
+        uint256 rewardAmount; // Target reward amount (max 10,000 tokens)
+        uint256 rewardInterval; // Reward interval in seconds (min 90 days)
+        uint256 rewardableSupply; // Minimum rewardable supply (min 20,000 USDC)
+        uint256 liquidatorThreshold; // Minimum liquidator token threshold (min 10 tokens)
+        uint256 flashLoanFee; // Fee percentage for flash loans in basis points (max 100)
+    }
+    /**
      * @notice User borrowing position data
      * @dev Core data structure tracking user's debt and position configuration
      */
+
     struct UserPosition {
         bool isIsolated; // Whether position uses isolation mode
         uint256 debtAmount; // Current debt principal without interest
@@ -43,6 +57,31 @@ interface IPROTOCOL {
      */
     event Upgrade(address indexed admin, address indexed implementation);
 
+    /**
+     * @dev Emitted when protocol Config is updated
+     */
+    event ProtocolConfigUpdated(
+        uint256 profitTargetRate,
+        uint256 borrowRate,
+        uint256 rewardAmount,
+        uint256 interval,
+        uint256 supplyAmount,
+        uint256 liquidatorAmount,
+        uint256 flashLoanFee
+    );
+
+    /**
+     * @dev Emitted when protocol Config are reset to default values
+     */
+    event ProtocolConfigReset(
+        uint256 profitTargetRate,
+        uint256 borrowRate,
+        uint256 rewardAmount,
+        uint256 interval,
+        uint256 supplyAmount,
+        uint256 liquidatorThreshold,
+        uint256 flashLoanFee
+    );
     /**
      * @notice Emitted when a user supplies liquidity to the protocol
      * @param supplier Address of the liquidity supplier
@@ -133,21 +172,6 @@ interface IPROTOCOL {
     event FlashLoan(
         address indexed initiator, address indexed receiver, address indexed token, uint256 amount, uint256 fee
     );
-
-    event ProtocolMetricsUpdated(
-        uint256 profitTargetRate,
-        uint256 borrowRate,
-        uint256 rewardAmount,
-        uint256 interval,
-        uint256 supplyAmount,
-        uint256 liquidatorAmount
-    );
-
-    /**
-     * @notice Emitted when the flash loan fee is updated
-     * @param fee New flash loan fee (scaled by 1000)
-     */
-    event UpdateFlashLoanFee(uint256 fee);
 
     /**
      * @notice Emitted when a position is liquidated
@@ -380,14 +404,6 @@ interface IPROTOCOL {
      */
     function flashLoan(address receiver, uint256 amount, bytes calldata params) external;
 
-    // Configuration functions
-    /**
-     * @notice Updates the fee charged for flash loans
-     * @param newFee The new flash loan fee (scaled by 1000, e.g., 5 = 0.5%)
-     * @dev Can only be called by authorized governance roles
-     */
-    function updateFlashLoanFee(uint256 newFee) external;
-
     // Position management functions
 
     /**
@@ -614,48 +630,6 @@ interface IPROTOCOL {
     function totalAccruedSupplierInterest() external view returns (uint256);
 
     /**
-     * @notice Gets the target reward amount per distribution interval
-     * @return The target reward amount
-     */
-    function targetReward() external view returns (uint256);
-
-    /**
-     * @notice Gets the time interval between reward distributions
-     * @return The reward interval in seconds
-     */
-    function rewardInterval() external view returns (uint256);
-
-    /**
-     * @notice Gets the minimum liquidity threshold required to be eligible for rewards
-     * @return The rewardable supply threshold
-     */
-    function rewardableSupply() external view returns (uint256);
-
-    /**
-     * @notice Gets the base interest rate charged on borrowing
-     * @return The base borrow rate (scaled by RAY)
-     */
-    function baseBorrowRate() external view returns (uint256);
-
-    /**
-     * @notice Gets the target profit rate for the protocol
-     * @return The base profit target (scaled by RAY)
-     */
-    function baseProfitTarget() external view returns (uint256);
-
-    /**
-     * @notice Gets the minimum governance token threshold required to be a liquidator
-     * @return The liquidator threshold amount
-     */
-    function liquidatorThreshold() external view returns (uint256);
-
-    /**
-     * @notice Gets the current fee charged for flash loans
-     * @return The flash loan fee (scaled by 1000)
-     */
-    function flashLoanFee() external view returns (uint256);
-
-    /**
      * @notice Gets the total fees collected from flash loans
      * @return The total flash loan fees collected
      */
@@ -686,4 +660,10 @@ interface IPROTOCOL {
      */
     function interpositionalTransfer(uint256 fromPositionId, uint256 toPositionId, address asset, uint256 amount)
         external;
+
+    /**
+     * @notice Gets the current protocol config
+     * @return ProtocoConfig struct containing all protocol parameters
+     */
+    function getConfig() external view returns (ProtocolConfig memory);
 }
