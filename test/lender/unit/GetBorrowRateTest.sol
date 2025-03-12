@@ -236,32 +236,24 @@ contract GetBorrowRateTest is BasicDeploy {
         _createPositionAndBorrow(alice, 400 ether, 400_000e6); // 400 ETH worth $1M, loan $400k
 
         // Get original rates
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
         uint256 originalStableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
         uint256 originalCrossARate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
 
         console2.log("Original STABLE borrow rate:", originalStableRate);
         console2.log("Original CROSS_A borrow rate:", originalCrossARate);
 
-        // Get current base borrow rate
-        // UPDATED: Use updateProtocolMetrics to update all parameters at once
-        uint256 currentBaseBorrowRate = LendefiInstance.baseBorrowRate();
-        uint256 currentBaseProfitTarget = LendefiInstance.baseProfitTarget();
-        uint256 currentTargetReward = LendefiInstance.targetReward();
-        uint256 currentRewardInterval = LendefiInstance.rewardInterval();
-        uint256 currentRewardableSupply = LendefiInstance.rewardableSupply();
-        uint256 currentLiquidatorThreshold = LendefiInstance.liquidatorThreshold();
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
+        // Store the original borrow rate for verification
+        uint256 originalBaseBorrowRate = config.borrowRate;
+
+        // Double the borrow rate in the config
+        config.borrowRate = config.borrowRate * 2;
 
         vm.startPrank(address(timelockInstance));
-        // Update base borrow rate to double the current value
-        LendefiInstance.updateProtocolMetrics(
-            currentBaseProfitTarget,
-            currentBaseBorrowRate * 2, // Double the borrow rate
-            currentTargetReward,
-            currentRewardInterval,
-            currentRewardableSupply,
-            currentLiquidatorThreshold
-        );
+        // Update config with doubled borrow rate
+        LendefiInstance.loadProtocolConfig(config);
         vm.stopPrank();
 
         // Get new rates
@@ -270,6 +262,8 @@ contract GetBorrowRateTest is BasicDeploy {
 
         console2.log("New STABLE borrow rate after base rate increase:", newStableRate);
         console2.log("New CROSS_A borrow rate after base rate increase:", newCrossARate);
+        console2.log("Original base borrow rate:", originalBaseBorrowRate);
+        console2.log("New base borrow rate:", config.borrowRate);
 
         // Verify rates increased
         assertGt(newStableRate, originalStableRate, "STABLE rate should increase after base rate update");
@@ -342,34 +336,31 @@ contract GetBorrowRateTest is BasicDeploy {
         _createPositionAndBorrow(alice, 400 ether, 400_000e6); // 400 ETH worth $1M, loan $400k
 
         // Get original rate and profit target
-        // UPDATED: Use direct access to state variables instead of getProtocolSnapshot
-        uint256 originalProfitTarget = LendefiInstance.baseProfitTarget();
+        IPROTOCOL.ProtocolConfig memory originalConfig = LendefiInstance.getConfig();
+        uint256 originalProfitTarget = originalConfig.profitTargetRate;
         uint256 originalStableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
 
         console2.log("Original STABLE borrow rate:", originalStableRate);
         console2.log("Original profit target:", originalProfitTarget);
 
-        // Update profit target using consolidated updateProtocolMetrics
+        // Create a new config with doubled profit target
+        IPROTOCOL.ProtocolConfig memory newConfig = originalConfig;
+        newConfig.profitTargetRate = originalProfitTarget * 2; // Double profit target
+
+        // Update profit target
         vm.startPrank(address(timelockInstance));
-        LendefiInstance.updateProtocolMetrics(
-            originalProfitTarget * 2, // Double profit target
-            LendefiInstance.baseBorrowRate(),
-            LendefiInstance.targetReward(),
-            LendefiInstance.rewardInterval(),
-            LendefiInstance.rewardableSupply(),
-            LendefiInstance.liquidatorThreshold()
-        );
+        LendefiInstance.loadProtocolConfig(newConfig);
         vm.stopPrank();
 
         // Get new values
-        uint256 newProfitTarget = LendefiInstance.baseProfitTarget();
+        uint256 updatedProfitTarget = LendefiInstance.getConfig().profitTargetRate;
         uint256 newStableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
 
         console2.log("New STABLE borrow rate after profit target update:", newStableRate);
-        console2.log("New profit target:", newProfitTarget);
+        console2.log("New profit target:", updatedProfitTarget);
 
         // Verify profit target was updated
-        assertEq(newProfitTarget, originalProfitTarget * 2, "Profit target should double");
+        assertEq(updatedProfitTarget, originalProfitTarget * 2, "Profit target should double");
 
         // Note: The effect of profit target on borrow rate depends on the implementation
         // Log the result but don't make strong assertions about the relationship
