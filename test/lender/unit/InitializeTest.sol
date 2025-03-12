@@ -36,7 +36,6 @@ contract InitializeTest is BasicDeploy {
 
     function test_InitializeSuccess() public {
         // Deploy Lendefi
-
         address payable proxy = payable(Upgrades.deployUUPSProxy("Lendefi.sol", data));
         LendefiInstance = Lendefi(proxy);
 
@@ -49,13 +48,17 @@ contract InitializeTest is BasicDeploy {
         );
         assertTrue(LendefiInstance.hasRole(keccak256("UPGRADER_ROLE"), guardian), "Guardian not assigned UPGRADER_ROLE");
 
-        // Check default parameters
-        assertEq(LendefiInstance.targetReward(), 2_000 ether, "Incorrect targetReward");
-        assertEq(LendefiInstance.rewardInterval(), 180 days, "Incorrect rewardInterval");
-        assertEq(LendefiInstance.rewardableSupply(), 100_000 * 1e6, "Incorrect rewardableSupply");
-        assertEq(LendefiInstance.baseBorrowRate(), 0.06e6, "Incorrect baseBorrowRate");
-        assertEq(LendefiInstance.baseProfitTarget(), 0.01e6, "Incorrect baseProfitTarget");
-        assertEq(LendefiInstance.liquidatorThreshold(), 20_000 ether, "Incorrect liquidatorThreshold");
+        // Check default parameters using the mainConfig struct
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
+        // Verify config values
+        assertEq(config.rewardAmount, 2_000 ether, "Incorrect rewardAmount");
+        assertEq(config.rewardInterval, 180 days, "Incorrect rewardInterval");
+        assertEq(config.rewardableSupply, 100_000 * 1e6, "Incorrect rewardableSupply");
+        assertEq(config.borrowRate, 0.06e6, "Incorrect borrowRate");
+        assertEq(config.profitTargetRate, 0.01e6, "Incorrect profitTargetRate");
+        assertEq(config.liquidatorThreshold, 20_000 ether, "Incorrect liquidatorThreshold");
+        assertEq(config.flashLoanFee, 9, "Incorrect flashLoanFee");
 
         // Check tier parameters
         (uint256[4] memory jumpRates, uint256[4] memory LiquidationFees) = assetsInstance.getTierRates();
@@ -123,16 +126,15 @@ contract InitializeTest is BasicDeploy {
         );
     }
 
-    // Test for decimal precision in initialized values
     function test_InitializationDecimalPrecision() public {
         // Deploy Lendefi with initialization
-
         address payable proxy = payable(Upgrades.deployUUPSProxy("Lendefi.sol", data));
         LendefiInstance = Lendefi(proxy);
 
         // Verify exact decimal precision of initialized values
-        assertEq(LendefiInstance.baseBorrowRate(), 60_000, "baseBorrowRate should be 0.06e6 = 60000");
-        assertEq(LendefiInstance.baseProfitTarget(), 10_000, "baseProfitTarget should be 0.01e6 = 10000");
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        assertEq(config.borrowRate, 60_000, "borrowRate should be 0.06e6 = 60000");
+        assertEq(config.profitTargetRate, 10_000, "profitTargetRate should be 0.01e6 = 10000");
 
         (uint256[4] memory jumpRates, uint256[4] memory liquidationFees) = assetsInstance.getTierRates();
 
