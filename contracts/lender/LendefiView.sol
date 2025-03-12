@@ -59,30 +59,24 @@ contract LendefiView is ILendefiView {
      * @dev Aggregates multiple protocol calls into one convenient view function
      * @param user The address of the position owner
      * @param positionId The ID of the position to query
-     * @return totalCollateralValue The total USD value of all collateral in the position
-     * @return currentDebt The current debt amount including accrued interest
-     * @return availableCredit The remaining credit available to borrow
-     * @return isIsolated Whether the position is in isolation mode
-     * @return status The current status of the position (Active, Liquidated, etc.)
+     * @return Summary struct containing all position data
      */
-    function getPositionSummary(address user, uint256 positionId)
-        external
-        view
-        returns (
-            uint256 totalCollateralValue,
-            uint256 currentDebt,
-            uint256 availableCredit,
-            bool isIsolated,
-            IPROTOCOL.PositionStatus status
-        )
-    {
+    function getPositionSummary(address user, uint256 positionId) external view returns (PositionSummary memory) {
         IPROTOCOL.UserPosition memory position = protocol.getUserPosition(user, positionId);
 
-        totalCollateralValue = protocol.calculateCollateralValue(user, positionId);
-        currentDebt = protocol.calculateDebtWithInterest(user, positionId);
-        availableCredit = protocol.calculateCreditLimit(user, positionId);
-        isIsolated = position.isIsolated;
-        status = position.status;
+        uint256 totalCollateralValue = protocol.calculateCollateralValue(user, positionId);
+        uint256 currentDebt = protocol.calculateDebtWithInterest(user, positionId);
+        uint256 availableCredit = protocol.calculateCreditLimit(user, positionId);
+        uint256 healthFactor = protocol.healthFactor(user, positionId);
+
+        return PositionSummary({
+            totalCollateralValue: totalCollateralValue,
+            currentDebt: currentDebt,
+            availableCredit: availableCredit,
+            healthFactor: healthFactor,
+            isIsolated: position.isIsolated,
+            status: position.status
+        });
     }
 
     /**
@@ -118,8 +112,9 @@ contract LendefiView is ILendefiView {
 
         // Calculate pending rewards if eligible
         if (isRewardEligible) {
+            IPROTOCOL.ProtocolConfig memory config = protocol.getConfig();
             uint256 duration = block.timestamp - lastAccrualTime;
-            uint256 reward = (protocol.targetReward() * duration) / protocol.rewardInterval();
+            uint256 reward = (config.rewardAmount * duration) / config.rewardInterval;
             uint256 maxReward = ecosystemInstance.maxReward();
             pendingRewards = reward > maxReward ? maxReward : reward;
         }
@@ -131,18 +126,19 @@ contract LendefiView is ILendefiView {
      * @return A ProtocolSnapshot struct containing all key protocol metrics and parameters
      */
     function getProtocolSnapshot() external view returns (ProtocolSnapshot memory) {
+        IPROTOCOL.ProtocolConfig memory config = protocol.getConfig();
         return ProtocolSnapshot({
             utilization: protocol.getUtilization(),
             borrowRate: protocol.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A),
             supplyRate: protocol.getSupplyRate(),
             totalBorrow: protocol.totalBorrow(),
             totalSuppliedLiquidity: protocol.totalSuppliedLiquidity(),
-            targetReward: protocol.targetReward(),
-            rewardInterval: protocol.rewardInterval(),
-            rewardableSupply: protocol.rewardableSupply(),
-            baseProfitTarget: protocol.baseProfitTarget(),
-            liquidatorThreshold: protocol.liquidatorThreshold(),
-            flashLoanFee: protocol.flashLoanFee()
+            targetReward: config.rewardAmount,
+            rewardInterval: config.rewardInterval,
+            rewardableSupply: config.rewardableSupply,
+            baseProfitTarget: config.profitTargetRate,
+            liquidatorThreshold: config.liquidatorThreshold,
+            flashLoanFee: config.flashLoanFee
         });
     }
 }
