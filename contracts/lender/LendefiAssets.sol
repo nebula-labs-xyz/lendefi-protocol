@@ -157,6 +157,13 @@ contract LendefiAssets is
         CollateralTier tier,
         uint256 isolationDebtCap
     ) external onlyRole(MANAGER_ROLE) whenNotPaused {
+        // Check that thresholds don't exceed 100%
+        if (liquidationThreshold > 990) {
+            revert InvalidLiquidationThreshold(liquidationThreshold);
+        }
+        if (borrowThreshold > liquidationThreshold - 10) {
+            revert InvalidBorrowThreshold(borrowThreshold);
+        }
         bool newAsset = !listedAsset.contains(asset);
 
         if (newAsset) {
@@ -209,16 +216,16 @@ contract LendefiAssets is
      * @dev Allows adding secondary or backup oracles to enhance price reliability
      * @custom:security Can only be called by accounts with MANAGER_ROLE
      */
-    function addAssetOracle(address asset, address oracle, uint8 decimals_)
-        external
-        onlyRole(MANAGER_ROLE)
-        whenNotPaused
-    {
-        if (!listedAsset.contains(asset)) {
-            revert AssetNotListed(asset);
-        }
-        oracleModule.addOracle(asset, oracle, decimals_);
-    }
+    // function addAssetOracle(address asset, address oracle, uint8 decimals_)
+    //     external
+    //     onlyRole(MANAGER_ROLE)
+    //     whenNotPaused
+    // {
+    //     if (!listedAsset.contains(asset)) {
+    //         revert AssetNotListed(asset);
+    //     }
+    //     oracleModule.addOracle(asset, oracle, decimals_);
+    // }
 
     /**
      * @notice Removes an oracle data source for an asset
@@ -227,12 +234,12 @@ contract LendefiAssets is
      * @dev Allows removing unreliable or deprecated oracles
      * @custom:security Can only be called by accounts with MANAGER_ROLE
      */
-    function removeAssetOracle(address asset, address oracle) external onlyRole(MANAGER_ROLE) whenNotPaused {
-        if (!listedAsset.contains(asset)) {
-            revert AssetNotListed(asset);
-        }
-        oracleModule.removeOracle(asset, oracle);
-    }
+    // function removeAssetOracle(address asset, address oracle) external onlyRole(MANAGER_ROLE) whenNotPaused {
+    //     if (!listedAsset.contains(asset)) {
+    //         revert AssetNotListed(asset);
+    //     }
+    //     oracleModule.removeOracle(asset, oracle);
+    // }
 
     /**
      * @notice Sets the primary oracle for an asset
@@ -241,12 +248,12 @@ contract LendefiAssets is
      * @dev The primary oracle is used as a fallback when median calculation fails
      * @custom:security Can only be called by accounts with MANAGER_ROLE
      */
-    function setPrimaryAssetOracle(address asset, address oracle) external onlyRole(MANAGER_ROLE) whenNotPaused {
-        if (!listedAsset.contains(asset)) {
-            revert AssetNotListed(asset);
-        }
-        oracleModule.setPrimaryOracle(asset, oracle);
-    }
+    // function setPrimaryAssetOracle(address asset, address oracle) external onlyRole(MANAGER_ROLE) whenNotPaused {
+    //     if (!listedAsset.contains(asset)) {
+    //         revert AssetNotListed(asset);
+    //     }
+    //     oracleModule.setPrimaryOracle(asset, oracle);
+    // }
 
     /**
      * @notice Updates oracle time thresholds
@@ -255,14 +262,14 @@ contract LendefiAssets is
      * @dev Controls how old price data can be before rejection
      * @custom:security Can only be called by accounts with MANAGER_ROLE
      */
-    function updateOracleTimeThresholds(uint256 freshness, uint256 volatility)
-        external
-        onlyRole(MANAGER_ROLE)
-        whenNotPaused
-    {
-        oracleModule.updateFreshnessThreshold(freshness);
-        oracleModule.updateVolatilityThreshold(volatility);
-    }
+    // function updateOracleTimeThresholds(uint256 freshness, uint256 volatility)
+    //     external
+    //     onlyRole(MANAGER_ROLE)
+    //     whenNotPaused
+    // {
+    //     oracleModule.updateFreshnessThreshold(freshness);
+    //     oracleModule.updateVolatilityThreshold(volatility);
+    // }
 
     /**
      * @notice Updates the core Lendefi contract address
