@@ -410,15 +410,6 @@ contract SupplyLiquidityTest is BasicDeploy {
     function test_RewardEligibilityAfterSupply() public {
         vm.startPrank(address(timelockInstance));
 
-        // Set rewardableSupply to a lower amount for testing
-        LendefiInstance.updateProtocolMetrics(
-            LendefiInstance.baseProfitTarget(), // Keep current profit target
-            LendefiInstance.baseBorrowRate(), // Keep current borrow rate
-            LendefiInstance.targetReward(), // Keep current target reward
-            LendefiInstance.rewardInterval(), // Keep current reward interval
-            100_000e6, // Set rewardableSupply to 100,000 USDC
-            LendefiInstance.liquidatorThreshold() // Keep current liquidator threshold
-        );
         vm.stopPrank();
 
         // Mint USDC to alice
@@ -432,8 +423,8 @@ contract SupplyLiquidityTest is BasicDeploy {
         vm.stopPrank();
 
         // Fast forward time beyond rewardInterval
-        uint256 rewardInterval = LendefiInstance.rewardInterval();
-        vm.warp(block.timestamp + rewardInterval + 1);
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        vm.warp(block.timestamp + config.rewardInterval + 1);
 
         // Check if alice is now reward eligible
         bool isEligible = LendefiInstance.isRewardable(alice);
