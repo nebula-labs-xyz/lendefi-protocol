@@ -29,9 +29,10 @@ contract ClaimRewardTest is BasicDeploy {
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
         // Cache the default protocol parameters for testing
-        defaultRewardInterval = LendefiInstance.rewardInterval(); // 180 days
-        defaultRewardableSupply = LendefiInstance.rewardableSupply(); // 100,000 USDC (with 6 decimals)
-        defaultTargetReward = LendefiInstance.targetReward(); // 2,000 ether (with 18 decimals)
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        defaultRewardInterval = config.rewardInterval; // 180 days
+        defaultRewardableSupply = config.rewardableSupply; // 100,000 USDC (with 6 decimals)
+        defaultTargetReward = config.rewardAmount; // 2,000 ether (with 18 decimals)
 
         // Sanity check our cached values
         require(defaultRewardInterval == 180 days, "Expected 180 days reward interval");
