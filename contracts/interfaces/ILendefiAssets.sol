@@ -109,6 +109,18 @@ interface ILendefiAssets {
     error ZeroAddressNotAllowed();
 
     /**
+     * @notice Error thrown when liquidation threshold is less than borrow threshold
+     * @param liquidationThreshold The liquidation threshold that was too low
+     */
+    error InvalidLiquidationThreshold(uint256 liquidationThreshold);
+
+    /**
+     * @notice Error thrown when liquidation threshold is less than borrow threshold
+     * @param borrowThreshold The borrow threshold that was too high
+     */
+    error InvalidBorrowThreshold(uint256 borrowThreshold);
+
+    /**
      * @notice Initializes the asset management module
      * @param timelock Address with MANAGER_ROLE for asset configuration
      * @param oracle_ Address of oracle module for price feeds
@@ -190,7 +202,7 @@ interface ILendefiAssets {
      * @dev Allows adding secondary or backup oracles to enhance price reliability
      * @custom:security Can only be called by accounts with MANAGER_ROLE
      */
-    function addAssetOracle(address asset, address oracle, uint8 decimals_) external;
+    // function addAssetOracle(address asset, address oracle, uint8 decimals_) external;
 
     /**
      * @notice Removes an oracle data source for an asset
@@ -199,7 +211,7 @@ interface ILendefiAssets {
      * @dev Allows removing unreliable or deprecated oracles
      * @custom:security Can only be called by accounts with MANAGER_ROLE
      */
-    function removeAssetOracle(address asset, address oracle) external;
+    // function removeAssetOracle(address asset, address oracle) external;
 
     /**
      * @notice Sets the primary oracle for an asset
@@ -208,7 +220,7 @@ interface ILendefiAssets {
      * @dev The primary oracle is used as a fallback when median calculation fails
      * @custom:security Can only be called by accounts with MANAGER_ROLE
      */
-    function setPrimaryAssetOracle(address asset, address oracle) external;
+    // function setPrimaryAssetOracle(address asset, address oracle) external;
 
     /**
      * @notice Updates oracle time thresholds
@@ -217,7 +229,7 @@ interface ILendefiAssets {
      * @dev Controls how old price data can be before rejection
      * @custom:security Can only be called by accounts with MANAGER_ROLE
      */
-    function updateOracleTimeThresholds(uint256 freshness, uint256 volatility) external;
+    // function updateOracleTimeThresholds(uint256 freshness, uint256 volatility) external;
 
     /**
      * @notice Validates asset is listed and active
