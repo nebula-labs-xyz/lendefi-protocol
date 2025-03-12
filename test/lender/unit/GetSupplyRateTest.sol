@@ -267,15 +267,14 @@ contract GetSupplyRateTest is BasicDeploy {
         // Start a prank properly as timelock
         vm.startPrank(address(timelockInstance));
 
-        // Update base profit target (and other parameters unchanged)
-        LendefiInstance.updateProtocolMetrics(
-            initialBaseProfitTarget * 2, // double the base profit target
-            LendefiInstance.baseBorrowRate(),
-            LendefiInstance.targetReward(),
-            LendefiInstance.rewardInterval(),
-            LendefiInstance.rewardableSupply(),
-            LendefiInstance.liquidatorThreshold()
-        );
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
+        // Update base profit target (keep other parameters unchanged)
+        config.profitTargetRate = initialBaseProfitTarget * 2; // double the base profit target
+
+        // Apply updated config
+        LendefiInstance.loadProtocolConfig(config);
 
         // End the prank
         vm.stopPrank();
