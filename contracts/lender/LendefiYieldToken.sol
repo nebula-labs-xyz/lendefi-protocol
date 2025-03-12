@@ -55,6 +55,11 @@ contract LendefiYieldToken is
      */
     event Upgrade(address indexed upgrader, address indexed implementation);
 
+    /**
+     * @notice Error thrown when attempting to set a critical address to the zero address
+     */
+    error ZeroAddressNotAllowed();
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -72,13 +77,12 @@ contract LendefiYieldToken is
      *      - Sets initial version to 1
      */
     function initialize(address protocol, address guardian) external initializer {
+        if (protocol == address(0) || guardian == address(0)) revert ZeroAddressNotAllowed();
         __ERC20_init("Lendefi Yield Token", "LYT");
         __ERC20Pausable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
         __ReentrancyGuard_init();
-
-        require(protocol != address(0) && guardian != address(0), "ZERO_ADDRESS_DETECTED");
 
         // Set up roles
         _grantRole(DEFAULT_ADMIN_ROLE, guardian);
