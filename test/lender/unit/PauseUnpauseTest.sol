@@ -58,7 +58,7 @@ contract PauseUnpauseTest is BasicDeploy {
         oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
 
         // Set up flash loan fee
-        LendefiInstance.updateFlashLoanFee(9); // 9 basis points = 0.09%
+        // LendefiInstance.updateFlashLoanFee(9); // 9 basis points = 0.09%
         vm.stopPrank();
         // Deploy flash loan receiver
         flashLoanReceiver = new MockFlashLoanReceiver();
@@ -531,15 +531,29 @@ contract PauseUnpauseTest is BasicDeploy {
             100_000e6
         );
 
-        // Update flash loan fee should work
-        LendefiInstance.updateFlashLoanFee(10); // Change from 9 to 10
+        // Update flash loan fee using the new config approach
+        // First get the current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+
+        // Store original value for comparison
+        uint256 originalFee = config.flashLoanFee;
+
+        // Update the flash loan fee in the config
+        config.flashLoanFee = 10; // Change from current value to 10
+
+        // Apply the updated config
+        LendefiInstance.loadProtocolConfig(config);
         vm.stopPrank();
 
         // Verify changes were applied
         ILendefiAssets.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
         assertEq(asset.borrowThreshold, 600, "borrowThreshold should be updated to 600");
         assertEq(asset.liquidationThreshold, 700, "liquidationThreshold should be updated to 700");
-        assertEq(LendefiInstance.flashLoanFee(), 10, "flashLoanFee should be updated to 10");
+
+        // Verify flash loan fee update using the new config approach
+        IPROTOCOL.ProtocolConfig memory updatedConfig = LendefiInstance.getConfig();
+        assertEq(updatedConfig.flashLoanFee, 10, "flashLoanFee should be updated to 10");
+        assertNotEq(updatedConfig.flashLoanFee, originalFee, "flashLoanFee should be different from original");
     }
 }
 
