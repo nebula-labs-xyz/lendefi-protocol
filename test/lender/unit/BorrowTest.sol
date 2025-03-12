@@ -460,15 +460,13 @@ contract BorrowTest is BasicDeploy {
         // Configure tier rates
         vm.startPrank(address(timelockInstance));
 
-        // Set base rate and isolated tier rate
-        LendefiInstance.updateProtocolMetrics(
-            LendefiInstance.baseProfitTarget(), // Keep current profit target
-            0.01e6, // Set 1% base rate (was previously in updateBaseBorrowRate)
-            LendefiInstance.targetReward(), // Keep current reward amount
-            LendefiInstance.rewardInterval(), // Keep current interval
-            LendefiInstance.rewardableSupply(), // Keep current supply amount
-            LendefiInstance.liquidatorThreshold() // Keep current liquidator threshold
-        );
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        // Only update the base borrow rate while keeping other parameters
+        config.borrowRate = 0.01e6; // Set 1% base rate
+        // Update with modified config
+        LendefiInstance.loadProtocolConfig(config);
+
         assetsInstance.updateTierParameters(
             ILendefiAssets.CollateralTier.ISOLATED,
             0.25e6, // 25% for isolated assets - maximum allowed
@@ -523,15 +521,14 @@ contract BorrowTest is BasicDeploy {
 
         // Configure tier rates
         vm.startPrank(address(timelockInstance));
-        // Set base rate and Cross B tier rate
-        LendefiInstance.updateProtocolMetrics(
-            LendefiInstance.baseProfitTarget(), // Keep current profit target
-            0.01e6, // Set 1% base rate (was previously in updateBaseBorrowRate)
-            LendefiInstance.targetReward(), // Keep current reward amount
-            LendefiInstance.rewardInterval(), // Keep current interval
-            LendefiInstance.rewardableSupply(), // Keep current supply amount
-            LendefiInstance.liquidatorThreshold() // Keep current liquidator threshold
-        );
+
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        // Only update the base borrow rate while keeping other parameters
+        config.borrowRate = 0.01e6; // Set 1% base rate
+        // Update with modified config
+        LendefiInstance.loadProtocolConfig(config);
+
         assetsInstance.updateTierParameters(
             ILendefiAssets.CollateralTier.CROSS_B,
             0.15e6, // 15% for CROSS_B tier
@@ -596,15 +593,13 @@ contract BorrowTest is BasicDeploy {
         // Configure tier rates
         vm.startPrank(address(timelockInstance));
 
-        // Set base rate and Cross A tier rate
-        LendefiInstance.updateProtocolMetrics(
-            LendefiInstance.baseProfitTarget(), // Keep current profit target
-            0.01e6, // Set 1% base rate (was previously in updateBaseBorrowRate)
-            LendefiInstance.targetReward(), // Keep current reward amount
-            LendefiInstance.rewardInterval(), // Keep current interval
-            LendefiInstance.rewardableSupply(), // Keep current supply amount
-            LendefiInstance.liquidatorThreshold() // Keep current liquidator threshold
-        );
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        // Only update the base borrow rate while keeping other parameters
+        config.borrowRate = 0.01e6; // Set 1% base rate
+        // Update with modified config
+        LendefiInstance.loadProtocolConfig(config);
+
         assetsInstance.updateTierParameters(
             ILendefiAssets.CollateralTier.CROSS_A,
             0.05e6, // 5% for CROSS_A tier
