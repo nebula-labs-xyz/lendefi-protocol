@@ -43,6 +43,19 @@ interface ILendefiView {
     }
 
     /**
+     * @notice Structure containing complete position data
+     * @dev Consolidates all position-related information
+     */
+    struct PositionSummary {
+        uint256 totalCollateralValue; // Total USD value of collateral
+        uint256 currentDebt; // Current debt with interest
+        uint256 availableCredit; // Remaining borrowing capacity
+        uint256 healthFactor; // Position health factor
+        bool isIsolated; // Whether position is isolated
+        IPROTOCOL.PositionStatus status; // Current position status
+    }
+
+    /**
      * @notice Returns the protocol contract address
      * @return The address of the main protocol contract
      */
@@ -70,22 +83,9 @@ interface ILendefiView {
      * @notice Gets a summary of a user's position
      * @param user The address of the user
      * @param positionId The ID of the position to query
-     * @return totalCollateralValue The total USD value of all collateral in the position
-     * @return currentDebt The current debt amount including accrued interest
-     * @return availableCredit The remaining credit available to borrow
-     * @return isIsolated Whether the position is in isolation mode
-     * @return status The current status of the position (Active, Liquidated, etc.)
+     * @return PositionSummary struct containing all position data
      */
-    function getPositionSummary(address user, uint256 positionId)
-        external
-        view
-        returns (
-            uint256 totalCollateralValue,
-            uint256 currentDebt,
-            uint256 availableCredit,
-            bool isIsolated,
-            IPROTOCOL.PositionStatus status
-        );
+    function getPositionSummary(address user, uint256 positionId) external view returns (PositionSummary memory);
 
     /**
      * @notice Gets information about a user's liquidity provider (LP) status
