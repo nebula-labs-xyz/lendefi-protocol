@@ -156,41 +156,6 @@ contract LendefiV2 is
     uint256 public totalAccruedSupplierInterest;
 
     /**
-     * @notice Target amount of governance tokens for LP rewards per interval
-     */
-    uint256 public targetReward;
-
-    /**
-     * @notice Time period for LP reward eligibility in seconds
-     */
-    uint256 public rewardInterval;
-
-    /**
-     * @notice Minimum supply amount required for reward eligibility (in USDC)
-     */
-    uint256 public rewardableSupply;
-
-    /**
-     * @notice Base annual interest rate for borrowing (in WAD format)
-     */
-    uint256 public baseBorrowRate;
-
-    /**
-     * @notice Target profit rate for the protocol (in WAD format)
-     */
-    uint256 public baseProfitTarget;
-
-    /**
-     * @notice Minimum governance token balance required to perform liquidations
-     */
-    uint256 public liquidatorThreshold;
-
-    /**
-     * @notice Fee percentage charged for flash loans (in basis points)
-     */
-    uint256 public flashLoanFee;
-
-    /**
      * @notice Total fees collected from flash loans since protocol inception
      */
     uint256 public totalFlashLoanFees;
@@ -204,6 +169,10 @@ contract LendefiV2 is
      * @notice Address of the treasury that receives protocol fees
      */
     address public treasury;
+    /**
+     * @notice Protocol configuration parameters
+     */
+    ProtocolConfig public mainConfig;
 
     // Mappings
     /// @notice Total value locked per asset
@@ -229,7 +198,7 @@ contract LendefiV2 is
     /**
      * @dev Reserved storage gap for future upgrades
      */
-    uint256[20] private __gap;
+    uint256[30] private __gap;
 
     /**
      * @dev Ensures the position exists for the given user
@@ -317,13 +286,16 @@ contract LendefiV2 is
         yieldTokenInstance = ILendefiYieldToken(yieldToken);
         assetsModule = ILendefiAssets(assetsModule_);
 
-        // Initialize default parameters
-        targetReward = 2_000 ether;
-        rewardInterval = 180 days;
-        rewardableSupply = 100_000 * WAD;
-        baseBorrowRate = 0.06e6;
-        baseProfitTarget = 0.01e6;
-        liquidatorThreshold = 20_000 ether;
+        // Initialize default parameters in mainConfig
+        mainConfig = ProtocolConfig({
+            profitTargetRate: 0.01e6, // 1%
+            borrowRate: 0.06e6, // 6%
+            rewardAmount: 2_000 ether, // 2,000 tokens
+            rewardInterval: 180 days, // 180 days
+            rewardableSupply: 100_000 * WAD, // 100,000 USDC
+            liquidatorThreshold: 20_000 ether, // 20,000 tokens
+            flashLoanFee: 9 // 9 basis points (0.09%)
+        });
 
         ++version;
         emit Initialized(msg.sender);
@@ -398,7 +370,7 @@ contract LendefiV2 is
         if (amount > initialBalance) revert LowLiquidity();
 
         // Calculate fee and record initial balance
-        uint256 fee = (amount * flashLoanFee) / 10000;
+        uint256 fee = (amount * mainConfig.flashLoanFee) / 10000;
         uint256 requiredBalance = initialBalance + fee;
 
         // Transfer flash loan amount
@@ -417,22 +389,6 @@ contract LendefiV2 is
         // Update protocol state only after all verifications succeed
         totalFlashLoanFees += fee;
         emit FlashLoan(msg.sender, receiver, address(usdcInstance), amount, fee);
-    }
-
-    /**
-     * @notice Updates the fee percentage charged for flash loans
-     * @dev Fee is expressed in basis points (e.g., 10 = 0.1%)
-     * @param newFee New flash loan fee in basis points, capped at 1% (100 basis points)
-     * @custom:access-control Restricted to MANAGER_ROLE
-     * @custom:events Emits an UpdateFlashLoanFee event
-     * @custom:error-cases
-     *   - InvalidFee: Thrown when fee exceeds the maximum allowed (100 basis points)
-     */
-    function updateFlashLoanFee(uint256 newFee) external onlyRole(MANAGER_ROLE) {
-        if (newFee > 100) revert InvalidFee(); // Fee too high
-
-        flashLoanFee = newFee;
-        emit UpdateFlashLoanFee(newFee);
     }
 
     /**
@@ -533,7 +489,7 @@ contract LendefiV2 is
         uint256 baseAmount = (amount * totalSuppliedLiquidity) / supply;
         uint256 total = usdcInstance.balanceOf(address(this)) + totalBorrow;
 
-        uint256 target = (baseAmount * baseProfitTarget) / WAD;
+        uint256 target = (baseAmount * mainConfig.profitTargetRate) / WAD;
         if (total >= totalSuppliedLiquidity + target) {
             yieldTokenInstance.mint(treasury, target);
         }
@@ -569,7 +525,7 @@ contract LendefiV2 is
         if (isRewardable(msg.sender)) {
             // Calculate reward amount based on time elapsed
             uint256 duration = block.timestamp - liquidityAccrueTimeIndex[msg.sender];
-            uint256 reward = (targetReward * duration) / rewardInterval;
+            uint256 reward = (mainConfig.rewardAmount * duration) / mainConfig.rewardInterval;
             // Apply maximum reward cap
             uint256 maxReward = ecosystemInstance.maxReward();
             finalReward = reward > maxReward ? maxReward : reward;
@@ -979,7 +935,7 @@ contract LendefiV2 is
         nonReentrant
         whenNotPaused
     {
-        if (tokenInstance.balanceOf(msg.sender) < liquidatorThreshold) revert NotEnoughGovernanceTokens();
+        if (tokenInstance.balanceOf(msg.sender) < mainConfig.liquidatorThreshold) revert NotEnoughGovernanceTokens();
         if (!isLiquidatable(user, positionId)) revert NotLiquidatable();
 
         UserPosition storage position = positions[user][positionId];
@@ -1047,16 +1003,11 @@ contract LendefiV2 is
     }
 
     /**
-     * @notice Updates multiple protocol parameters in a single transaction
-     * @dev All parameters are validated against minimum or maximum constraints
-     * @param profitTargetRate New base profit target rate (min 0.25%)
-     * @param borrowRate New base borrow rate (min 1%)
-     * @param rewardAmount New target reward amount (max 10,000 tokens)
-     * @param interval New reward interval in seconds (min 90 days)
-     * @param supplyAmount New minimum rewardable supply amount (min 20,000 USDC)
-     * @param liquidatorAmount New minimum liquidator token threshold (min 10 tokens)
+     * @notice Updates protocol parameters from a configuration struct
+     * @dev Validates all parameters against minimum/maximum constraints before applying
+     * @param config The new protocol configuration to apply
      * @custom:access-control Restricted to MANAGER_ROLE
-     * @custom:events Emits a ProtocolMetricsUpdated event
+     * @custom:events Emits a ProtocolConfigUpdated event
      * @custom:error-cases
      *   - InvalidProfitTarget: Thrown when profit target rate is below minimum
      *   - InvalidBorrowRate: Thrown when borrow rate is below minimum
@@ -1064,34 +1015,60 @@ contract LendefiV2 is
      *   - InvalidInterval: Thrown when interval is below minimum
      *   - InvalidSupplyAmount: Thrown when supply amount is below minimum
      *   - InvalidLiquidatorThreshold: Thrown when liquidator threshold is below minimum
+     *   - InvalidFee: Thrown when flash loan fee exceeds maximum
      */
-    function updateProtocolMetrics(
-        uint256 profitTargetRate,
-        uint256 borrowRate,
-        uint256 rewardAmount,
-        uint256 interval,
-        uint256 supplyAmount,
-        uint256 liquidatorAmount
-    ) external onlyRole(MANAGER_ROLE) {
+    function loadProtocolConfig(ProtocolConfig calldata config) external onlyRole(MANAGER_ROLE) {
         // Validate all parameters
-        if (profitTargetRate < 0.0025e6) revert InvalidProfitTarget();
-        if (borrowRate < 0.01e6) revert InvalidBorrowRate();
-        if (rewardAmount > 10_000 ether) revert InvalidRewardAmount();
-        if (interval < 90 days) revert InvalidInterval();
-        if (supplyAmount < 20_000 * WAD) revert InvalidSupplyAmount();
-        if (liquidatorAmount < 10 ether) revert InvalidLiquidatorThreshold();
+        if (config.profitTargetRate < 0.0025e6) revert InvalidProfitTarget();
+        if (config.borrowRate < 0.01e6) revert InvalidBorrowRate();
+        if (config.rewardAmount > 10_000 ether) revert InvalidRewardAmount();
+        if (config.rewardInterval < 90 days) revert InvalidInterval();
+        if (config.rewardableSupply < 20_000 * WAD) revert InvalidSupplyAmount();
+        if (config.liquidatorThreshold < 10 ether) revert InvalidLiquidatorThreshold();
+        if (config.flashLoanFee > 100 || config.flashLoanFee < 1) revert InvalidFee(); // Maximum 1% (100 basis points)
 
-        // Update all state variables
-        baseProfitTarget = profitTargetRate;
-        baseBorrowRate = borrowRate;
-        targetReward = rewardAmount;
-        rewardInterval = interval;
-        rewardableSupply = supplyAmount;
-        liquidatorThreshold = liquidatorAmount;
+        // Update the mainConfig struct
+        mainConfig = config;
 
         // Emit a single consolidated event
-        emit ProtocolMetricsUpdated(
-            profitTargetRate, borrowRate, rewardAmount, interval, supplyAmount, liquidatorAmount
+        emit ProtocolConfigUpdated(
+            config.profitTargetRate,
+            config.borrowRate,
+            config.rewardAmount,
+            config.rewardInterval,
+            config.rewardableSupply,
+            config.liquidatorThreshold,
+            config.flashLoanFee
+        );
+    }
+
+    /**
+     * @notice Resets protocol parameters to default values
+     * @dev Reverts all configuration parameters to conservative default values
+     * @custom:access-control Restricted to MANAGER_ROLE
+     * @custom:events Emits a ProtocolConfigReset event
+     */
+    function resetProtocolConfig() external onlyRole(MANAGER_ROLE) {
+        // Set default values in mainConfig
+        mainConfig = ProtocolConfig({
+            profitTargetRate: 0.01e6, // 1%
+            borrowRate: 0.06e6, // 6%
+            rewardAmount: 2_000 ether, // 2,000 tokens
+            rewardInterval: 180 days, // 180 days
+            rewardableSupply: 100_000 * WAD, // 100,000 USDC
+            liquidatorThreshold: 20_000 ether, // 20,000 tokens
+            flashLoanFee: 9 // 9 basis points (0.09%)
+        });
+
+        // Emit event
+        emit ProtocolConfigReset(
+            mainConfig.profitTargetRate,
+            mainConfig.borrowRate,
+            mainConfig.rewardAmount,
+            mainConfig.rewardInterval,
+            mainConfig.rewardableSupply,
+            mainConfig.liquidatorThreshold,
+            mainConfig.flashLoanFee
         );
     }
 
@@ -1369,7 +1346,7 @@ contract LendefiV2 is
             yieldTokenInstance.totalSupply(),
             totalBorrow,
             totalSuppliedLiquidity,
-            baseProfitTarget,
+            mainConfig.profitTargetRate,
             usdcInstance.balanceOf(address(this))
         );
     }
@@ -1382,7 +1359,11 @@ contract LendefiV2 is
      */
     function getBorrowRate(ILendefiAssets.CollateralTier tier) public view returns (uint256) {
         return LendefiRates.getBorrowRate(
-            getUtilization(), baseBorrowRate, baseProfitTarget, getSupplyRate(), assetsModule.getTierJumpRate(tier)
+            getUtilization(),
+            mainConfig.borrowRate,
+            mainConfig.profitTargetRate,
+            getSupplyRate(),
+            assetsModule.getTierJumpRate(tier)
         );
     }
 
@@ -1396,7 +1377,8 @@ contract LendefiV2 is
         if (liquidityAccrueTimeIndex[user] == 0) return false;
         uint256 baseAmount =
             (yieldTokenInstance.balanceOf(user) * totalSuppliedLiquidity) / yieldTokenInstance.totalSupply();
-        return block.timestamp - rewardInterval >= liquidityAccrueTimeIndex[user] && baseAmount >= rewardableSupply;
+        return block.timestamp - mainConfig.rewardInterval >= liquidityAccrueTimeIndex[user]
+            && baseAmount >= mainConfig.rewardableSupply;
     }
 
     /**
@@ -1430,6 +1412,9 @@ contract LendefiV2 is
         return tier;
     }
 
+    function getConfig() external view returns (ProtocolConfig memory) {
+        return mainConfig;
+    }
     //////////////////////////////////////////////////
     // ---------internal functions------------------//
     //////////////////////////////////////////////////
@@ -1609,7 +1594,6 @@ contract LendefiV2 is
         validAmount(proposedAmount)
         returns (uint256 actualAmount)
     {
-        // UserPosition storage position = positions[msg.sender][positionId];
         if (position.debtAmount > 0) {
             // Calculate current debt with interest
             uint256 balance = calculateDebtWithInterest(msg.sender, positionId);
