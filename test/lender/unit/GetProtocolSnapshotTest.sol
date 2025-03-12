@@ -53,9 +53,12 @@ contract GetProtocolSnapshotTest is BasicDeploy {
             1_000_000e6 // isolation debt cap
         );
 
-        // Setup flash loan fee
-        vm.prank(address(timelockInstance));
-        LendefiInstance.updateFlashLoanFee(10); // 0.1% fee
+        // Setup flash loan fee using the new config approach
+        vm.startPrank(address(timelockInstance));
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
+        config.flashLoanFee = 10; // 0.1% fee
+        LendefiInstance.loadProtocolConfig(config);
+        vm.stopPrank();
 
         // Deploy LendefiView
         viewInstance = new LendefiView(
@@ -63,23 +66,25 @@ contract GetProtocolSnapshotTest is BasicDeploy {
         );
     }
 
-    // Test 1: Snapshot reflects initial state
+    // Test 1: Snapshot reflects initial state - Update to use config
     function test_SnapshotReflectsInitialState() public {
-        // Get initial protocol snapshot - Changed to use viewInstance
+        // Get initial protocol snapshot
         LendefiView.ProtocolSnapshot memory snapshot = viewInstance.getProtocolSnapshot();
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
 
         // Verify initial values
         assertEq(snapshot.utilization, 0, "Initial utilization should be 0");
         assertEq(snapshot.totalBorrow, 0, "Initial totalBorrow should be 0");
         assertEq(snapshot.totalSuppliedLiquidity, 0, "Initial totalSuppliedLiquidity should be 0");
-        assertEq(snapshot.flashLoanFee, 10, "Flash loan fee should be 10 basis points");
 
-        // Check other static parameters match expectations
-        assertEq(snapshot.targetReward, LendefiInstance.targetReward(), "targetReward mismatch");
-        assertEq(snapshot.rewardInterval, LendefiInstance.rewardInterval(), "rewardInterval mismatch");
-        assertEq(snapshot.rewardableSupply, LendefiInstance.rewardableSupply(), "rewardableSupply mismatch");
-        assertEq(snapshot.baseProfitTarget, LendefiInstance.baseProfitTarget(), "baseProfitTarget mismatch");
-        assertEq(snapshot.liquidatorThreshold, LendefiInstance.liquidatorThreshold(), "liquidatorThreshold mismatch");
+        // Check config parameters match expectations
+        assertEq(snapshot.flashLoanFee, config.flashLoanFee, "Flash loan fee mismatch");
+        assertEq(snapshot.targetReward, config.rewardAmount, "targetReward mismatch");
+        assertEq(snapshot.rewardInterval, config.rewardInterval, "rewardInterval mismatch");
+        assertEq(snapshot.rewardableSupply, config.rewardableSupply, "rewardableSupply mismatch");
+        assertEq(snapshot.baseProfitTarget, config.profitTargetRate, "baseProfitTarget mismatch");
+        assertEq(snapshot.liquidatorThreshold, config.liquidatorThreshold, "liquidatorThreshold mismatch");
+        assertEq(snapshot.borrowRate, config.borrowRate, "baseBorrowRate mismatch");
     }
 
     // Test 2: Snapshot reflects liquidity changes
@@ -292,32 +297,35 @@ contract GetProtocolSnapshotTest is BasicDeploy {
 
     // Test 7: Snapshot reflects parameter updates
     function test_SnapshotReflectsParameterUpdates() public {
-        // Update protocol parameters
+        // Define new parameter values
         uint256 newFlashLoanFee = 20; // 0.2%
         uint256 newBaseProfitTarget = 0.02e6; // 2%
         uint256 newRewardInterval = 90 days;
         uint256 newRewardableSupply = 200_000e6;
         uint256 newTargetReward = 2_000e18;
         uint256 newLiquidatorThreshold = 200e18;
+        uint256 newBorrowRate = 0.08e6; // 8%
 
         vm.startPrank(address(timelockInstance));
 
-        // Update flash loan fee directly
-        LendefiInstance.updateFlashLoanFee(newFlashLoanFee);
+        // Get current config
+        IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
 
-        // Use combined updateProtocolMetrics for other parameters
-        LendefiInstance.updateProtocolMetrics(
-            newBaseProfitTarget,
-            LendefiInstance.baseBorrowRate(),
-            newTargetReward,
-            newRewardInterval,
-            newRewardableSupply,
-            newLiquidatorThreshold
-        );
+        // Update all parameters
+        config.flashLoanFee = newFlashLoanFee;
+        config.profitTargetRate = newBaseProfitTarget;
+        config.rewardInterval = newRewardInterval;
+        config.rewardableSupply = newRewardableSupply;
+        config.rewardAmount = newTargetReward;
+        config.liquidatorThreshold = newLiquidatorThreshold;
+        config.borrowRate = newBorrowRate;
+
+        // Update config with all new parameters
+        LendefiInstance.loadProtocolConfig(config);
 
         vm.stopPrank();
 
-        // Get updated snapshot - Changed to use viewInstance
+        // Get updated snapshot
         LendefiView.ProtocolSnapshot memory updatedSnapshot = viewInstance.getProtocolSnapshot();
 
         // Verify parameter updates are reflected
@@ -329,6 +337,7 @@ contract GetProtocolSnapshotTest is BasicDeploy {
         assertEq(
             updatedSnapshot.liquidatorThreshold, newLiquidatorThreshold, "Liquidator threshold update not reflected"
         );
+        assertEq(updatedSnapshot.borrowRate, newBorrowRate, "Base borrow rate update not reflected");
     }
 
     // Test 8: Snapshot reflects multiple user activities
