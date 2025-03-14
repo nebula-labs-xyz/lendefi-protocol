@@ -29,10 +29,11 @@ import {TeamManager} from "../contracts/ecosystem/TeamManager.sol";
 import {TeamManagerV2} from "../contracts/upgrades/TeamManagerV2.sol";
 import {Lendefi} from "../contracts/lender/Lendefi.sol";
 import {LendefiV2} from "../contracts/upgrades/LendefiV2.sol";
-import {LendefiOracle} from "../contracts/oracle/LendefiOracle.sol";
 import {LendefiYieldToken} from "../contracts/lender/LendefiYieldToken.sol";
 import {LendefiYieldTokenV2} from "../contracts/upgrades/LendefiYieldTokenV2.sol";
 import {LendefiAssets} from "../contracts/lender/LendefiAssets.sol";
+import {LendefiAssetsV2} from "../contracts/upgrades/LendefiAssetsV2.sol";
+import {IASSETS} from "../contracts/interfaces/IASSETS.sol";
 
 contract BasicDeploy is Test {
     event Upgrade(address indexed src, address indexed implementation);
@@ -82,7 +83,6 @@ contract BasicDeploy is Test {
     USDC internal usdcInstance; // mock usdc
     WETH9 internal wethInstance;
     Lendefi internal LendefiInstance;
-    LendefiOracle internal oracleInstance;
     LendefiYieldToken internal yieldTokenInstance;
     LendefiAssets internal assetsInstance;
     IERC20 usdc = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
@@ -396,27 +396,10 @@ contract BasicDeploy is Test {
         assertFalse(address(tmInstance) == implementation);
     }
 
-    function _deployOracle() internal {
-        // Oracle deploy
-        bytes memory data = abi.encodeCall(LendefiOracle.initialize, (guardian, address(timelockInstance)));
-
-        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiOracle.sol", data));
-        oracleInstance = LendefiOracle(proxy);
-
-        address oracleImplementation = Upgrades.getImplementationAddress(proxy);
-        assertFalse(address(oracleInstance) == oracleImplementation);
-
-        // Grant necessary roles
-        vm.startPrank(guardian);
-        oracleInstance.grantRole(MANAGER_ROLE, address(timelockInstance));
-        oracleInstance.grantRole(CIRCUIT_BREAKER_ROLE, address(timelockInstance));
-        vm.stopPrank();
-    }
-
     function _deployLendefi() internal {
         // Make sure oracle is deployed first
-        if (address(oracleInstance) == address(0)) {
-            _deployOracle();
+        if (address(assetsInstance) == address(0)) {
+            _deployAssetsModule();
         }
 
         // Now deploy Lendefi with oracle address
@@ -491,86 +474,79 @@ contract BasicDeploy is Test {
     }
 
     /**
-     * @notice Deploys the LendefiAssets module
-     * @dev Initializes the assets module with proper roles and connections to oracle
+     * @notice Deploys the combined LendefiAssetOracle contract
+     * @dev Replaces the separate Oracle and Assets modules with the combined contract
      */
     function _deployAssetsModule() internal {
-        // Make sure oracle is deployed first
-        if (address(oracleInstance) == address(0)) {
-            _deployOracle();
-        }
-
-        // Deploy LendefiAssets module
-        bytes memory data = abi.encodeCall(
-            LendefiAssets.initialize,
-            (address(timelockInstance), address(oracleInstance), guardian) // Use address(1) temporarily as core
-        );
+        // Protocol Oracle deploy (combined Oracle + Assets)
+        bytes memory data = abi.encodeCall(LendefiAssets.initialize, (address(timelockInstance), guardian));
 
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", data));
+
+        // Store the instance in both variables to maintain compatibility with existing tests
         assetsInstance = LendefiAssets(proxy);
 
         address implementation = Upgrades.getImplementationAddress(proxy);
         assertFalse(address(assetsInstance) == implementation);
 
-        // Grant roles to timelock
+        // Grant necessary roles
         vm.startPrank(guardian);
         assetsInstance.grantRole(MANAGER_ROLE, address(timelockInstance));
+        assetsInstance.grantRole(CIRCUIT_BREAKER_ROLE, address(timelockInstance));
+        assetsInstance.grantRole(PAUSER_ROLE, guardian);
         vm.stopPrank();
     }
-
     /**
      * @notice Upgrades the LendefiAssets implementation
-     * @dev Follows the same pattern as other contract upgrades
+     * @dev Follows the same pattern as other module upgrades
      */
-    function deployAssetsModuleUpgrade() internal {
-        // Make sure we have a complete deployment first, which includes timelock
-        if (address(timelockInstance) == address(0) || address(assetsInstance) == address(0)) {
-            deployComplete(); // This will deploy token, timelock, ecosystem, treasury, etc.
-            _deployOracle(); // Then deploy oracle
-            _deployAssetsModule(); // Then deploy assets module
-        }
 
-        // Get the proxy address
-        address payable proxy = payable(address(assetsInstance));
+    function deployAssetsModuleUpgrade() internal {
+        // First make sure the assets module is deployed
+        _deployTimelock();
+        bytes memory data = abi.encodeCall(LendefiAssets.initialize, (address(timelockInstance), guardian));
+
+        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", data));
+
+        // Store the instance in both variables to maintain compatibility with existing tests
+        assetsInstance = LendefiAssets(proxy);
 
         // Get the current implementation address for assertion later
         address implAddressV1 = Upgrades.getImplementationAddress(proxy);
+        assertFalse(address(assetsInstance) == implAddressV1);
 
         // Grant upgrader role to manager admin
-        vm.prank(guardian);
+        vm.startPrank(guardian);
         assetsInstance.grantRole(UPGRADER_ROLE, managerAdmin);
+        vm.stopPrank();
 
         // Perform the upgrade
         vm.startPrank(managerAdmin);
+        // Assuming LendefiAssetsV2 exists in the upgrades folder
         Upgrades.upgradeProxy(proxy, "LendefiAssetsV2.sol", "", guardian);
         vm.stopPrank();
 
         // Verify the upgrade
         address implAddressV2 = Upgrades.getImplementationAddress(proxy);
-        LendefiAssets instanceV2 = LendefiAssets(proxy);
-        assertEq(instanceV2.version(), 2);
-        assertFalse(implAddressV2 == implAddressV1);
+        assertFalse(implAddressV2 == implAddressV1, "Implementation should change after upgrade");
 
-        // Verify role assignments
-        bool isUpgrader = instanceV2.hasRole(UPGRADER_ROLE, managerAdmin);
-        assertTrue(isUpgrader == true);
+        // Check version - assuming V2 has a version() function that returns 2
+        assertEq(LendefiAssetsV2(address(assetsInstance)).version(), 2, "Version should be updated to 2");
 
-        // Revoke the upgrader role as cleanup
+        // Verify role management works
+        bool isUpgrader = assetsInstance.hasRole(UPGRADER_ROLE, managerAdmin);
+        assertTrue(isUpgrader, "Manager admin should have upgrader role");
+
         vm.prank(guardian);
-        instanceV2.revokeRole(UPGRADER_ROLE, managerAdmin);
-        assertFalse(instanceV2.hasRole(UPGRADER_ROLE, managerAdmin) == true);
+        assetsInstance.revokeRole(UPGRADER_ROLE, managerAdmin);
+        assertFalse(assetsInstance.hasRole(UPGRADER_ROLE, managerAdmin), "Role should be revoked successfully");
     }
-
     /**
-     * @notice Updates the _deployLendefiModules function to include assets module
+     * @notice Updates the _deployLendefiModules function to use the combined protocol oracle
      */
-    function _deployLendefiModules() internal {
-        // First deploy oracle if not already deployed
-        if (address(oracleInstance) == address(0)) {
-            _deployOracle();
-        }
 
-        // Then deploy assets module if not already deployed
+    function _deployLendefiModules() internal {
+        // First deploy combined protocol oracle if not already deployed
         if (address(assetsInstance) == address(0)) {
             _deployAssetsModule();
         }
@@ -581,7 +557,7 @@ contract BasicDeploy is Test {
         address payable tokenProxy = payable(Upgrades.deployUUPSProxy("LendefiYieldToken.sol", tokenData));
         yieldTokenInstance = LendefiYieldToken(tokenProxy);
 
-        // Finally deploy Lendefi with the actual modules
+        // Deploy Lendefi with the combined protocol oracle
         bytes memory lendingData = abi.encodeCall(
             Lendefi.initialize,
             (
@@ -591,7 +567,7 @@ contract BasicDeploy is Test {
                 address(treasuryInstance),
                 address(timelockInstance),
                 address(yieldTokenInstance),
-                address(assetsInstance),
+                address(assetsInstance), // Use the combined contract for asset management
                 guardian
             )
         );
@@ -606,7 +582,7 @@ contract BasicDeploy is Test {
         yieldTokenInstance.grantRole(DEFAULT_ADMIN_ROLE, address(timelockInstance));
         yieldTokenInstance.renounceRole(DEFAULT_ADMIN_ROLE, address(guardian));
 
-        // Update the core address in the assets module to point to the real Lendefi address
+        // Update the core address in the protocol oracle to point to the real Lendefi address
         assetsInstance.setCoreAddress(address(LendefiInstance));
         assetsInstance.grantRole(CORE_ROLE, address(LendefiInstance));
         assetsInstance.grantRole(DEFAULT_ADMIN_ROLE, address(timelockInstance));
@@ -616,7 +592,7 @@ contract BasicDeploy is Test {
     }
 
     /**
-     * @notice Modify deployCompleteWithOracle to ensure assets module is deployed
+     * @notice Modify deployCompleteWithOracle to use the combined protocol oracle
      */
     function deployCompleteWithOracle() internal {
         vm.warp(365 days);
@@ -627,8 +603,7 @@ contract BasicDeploy is Test {
         _deployEcosystem();
         _deployTreasury();
         _deployGovernor();
-        _deployOracle();
-        _deployAssetsModule(); // Add this line to deploy assets module
+        _deployAssetsModule();
         _deployLendefiModules();
 
         // Setup roles
