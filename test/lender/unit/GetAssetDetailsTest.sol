@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
@@ -15,7 +15,8 @@ contract GetAssetDetailsTest is BasicDeploy {
 
     WETHPriceConsumerV3 internal wethOracleInstance;
     StablePriceConsumerV3 internal stableOracleInstance;
-
+    WETHPriceConsumerV3 internal linkOracleInstance;
+    WETHPriceConsumerV3 internal uniOracleInstance;
     // Mock tokens for different tiers
     TokenMock internal linkInstance; // For ISOLATED tier
     TokenMock internal uniInstance; // For CROSS_B tier
@@ -45,29 +46,14 @@ contract GetAssetDetailsTest is BasicDeploy {
         stableOracleInstance = new StablePriceConsumerV3();
 
         // Create a custom oracle for Link and UNI
-        WETHPriceConsumerV3 linkOracleInstance = new WETHPriceConsumerV3();
-        WETHPriceConsumerV3 uniOracleInstance = new WETHPriceConsumerV3();
+        linkOracleInstance = new WETHPriceConsumerV3();
+        uniOracleInstance = new WETHPriceConsumerV3();
 
         // Set prices
         wethOracleInstance.setPrice(int256(ETH_PRICE)); // $2500 per ETH
         stableOracleInstance.setPrice(1e8); // $1 per stable
         linkOracleInstance.setPrice(int256(LINK_PRICE)); // $15 per LINK
         uniOracleInstance.setPrice(int256(UNI_PRICE)); // $8 per UNI
-
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(linkInstance), address(linkOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(linkInstance), address(linkOracleInstance));
-
-        oracleInstance.addOracle(address(uniInstance), address(uniOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(uniInstance), address(uniOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
 
         // Setup roles
         vm.prank(guardian);
@@ -90,8 +76,9 @@ contract GetAssetDetailsTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            10_000e6 // Isolation debt cap
+            10_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // UPDATED: Configure USDC as STABLE tier - Use assetsInstance
@@ -104,8 +91,9 @@ contract GetAssetDetailsTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000e6, // Supply limit
-            ILendefiAssets.CollateralTier.STABLE,
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // UPDATED: Configure LINK as ISOLATED tier - Use assetsInstance
@@ -118,8 +106,9 @@ contract GetAssetDetailsTest is BasicDeploy {
             700, // 70% borrow threshold
             750, // 75% liquidation threshold
             100_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.ISOLATED,
-            5_000e6 // Isolation debt cap
+            5_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // UPDATED: Configure UNI as CROSS_B tier - Use assetsInstance
@@ -132,10 +121,20 @@ contract GetAssetDetailsTest is BasicDeploy {
             750, // 75% borrow threshold
             800, // 80% liquidation threshold
             200_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_B,
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_B,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(linkInstance), address(linkOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(uniInstance), address(uniOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
         vm.stopPrank();
     }
 
@@ -178,7 +177,7 @@ contract GetAssetDetailsTest is BasicDeploy {
     function test_GetAssetDetails_Basic() public {
         // Test basic details for WETH
         // UPDATED: Use assetsModule for getAssetDetails - adjusted return values
-        (uint256 price, uint256 totalSupplied, uint256 maxSupply, ILendefiAssets.CollateralTier tier) =
+        (uint256 price, uint256 totalSupplied, uint256 maxSupply, IASSETS.CollateralTier tier) =
             assetsInstance.getAssetDetails(address(wethInstance));
 
         // Log values for debugging
@@ -193,8 +192,8 @@ contract GetAssetDetailsTest is BasicDeploy {
         assertEq(maxSupply, 1_000_000 ether, "WETH max supply incorrect");
 
         // Get rates directly for the tier
-        uint256 expectedBorrowRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
-        uint256 expectedLiquidationFee = assetsInstance.getTierLiquidationFee(ILendefiAssets.CollateralTier.CROSS_A);
+        uint256 expectedBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
+        uint256 expectedLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_A);
 
         // Get the values from the contract for comparison
         uint256 borrowRate = LendefiInstance.getBorrowRate(tier);
@@ -202,15 +201,15 @@ contract GetAssetDetailsTest is BasicDeploy {
 
         assertEq(borrowRate, expectedBorrowRate, "WETH borrow rate should match expected rate");
         assertEq(liquidationFee, expectedLiquidationFee, "WETH liquidation fee should match expected fee");
-        assertEq(uint256(tier), uint256(ILendefiAssets.CollateralTier.CROSS_A), "WETH tier should be CROSS_A");
+        assertEq(uint256(tier), uint256(IASSETS.CollateralTier.CROSS_A), "WETH tier should be CROSS_A");
     }
 
     function test_GetAssetDetails_AllTiers() public {
         // Test that each asset returns the correct tier
-        (,,, ILendefiAssets.CollateralTier wethTier) = assetsInstance.getAssetDetails(address(wethInstance));
-        (,,, ILendefiAssets.CollateralTier usdcTier) = assetsInstance.getAssetDetails(address(usdcInstance));
-        (,,, ILendefiAssets.CollateralTier linkTier) = assetsInstance.getAssetDetails(address(linkInstance));
-        (,,, ILendefiAssets.CollateralTier uniTier) = assetsInstance.getAssetDetails(address(uniInstance));
+        (,,, IASSETS.CollateralTier wethTier) = assetsInstance.getAssetDetails(address(wethInstance));
+        (,,, IASSETS.CollateralTier usdcTier) = assetsInstance.getAssetDetails(address(usdcInstance));
+        (,,, IASSETS.CollateralTier linkTier) = assetsInstance.getAssetDetails(address(linkInstance));
+        (,,, IASSETS.CollateralTier uniTier) = assetsInstance.getAssetDetails(address(uniInstance));
 
         // Get liquidation fees directly from assetsInstance
         uint256 wethLiquidationFee = assetsInstance.getTierLiquidationFee(wethTier);
@@ -219,17 +218,16 @@ contract GetAssetDetailsTest is BasicDeploy {
         uint256 uniLiquidationFee = assetsInstance.getTierLiquidationFee(uniTier);
 
         // Expected liquidation fees
-        uint256 expectedWethLiquidationFee = assetsInstance.getTierLiquidationFee(ILendefiAssets.CollateralTier.CROSS_A);
-        uint256 expectedUsdcLiquidationFee = assetsInstance.getTierLiquidationFee(ILendefiAssets.CollateralTier.STABLE);
-        uint256 expectedLinkLiquidationFee =
-            assetsInstance.getTierLiquidationFee(ILendefiAssets.CollateralTier.ISOLATED);
-        uint256 expectedUniLiquidationFee = assetsInstance.getTierLiquidationFee(ILendefiAssets.CollateralTier.CROSS_B);
+        uint256 expectedWethLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_A);
+        uint256 expectedUsdcLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.STABLE);
+        uint256 expectedLinkLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.ISOLATED);
+        uint256 expectedUniLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_B);
 
         // Verify tiers
-        assertEq(uint256(wethTier), uint256(ILendefiAssets.CollateralTier.CROSS_A), "WETH tier should be CROSS_A");
-        assertEq(uint256(usdcTier), uint256(ILendefiAssets.CollateralTier.STABLE), "USDC tier should be STABLE");
-        assertEq(uint256(linkTier), uint256(ILendefiAssets.CollateralTier.ISOLATED), "LINK tier should be ISOLATED");
-        assertEq(uint256(uniTier), uint256(ILendefiAssets.CollateralTier.CROSS_B), "UNI tier should be CROSS_B");
+        assertEq(uint256(wethTier), uint256(IASSETS.CollateralTier.CROSS_A), "WETH tier should be CROSS_A");
+        assertEq(uint256(usdcTier), uint256(IASSETS.CollateralTier.STABLE), "USDC tier should be STABLE");
+        assertEq(uint256(linkTier), uint256(IASSETS.CollateralTier.ISOLATED), "LINK tier should be ISOLATED");
+        assertEq(uint256(uniTier), uint256(IASSETS.CollateralTier.CROSS_B), "UNI tier should be CROSS_B");
 
         // Verify liquidation fees match the tier
         assertEq(wethLiquidationFee, expectedWethLiquidationFee, "WETH liquidation fee incorrect");
@@ -257,7 +255,7 @@ contract GetAssetDetailsTest is BasicDeploy {
         (, uint256 initialSupplied, uint256 initialMaxSupply,) = assetsInstance.getAssetDetails(address(wethInstance));
 
         // Get initial borrow rate for comparison
-        uint256 initialBorrowRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
+        uint256 initialBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
 
         // Change ETH price to $3000
         wethOracleInstance.setPrice(int256(3000e8));
@@ -267,7 +265,7 @@ contract GetAssetDetailsTest is BasicDeploy {
             assetsInstance.getAssetDetails(address(wethInstance));
 
         // Get new borrow rate for comparison
-        uint256 newBorrowRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
+        uint256 newBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
 
         // Verify price changed but other values remain the same
         assertEq(newPrice, 3000e8, "Price should update to new oracle value");
@@ -282,33 +280,33 @@ contract GetAssetDetailsTest is BasicDeploy {
 
     function test_GetAssetDetails_AfterTierUpdate() public {
         // Get initial details for WETH (CROSS_A tier)
-        (,, uint256 maxSupply, ILendefiAssets.CollateralTier initialTier) =
+        (,, uint256 maxSupply, IASSETS.CollateralTier initialTier) =
             assetsInstance.getAssetDetails(address(wethInstance));
 
         // Get expected rates based on what's in the contract
-        // uint256 expectedInitialBorrowRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
+        // uint256 expectedInitialBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
         // uint256 expectedInitialLiquidationFee =
-        //     assetsInstance.getTierLiquidationFee(ILendefiAssets.CollateralTier.CROSS_A);
+        //     assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_A);
 
         // UPDATED: Update WETH to CROSS_B tier using assetsInstance
         vm.prank(address(timelockInstance));
-        assetsInstance.updateAssetTier(address(wethInstance), ILendefiAssets.CollateralTier.CROSS_B);
+        assetsInstance.updateAssetTier(address(wethInstance), IASSETS.CollateralTier.CROSS_B);
 
         // Get updated details
-        (,, uint256 newMaxSupply, ILendefiAssets.CollateralTier newTier) =
+        (,, uint256 newMaxSupply, IASSETS.CollateralTier newTier) =
             assetsInstance.getAssetDetails(address(wethInstance));
 
         // Get expected new rates
-        uint256 expectedNewBorrowRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_B);
-        uint256 expectedNewLiquidationFee = assetsInstance.getTierLiquidationFee(ILendefiAssets.CollateralTier.CROSS_B);
+        uint256 expectedNewBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_B);
+        uint256 expectedNewLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_B);
 
         // Get actual rates after tier update
         uint256 newBorrowRate = LendefiInstance.getBorrowRate(newTier);
         uint256 newLiquidationFee = assetsInstance.getTierLiquidationFee(newTier);
 
         // Verify tier changed but max supply didn't
-        assertEq(uint256(initialTier), uint256(ILendefiAssets.CollateralTier.CROSS_A), "Initial tier should be CROSS_A");
-        assertEq(uint256(newTier), uint256(ILendefiAssets.CollateralTier.CROSS_B), "New tier should be CROSS_B");
+        assertEq(uint256(initialTier), uint256(IASSETS.CollateralTier.CROSS_A), "Initial tier should be CROSS_A");
+        assertEq(uint256(newTier), uint256(IASSETS.CollateralTier.CROSS_B), "New tier should be CROSS_B");
         assertEq(newMaxSupply, maxSupply, "Max supply should remain unchanged after tier update");
 
         // Verify rates updated
@@ -332,8 +330,9 @@ contract GetAssetDetailsTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             newMaxSupply, // New max supply
-            ILendefiAssets.CollateralTier.CROSS_A,
-            10_000e6 // Isolation debt cap
+            10_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
         vm.stopPrank();
 
