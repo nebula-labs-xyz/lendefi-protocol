@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
@@ -13,6 +13,8 @@ contract GetAssetInfoTest is BasicDeploy {
     // Oracle instances
     WETHPriceConsumerV3 internal wethOracleInstance;
     StablePriceConsumerV3 internal stableOracleInstance;
+    WETHPriceConsumerV3 internal linkOracleInstance;
+    WETHPriceConsumerV3 internal uniOracleInstance;
 
     function setUp() public {
         // Use deployCompleteWithOracle() instead of deployComplete()
@@ -34,15 +36,6 @@ contract GetAssetInfoTest is BasicDeploy {
         wethOracleInstance.setPrice(2500e8); // $2500 per ETH
         stableOracleInstance.setPrice(1e8); // $1 per stable
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -63,8 +56,9 @@ contract GetAssetInfoTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // UPDATED: Configure USDC as STABLE tier - Use assetsInstance
@@ -77,16 +71,20 @@ contract GetAssetInfoTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000e6, // Supply limit
-            ILendefiAssets.CollateralTier.STABLE,
-            0 // No isolation debt cap for STABLE assets
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
         vm.stopPrank();
     }
 
     function test_GetAssetInfo_WETH() public {
         // UPDATED: Use assetsInstance for getAssetInfo
-        ILendefiAssets.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
 
         assertEq(asset.active, 1, "WETH should be active");
         assertEq(asset.oracleUSD, address(wethOracleInstance), "Oracle address mismatch");
@@ -95,14 +93,14 @@ contract GetAssetInfoTest is BasicDeploy {
         assertEq(asset.borrowThreshold, 800, "Borrow threshold mismatch");
         assertEq(asset.liquidationThreshold, 850, "Liquidation threshold mismatch");
         assertEq(asset.maxSupplyThreshold, 1_000_000 ether, "Supply limit mismatch");
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        assertEq(uint8(asset.tier), uint8(ILendefiAssets.CollateralTier.CROSS_A), "Tier mismatch");
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        assertEq(uint8(asset.tier), uint8(IASSETS.CollateralTier.CROSS_A), "Tier mismatch");
         assertEq(asset.isolationDebtCap, 0, "Isolation debt cap should be 0 for non-isolated assets");
     }
 
     function test_GetAssetInfo_USDC() public {
         // UPDATED: Use assetsInstance for getAssetInfo
-        ILendefiAssets.Asset memory asset = assetsInstance.getAssetInfo(address(usdcInstance));
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(usdcInstance));
 
         assertEq(asset.active, 1, "USDC should be active");
         assertEq(asset.oracleUSD, address(stableOracleInstance), "Oracle address mismatch");
@@ -111,8 +109,8 @@ contract GetAssetInfoTest is BasicDeploy {
         assertEq(asset.borrowThreshold, 900, "Borrow threshold mismatch");
         assertEq(asset.liquidationThreshold, 950, "Liquidation threshold mismatch");
         assertEq(asset.maxSupplyThreshold, 1_000_000e6, "Supply limit mismatch");
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        assertEq(uint8(asset.tier), uint8(ILendefiAssets.CollateralTier.STABLE), "Tier mismatch");
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        assertEq(uint8(asset.tier), uint8(IASSETS.CollateralTier.STABLE), "Tier mismatch");
         assertEq(asset.isolationDebtCap, 0, "Isolation debt cap should be 0 for STABLE assets");
     }
 
@@ -121,7 +119,7 @@ contract GetAssetInfoTest is BasicDeploy {
         address randomAddress = address(0x123);
 
         // UPDATED: Use assetsInstance and expect revert for unlisted asset
-        vm.expectRevert(abi.encodeWithSelector(ILendefiAssets.AssetNotListed.selector, randomAddress));
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.AssetNotListed.selector, randomAddress));
         assetsInstance.getAssetInfo(randomAddress);
     }
 
@@ -138,21 +136,22 @@ contract GetAssetInfoTest is BasicDeploy {
             750, // Change borrow threshold
             800, // Change liquidation threshold
             500_000 ether, // Lower supply limit
-            ILendefiAssets.CollateralTier.CROSS_B, // Change tier
-            1_000_000e6 // Add isolation debt cap
+            1_000_000e6, // Add isolation debt cap
+            IASSETS.CollateralTier.CROSS_B, // Change tier
+            IASSETS.OracleType.CHAINLINK
         );
 
         vm.stopPrank();
 
         // UPDATED: Use assetsInstance for getAssetInfo
-        ILendefiAssets.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
 
         assertEq(asset.active, 0, "WETH should be inactive after update");
         assertEq(asset.borrowThreshold, 750, "Borrow threshold should be updated");
         assertEq(asset.liquidationThreshold, 800, "Liquidation threshold should be updated");
         assertEq(asset.maxSupplyThreshold, 500_000 ether, "Supply limit should be updated");
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        assertEq(uint8(asset.tier), uint8(ILendefiAssets.CollateralTier.CROSS_B), "Tier should be updated");
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        assertEq(uint8(asset.tier), uint8(IASSETS.CollateralTier.CROSS_B), "Tier should be updated");
         assertEq(asset.isolationDebtCap, 1_000_000e6, "Isolation debt cap should be updated");
     }
 }
