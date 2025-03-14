@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
@@ -40,15 +40,6 @@ contract ExchangeTest is BasicDeploy {
         wethOracleInstance.setPrice(2500e8); // $2500 per ETH
         rwaOracleInstance.setPrice(1000e8); // $1000 per RWA token
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -70,8 +61,9 @@ contract ExchangeTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA token as ISOLATED tier
@@ -84,10 +76,16 @@ contract ExchangeTest is BasicDeploy {
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // Isolation debt cap of 100,000 USDC
+            100_000e6, // Isolation debt cap of 100,000 USDC
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
         vm.stopPrank();
     }
 
