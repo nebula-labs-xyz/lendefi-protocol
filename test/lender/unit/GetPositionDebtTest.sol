@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
@@ -42,15 +42,6 @@ contract GetPositionDebtTest is BasicDeploy {
         wethOracleInstance.setPrice(int256(ETH_PRICE)); // $2500 per ETH
         stableOracleInstance.setPrice(1e8); // $1 per stable
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -79,8 +70,9 @@ contract GetPositionDebtTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A, // Changed from IPROTOCOL to ILendefiAssets
-            10_000e6 // Isolation debt cap
+            10_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.CROSS_A, // Changed from IPROTOCOL to IASSETS
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure USDC as STABLE tier - Changed from LendefiInstance to assetsInstance
@@ -93,10 +85,16 @@ contract GetPositionDebtTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000e6, // Supply limit
-            ILendefiAssets.CollateralTier.STABLE, // Changed from IPROTOCOL to ILendefiAssets
-            0 // No isolation debt cap
+            0, // Isolation debt cap
+            IASSETS.CollateralTier.STABLE, // Changed from IPROTOCOL to IASSETS
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
         vm.stopPrank();
     }
 
