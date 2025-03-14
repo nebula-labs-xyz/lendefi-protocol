@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
@@ -15,9 +15,9 @@ contract CalculateCreditLimitTest is BasicDeploy {
     MockRWA internal rwaToken;
     MockRWA internal stableToken;
 
-    RWAPriceConsumerV3 internal rwaOracleInstance;
-    WETHPriceConsumerV3 internal wethOracleInstance;
-    StablePriceConsumerV3 internal stableOracleInstance;
+    RWAPriceConsumerV3 internal rwaassetsInstance;
+    WETHPriceConsumerV3 internal wethassetsInstance;
+    StablePriceConsumerV3 internal stableassetsInstance;
 
     function setUp() public {
         deployCompleteWithOracle();
@@ -32,28 +32,14 @@ contract CalculateCreditLimitTest is BasicDeploy {
         stableToken = new MockRWA("USD Coin", "USDC");
 
         // Deploy oracles
-        wethOracleInstance = new WETHPriceConsumerV3();
-        rwaOracleInstance = new RWAPriceConsumerV3();
-        stableOracleInstance = new StablePriceConsumerV3();
+        wethassetsInstance = new WETHPriceConsumerV3();
+        rwaassetsInstance = new RWAPriceConsumerV3();
+        stableassetsInstance = new StablePriceConsumerV3();
 
         // Set prices
-        wethOracleInstance.setPrice(2500e8); // $2500 per ETH
-        rwaOracleInstance.setPrice(1000e8); // $1000 per RWA token
-        stableOracleInstance.setPrice(1e8); // $1 per stable token
-
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-
-        oracleInstance.addOracle(address(stableToken), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(stableToken), address(stableOracleInstance));
-
-        oracleInstance.updateMinimumOracles(1); // Set minimum oracles to 1 to avoid NotEnoughOracles error
-        vm.stopPrank();
+        wethassetsInstance.setPrice(2500e8); // $2500 per ETH
+        rwaassetsInstance.setPrice(1000e8); // $1000 per RWA token
+        stableassetsInstance.setPrice(1e8); // $1 per stable token
 
         // Setup roles
         vm.prank(guardian);
@@ -68,44 +54,55 @@ contract CalculateCreditLimitTest is BasicDeploy {
         // Configure WETH as CROSS_A tier - UPDATED: use assetsInstance
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethOracleInstance),
+            address(wethassetsInstance),
             8,
             18,
             1,
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA token as ISOLATED tier - UPDATED: use assetsInstance
         assetsInstance.updateAssetConfig(
             address(rwaToken),
-            address(rwaOracleInstance),
+            address(rwaassetsInstance),
             8,
             18,
             1,
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // Isolation debt cap of 100,000 USDC
+            100_000e6, // Isolation debt cap of 100,000 USDC
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure stable token as STABLE tier - UPDATED: use assetsInstance
         assetsInstance.updateAssetConfig(
             address(stableToken),
-            address(stableOracleInstance),
+            address(stableassetsInstance),
             8,
             18,
             1,
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.STABLE,
-            0
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
+
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethassetsInstance));
+
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaassetsInstance));
+
+        assetsInstance.setPrimaryOracle(address(stableToken), address(stableassetsInstance));
 
         vm.stopPrank();
     }
@@ -242,7 +239,7 @@ contract CalculateCreditLimitTest is BasicDeploy {
         uint256 initialCreditLimit = LendefiInstance.calculateCreditLimit(alice, positionId);
 
         // Change oracle price (double it)
-        rwaOracleInstance.setPrice(2000e8); // $2000 per RWA token
+        rwaassetsInstance.setPrice(2000e8); // $2000 per RWA token
 
         // Get new credit limit
         uint256 newCreditLimit = LendefiInstance.calculateCreditLimit(alice, positionId);
@@ -261,7 +258,7 @@ contract CalculateCreditLimitTest is BasicDeploy {
         _mintAndSupplyCollateral(alice, address(rwaToken), collateralAmount, positionId);
 
         // Set oracle price to zero
-        rwaOracleInstance.setPrice(0);
+        rwaassetsInstance.setPrice(0);
 
         // Should revert with price error code
         vm.expectRevert();
