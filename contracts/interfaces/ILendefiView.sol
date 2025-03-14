@@ -3,9 +3,9 @@ pragma solidity 0.8.23;
 
 import {IPROTOCOL} from "../interfaces/IProtocol.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ILendefiYieldToken} from "../interfaces/ILendefiYieldToken.sol";
 import {IECOSYSTEM} from "../interfaces/IEcosystem.sol";
-import {ILendefiAssets} from "../interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../interfaces/IASSETS.sol";
+import {ILendefiYieldToken} from "../interfaces/ILendefiYieldToken.sol";
 
 /**
  * @title ILendefiView
