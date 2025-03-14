@@ -8,7 +8,7 @@ import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 
 contract LiquidateTest is BasicDeploy {
     // Events to verify
@@ -50,21 +50,6 @@ contract LiquidateTest is BasicDeploy {
         stableOracleInstance.setPrice(1e8); // $1 per USDT
         crossBOracleInstance.setPrice(500e8); // $500 per CROSSB token
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-
-        oracleInstance.addOracle(address(stableToken), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(stableToken), address(stableOracleInstance));
-
-        oracleInstance.addOracle(address(crossBToken), address(crossBOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(crossBToken), address(crossBOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -86,8 +71,9 @@ contract LiquidateTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA token as ISOLATED tier
@@ -100,8 +86,9 @@ contract LiquidateTest is BasicDeploy {
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // Isolation debt cap of 100,000 USDC
+            100_000e6, // Isolation debt cap of 100,000 USDC
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure USDT as STABLE tier
@@ -114,8 +101,9 @@ contract LiquidateTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.STABLE,
-            0
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure Cross B token
@@ -128,10 +116,17 @@ contract LiquidateTest is BasicDeploy {
             700, // 70% borrow threshold
             800, // 80% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_B,
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_B,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
+        assetsInstance.setPrimaryOracle(address(stableToken), address(stableOracleInstance));
+        assetsInstance.setPrimaryOracle(address(crossBToken), address(crossBOracleInstance));
         vm.stopPrank();
     }
 
@@ -546,13 +541,14 @@ contract LiquidateTest is BasicDeploy {
                 800, // 80% borrow threshold
                 850, // 85% liquidation threshold
                 1_000_000 ether,
-                ILendefiAssets.CollateralTier.CROSS_A,
-                0
+                0,
+                IASSETS.CollateralTier.CROSS_A,
+                IASSETS.OracleType.CHAINLINK
             );
 
             // Register oracle
-            oracleInstance.addOracle(address(mockAssets[i]), address(oracle), 8);
-            oracleInstance.setPrimaryOracle(address(mockAssets[i]), address(oracle));
+
+            assetsInstance.setPrimaryOracle(address(mockAssets[i]), address(oracle));
         }
         vm.stopPrank();
 
@@ -678,7 +674,7 @@ contract LiquidateTest is BasicDeploy {
     }
     // Helper function to access assetInfo storage for tests
 
-    function assetInfo(address asset) internal view returns (ILendefiAssets.Asset memory) {
+    function assetInfo(address asset) internal view returns (IASSETS.Asset memory) {
         return assetsInstance.getAssetInfo(asset);
     }
 }
