@@ -6,9 +6,8 @@ import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
 import {MockPriceOracle} from "../../../contracts/mock/MockPriceOracle.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
-import {ILendefiOracle} from "../../../contracts/interfaces/ILendefiOracle.sol";
 
 contract HealthFactorTest is BasicDeploy {
     MockPriceOracle internal ethOracle;
@@ -59,18 +58,6 @@ contract HealthFactorTest is BasicDeploy {
         stableOracle.setRoundId(1);
         stableOracle.setAnsweredInRound(1);
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(ethOracle), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(ethOracle));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracle), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracle));
-
-        oracleInstance.addOracle(address(stableToken), address(stableOracle), 8);
-        oracleInstance.setPrimaryOracle(address(stableToken), address(stableOracle));
-        vm.stopPrank();
-
         // No need to deploy Lendefi manually as it's already deployed by deployCompleteWithOracle()
         // with the Oracle module integration
 
@@ -91,8 +78,9 @@ contract HealthFactorTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // no isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA token as ISOLATED tier
@@ -105,8 +93,9 @@ contract HealthFactorTest is BasicDeploy {
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // isolation debt cap of 100,000 USDC
+            100_000e6, // isolation debt cap of 100,000 USDC
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure Stable token as STABLE tier
@@ -119,10 +108,16 @@ contract HealthFactorTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.STABLE,
-            0 // no isolation debt cap
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(ethOracle));
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracle));
+        assetsInstance.setPrimaryOracle(address(stableToken), address(stableOracle));
         vm.stopPrank();
     }
 
@@ -265,12 +260,12 @@ contract HealthFactorTest is BasicDeploy {
         ethOracle.setTimestamp(block.timestamp);
 
         // Try to get health factor with zero price
-        vm.expectRevert(abi.encodeWithSelector(ILendefiOracle.OracleInvalidPrice.selector, address(ethOracle), 0));
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.OracleInvalidPrice.selector, address(ethOracle), 0));
         LendefiInstance.healthFactor(bob, positionId);
 
         // Try negative price
         ethOracle.setPrice(-1000);
-        vm.expectRevert(abi.encodeWithSelector(ILendefiOracle.OracleInvalidPrice.selector, address(ethOracle), -1000));
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.OracleInvalidPrice.selector, address(ethOracle), -1000));
         LendefiInstance.healthFactor(bob, positionId);
     }
 
@@ -302,7 +297,7 @@ contract HealthFactorTest is BasicDeploy {
         ethOracle.setTimestamp(block.timestamp); // Current timestamp
 
         // Try to get health factor with stale oracle data
-        vm.expectRevert(abi.encodeWithSelector(ILendefiOracle.OracleStalePrice.selector, address(ethOracle), 10, 5));
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.OracleStalePrice.selector, address(ethOracle), 10, 5));
         LendefiInstance.healthFactor(bob, positionId);
     }
 
@@ -337,7 +332,7 @@ contract HealthFactorTest is BasicDeploy {
         // Try to get health factor with outdated oracle
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILendefiOracle.OracleTimeout.selector, address(ethOracle), oldTimestamp, block.timestamp, 8 hours
+                IASSETS.OracleTimeout.selector, address(ethOracle), oldTimestamp, block.timestamp, 8 hours
             )
         );
         LendefiInstance.healthFactor(bob, positionId);
