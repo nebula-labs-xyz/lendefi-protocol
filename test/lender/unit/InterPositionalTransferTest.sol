@@ -40,7 +40,7 @@ import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 
 contract InterPositionalTransferTest is BasicDeploy {
     // Event to verify - using the correct signature from the contract
@@ -73,15 +73,6 @@ contract InterPositionalTransferTest is BasicDeploy {
         // Configure oracles
         vm.startPrank(address(timelockInstance));
 
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-
-        oracleInstance.addOracle(address(stableToken), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(stableToken), address(stableOracleInstance));
-
         // Configure assets
         assetsInstance.updateAssetConfig(
             address(wethInstance),
@@ -92,8 +83,9 @@ contract InterPositionalTransferTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         assetsInstance.updateAssetConfig(
@@ -105,8 +97,9 @@ contract InterPositionalTransferTest is BasicDeploy {
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // Isolation debt cap
+            100_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         assetsInstance.updateAssetConfig(
@@ -118,10 +111,14 @@ contract InterPositionalTransferTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_B, // Changed from STABLE to CROSS_B to allow transfers
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_B, // Changed from STABLE to CROSS_B to allow transfers
+            IASSETS.OracleType.CHAINLINK
         );
 
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
+        assetsInstance.setPrimaryOracle(address(stableToken), address(stableOracleInstance));
         vm.stopPrank();
 
         // Add liquidity to protocol
@@ -307,8 +304,6 @@ contract InterPositionalTransferTest is BasicDeploy {
             oracle_.setPrice(100e8);
 
             vm.startPrank(address(timelockInstance));
-            oracleInstance.addOracle(address(token), address(oracle_), 8);
-            oracleInstance.setPrimaryOracle(address(token), address(oracle_));
 
             assetsInstance.updateAssetConfig(
                 address(token),
@@ -319,9 +314,12 @@ contract InterPositionalTransferTest is BasicDeploy {
                 800,
                 850,
                 1_000_000 ether,
-                ILendefiAssets.CollateralTier.CROSS_B,
-                0
+                0,
+                IASSETS.CollateralTier.CROSS_B,
+                IASSETS.OracleType.CHAINLINK
             );
+
+            assetsInstance.setPrimaryOracle(address(token), address(oracle_));
             vm.stopPrank();
 
             // Add to target position
@@ -340,8 +338,6 @@ contract InterPositionalTransferTest is BasicDeploy {
         oracle.setPrice(100e8);
 
         vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(extraToken), address(oracle), 8);
-        oracleInstance.setPrimaryOracle(address(extraToken), address(oracle));
 
         assetsInstance.updateAssetConfig(
             address(extraToken),
@@ -352,9 +348,12 @@ contract InterPositionalTransferTest is BasicDeploy {
             800,
             850,
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_B,
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_B,
+            IASSETS.OracleType.CHAINLINK
         );
+
+        assetsInstance.setPrimaryOracle(address(extraToken), address(oracle));
         vm.stopPrank();
 
         // Add to source position
@@ -483,8 +482,6 @@ contract InterPositionalTransferTest is BasicDeploy {
         crossOracle.setPrice(100e8);
 
         vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(crossToken), address(crossOracle), 8);
-        oracleInstance.setPrimaryOracle(address(crossToken), address(crossOracle));
 
         assetsInstance.updateAssetConfig(
             address(crossToken),
@@ -495,9 +492,12 @@ contract InterPositionalTransferTest is BasicDeploy {
             800,
             850,
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_B, // Non-isolated tier
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_B, // Non-isolated tier
+            IASSETS.OracleType.CHAINLINK
         );
+
+        assetsInstance.setPrimaryOracle(address(crossToken), address(crossOracle));
         vm.stopPrank();
 
         // Add the CROSS_B token to both positions
@@ -557,8 +557,6 @@ contract InterPositionalTransferTest is BasicDeploy {
         otherOracle.setPrice(500e8);
 
         vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(otherToken), address(otherOracle), 8);
-        oracleInstance.setPrimaryOracle(address(otherToken), address(otherOracle));
 
         assetsInstance.updateAssetConfig(
             address(otherToken),
@@ -569,9 +567,12 @@ contract InterPositionalTransferTest is BasicDeploy {
             650,
             750,
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6
+            100_000e6,
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
+
+        assetsInstance.setPrimaryOracle(address(otherToken), address(otherOracle));
         vm.stopPrank();
 
         uint256 toPositionId = _createPosition(bob, address(otherToken), true);
