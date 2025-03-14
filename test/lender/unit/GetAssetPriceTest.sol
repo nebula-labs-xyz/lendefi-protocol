@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
@@ -42,22 +42,6 @@ contract GetAssetPriceTest is BasicDeploy {
         wbtcOracleInstance.setPrice(60000e8); // $60,000 per BTC
         stableOracleInstance.setPrice(1e8); // $1 per stable
 
-        // Set minimumOraclesRequired to 1 in the Oracle module
-        // This is critically important as the default is 2
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.updateMinimumOracles(1);
-
-        // Register oracles with Oracle module
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(wbtcToken), address(wbtcOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wbtcToken), address(wbtcOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -79,8 +63,9 @@ contract GetAssetPriceTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A, // UPDATED: Use ILendefiAssets.CollateralTier
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A, // UPDATED: Use IASSETS.CollateralTier
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure WBTC as CROSS_A tier
@@ -93,8 +78,9 @@ contract GetAssetPriceTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000 * 1e8, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A, // UPDATED: Use ILendefiAssets.CollateralTier
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A, // UPDATED: Use IASSETS.CollateralTier
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure USDC as STABLE tier
@@ -107,10 +93,18 @@ contract GetAssetPriceTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000e6, // Supply limit
-            ILendefiAssets.CollateralTier.STABLE, // UPDATED: Use ILendefiAssets.CollateralTier
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.STABLE, // UPDATED: Use IASSETS.CollateralTier
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(wbtcToken), address(wbtcOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
         vm.stopPrank();
     }
 
@@ -146,7 +140,7 @@ contract GetAssetPriceTest is BasicDeploy {
         address randomAddress = address(0x123);
 
         // UPDATED: Use assetsInstance and expect specific AssetNotListed error
-        vm.expectRevert(abi.encodeWithSelector(ILendefiAssets.AssetNotListed.selector, randomAddress));
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.AssetNotListed.selector, randomAddress));
         assetsInstance.getAssetPrice(randomAddress);
     }
 
