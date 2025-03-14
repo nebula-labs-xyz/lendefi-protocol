@@ -4,6 +4,8 @@ pragma solidity ^0.8.23;
 import {IUniswapV3Pool} from "../../contracts/interfaces/IUniswapV3Pool.sol";
 
 contract MockUniswapV3Pool is IUniswapV3Pool {
+    uint256 public mockPrice = 1100e8; // Default mock price
+
     address public override token0;
     address public override token1;
     uint24 public fee;
@@ -11,6 +13,10 @@ contract MockUniswapV3Pool is IUniswapV3Pool {
     int56[] internal tickCumulatives;
     uint160[] internal secondsPerLiquidityCumulativeX128s;
     bool internal observeSuccess;
+
+    function setMockPrice(uint256 price) external {
+        mockPrice = price;
+    }
 
     constructor(address _token0, address _token1, uint24 _fee) {
         token0 = _token0;
