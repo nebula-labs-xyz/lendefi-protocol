@@ -3,7 +3,7 @@ pragma solidity ^0.8.23;
 
 import "../../BasicDeploy.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {LendefiView} from "../../../contracts/lender/LendefiView.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
@@ -32,12 +32,6 @@ contract GetProtocolSnapshotTest is BasicDeploy {
         testOracle = new RWAPriceConsumerV3();
         testOracle.setPrice(1000e8); // $1000 per token
 
-        // Register the test token with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(testToken), address(testOracle), 8);
-        oracleInstance.setPrimaryOracle(address(testToken), address(testOracle));
-        vm.stopPrank();
-
         // Configure asset for testing - Changed from LendefiInstance to assetsInstance
         vm.prank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
@@ -49,12 +43,17 @@ contract GetProtocolSnapshotTest is BasicDeploy {
             800, // borrow threshold (80%)
             850, // liquidation threshold (85%)
             10_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.CROSS_A, // Changed from IPROTOCOL to ILendefiAssets
-            1_000_000e6 // isolation debt cap
+            1_000_000e6, // isolation debt cap
+            IASSETS.CollateralTier.CROSS_A, // Changed from IPROTOCOL to IASSETS
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Setup flash loan fee using the new config approach
         vm.startPrank(address(timelockInstance));
+        // Register the test token with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(testToken), address(testOracle));
+
         IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
         config.flashLoanFee = 10; // 0.1% fee
         LendefiInstance.loadProtocolConfig(config);
