@@ -9,7 +9,7 @@ import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
 import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 
 contract IsLiquidatableComprehensiveTest is BasicDeploy {
     WETHPriceConsumerV3 internal wethOracleInstance;
@@ -52,26 +52,6 @@ contract IsLiquidatableComprehensiveTest is BasicDeploy {
         rwaOracleInstance.setPrice(1000e8); // $1000 per RWA token
         crossBOracleInstance.setPrice(500e8); // $500 per CROSSB token
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        // Register USDC oracle
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-
-        // Register other token oracles
-        oracleInstance.addOracle(address(stableToken), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(stableToken), address(stableOracleInstance));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-
-        oracleInstance.addOracle(address(crossBToken), address(crossBOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(crossBToken), address(crossBOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -93,8 +73,9 @@ contract IsLiquidatableComprehensiveTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure Stable token as STABLE tier
@@ -107,8 +88,9 @@ contract IsLiquidatableComprehensiveTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.STABLE,
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA token as ISOLATED tier
@@ -121,8 +103,9 @@ contract IsLiquidatableComprehensiveTest is BasicDeploy {
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // Isolation debt cap
+            100_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure CROSS_B token
@@ -135,10 +118,15 @@ contract IsLiquidatableComprehensiveTest is BasicDeploy {
             700, // 70% borrow threshold
             800, // 80% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_B,
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_B,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+        assetsInstance.setPrimaryOracle(address(stableToken), address(stableOracleInstance));
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
+        assetsInstance.setPrimaryOracle(address(crossBToken), address(crossBOracleInstance));
         vm.stopPrank();
     }
 
