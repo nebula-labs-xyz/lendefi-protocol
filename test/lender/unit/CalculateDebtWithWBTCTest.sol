@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
 import {MockWBTC} from "../../../contracts/mock/MockWBTC.sol";
@@ -17,9 +17,9 @@ contract WBTCInterestTest is BasicDeploy {
     MockWBTC internal wbtcCrossToken;
 
     // Oracle instances
-    WETHPriceConsumerV3 internal wbtcOracleInstance;
-    WETHPriceConsumerV3 internal wethOracleInstance;
-    StablePriceConsumerV3 internal stableOracleInstance;
+    WETHPriceConsumerV3 internal wbtcassetsInstance;
+    WETHPriceConsumerV3 internal wethassetsInstance;
+    StablePriceConsumerV3 internal stableassetsInstance;
 
     function setUp() public {
         // Use deployCompleteWithOracle() instead of deployComplete()
@@ -37,29 +37,14 @@ contract WBTCInterestTest is BasicDeploy {
         wbtcCrossToken = new MockWBTC();
 
         // Deploy oracles
-        wethOracleInstance = new WETHPriceConsumerV3();
-        wbtcOracleInstance = new WETHPriceConsumerV3();
-        stableOracleInstance = new StablePriceConsumerV3();
+        wethassetsInstance = new WETHPriceConsumerV3();
+        wbtcassetsInstance = new WETHPriceConsumerV3();
+        stableassetsInstance = new StablePriceConsumerV3();
 
         // Set prices
-        wethOracleInstance.setPrice(2500e8); // $2500 per ETH
-        wbtcOracleInstance.setPrice(60000e8); // $60,000 per BTC
-        stableOracleInstance.setPrice(1e8); // $1 per stable
-
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(wbtcIsolatedToken), address(wbtcOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wbtcIsolatedToken), address(wbtcOracleInstance));
-
-        oracleInstance.addOracle(address(wbtcCrossToken), address(wbtcOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wbtcCrossToken), address(wbtcOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
+        wethassetsInstance.setPrice(2500e8); // $2500 per ETH
+        wbtcassetsInstance.setPrice(60000e8); // $60,000 per BTC
+        stableassetsInstance.setPrice(1e8); // $1 per stable
 
         // Setup roles
         vm.prank(guardian);
@@ -76,59 +61,73 @@ contract WBTCInterestTest is BasicDeploy {
         // Configure WETH as CROSS_A tier
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethOracleInstance),
+            address(wethassetsInstance),
             8, // Oracle decimals
             18, // Asset decimals
             1, // Active
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // No isolation debt cap for CROSS assets
+            0, // No isolation debt cap for CROSS assets
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure first WBTC token as ISOLATED tier
         assetsInstance.updateAssetConfig(
             address(wbtcIsolatedToken),
-            address(wbtcOracleInstance),
+            address(wbtcassetsInstance),
             8, // Oracle decimals
             8, // Asset decimals
             1, // Active
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000 * 1e8, // Supply limit
-            ILendefiAssets.CollateralTier.ISOLATED,
-            1_000_000e6 // isolation debt cap
+            1_000_000e6, // isolation debt cap
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure second WBTC token as CROSS_A tier
         assetsInstance.updateAssetConfig(
             address(wbtcCrossToken),
-            address(wbtcOracleInstance),
+            address(wbtcassetsInstance),
             8, // Oracle decimals
             8, // Asset decimals
             1, // Active
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000 * 1e8, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // No isolation debt cap for CROSS assets
+            0, // No isolation debt cap for CROSS assets
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure USDC as STABLE tier
         assetsInstance.updateAssetConfig(
             address(usdcInstance),
-            address(stableOracleInstance),
+            address(stableassetsInstance),
             8, // Oracle decimals
             6, // USDC decimals
             1, // Active
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000e6, // Supply limit
-            ILendefiAssets.CollateralTier.STABLE,
-            0 // No isolation debt cap for STABLE assets
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+        vm.startPrank(address(timelockInstance));
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethassetsInstance));
+
+        assetsInstance.setPrimaryOracle(address(wbtcIsolatedToken), address(wbtcassetsInstance));
+
+        assetsInstance.setPrimaryOracle(address(wbtcCrossToken), address(wbtcassetsInstance));
+
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(stableassetsInstance));
         vm.stopPrank();
     }
 
@@ -183,7 +182,7 @@ contract WBTCInterestTest is BasicDeploy {
         uint256 debtWithInterest = LendefiInstance.calculateDebtWithInterest(alice, positionId);
 
         // Calculate expected debt using LendefiRates library
-        uint256 tierRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.ISOLATED);
+        uint256 tierRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.ISOLATED);
         uint256 timeElapsed = block.timestamp - position.lastInterestAccrual;
         uint256 expectedDebt = LendefiRates.calculateDebtWithInterest(position.debtAmount, tierRate, timeElapsed);
 
@@ -231,8 +230,8 @@ contract WBTCInterestTest is BasicDeploy {
 
         // Get the highest tier (should be CROSS_A)
         // UPDATED: getHighestTier no longer exists directly as a function, use getPositionTier instead
-        ILendefiAssets.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
-        assertEq(uint256(highestTier), uint256(ILendefiAssets.CollateralTier.CROSS_A), "Highest tier should be CROSS_A");
+        IASSETS.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
+        assertEq(uint256(highestTier), uint256(IASSETS.CollateralTier.CROSS_A), "Highest tier should be CROSS_A");
 
         // Calculate expected debt
         uint256 tierRate = LendefiInstance.getBorrowRate(highestTier);
@@ -287,8 +286,8 @@ contract WBTCInterestTest is BasicDeploy {
         vm.warp(block.timestamp + 120 days);
 
         // Get highest tier - UPDATED: use getPositionTier instead of getHighestTier
-        ILendefiAssets.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
-        assertEq(uint256(highestTier), uint256(ILendefiAssets.CollateralTier.CROSS_A), "Highest tier should be CROSS_A");
+        IASSETS.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
+        assertEq(uint256(highestTier), uint256(IASSETS.CollateralTier.CROSS_A), "Highest tier should be CROSS_A");
 
         // Get position data
         IPROTOCOL.UserPosition memory position = LendefiInstance.getUserPosition(alice, positionId);
