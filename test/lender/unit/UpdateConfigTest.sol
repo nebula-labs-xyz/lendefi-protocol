@@ -5,7 +5,7 @@ import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {MockPriceOracle} from "../../../contracts/mock/MockPriceOracle.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {IFlashLoanReceiver} from "../../../contracts/interfaces/IFlashLoanReceiver.sol";
@@ -285,7 +285,7 @@ contract UpdateProtocolConfigTest is BasicDeploy {
         _setupProtocolWithSupplyAndBorrow();
 
         // Get initial borrow rate for STABLE tier
-        uint256 initialBorrowRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        uint256 initialBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
 
         // Update base borrow rate (double it)
         IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
@@ -295,7 +295,7 @@ contract UpdateProtocolConfigTest is BasicDeploy {
         LendefiInstance.loadProtocolConfig(config);
 
         // Get new borrow rate
-        uint256 newBorrowRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        uint256 newBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
 
         // Borrow rate should be higher after increase to base
         assertGt(newBorrowRate, initialBorrowRate, "Borrow rate should increase when base borrow rate increases");
@@ -400,8 +400,9 @@ contract UpdateProtocolConfigTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // no isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
         vm.stopPrank();
 
