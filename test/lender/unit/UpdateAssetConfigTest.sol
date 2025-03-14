@@ -3,7 +3,7 @@ pragma solidity ^0.8.23;
 
 import "../../BasicDeploy.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
 import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
@@ -36,12 +36,6 @@ contract UpdateAssetConfigTest is BasicDeploy {
         testToken = new MockRWA("Test Token", "TEST");
         testOracle = new RWAPriceConsumerV3();
         testOracle.setPrice(1000e8); // $1000 per token
-
-        // Now register the test oracle with our Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(testToken), address(testOracle), ORACLE_DECIMALS);
-        oracleInstance.setPrimaryOracle(address(testToken), address(testOracle));
-        vm.stopPrank();
     }
 
     // Test 1: Only manager can update asset config
@@ -66,8 +60,9 @@ contract UpdateAssetConfigTest is BasicDeploy {
             BORROW_THRESHOLD,
             LIQUIDATION_THRESHOLD,
             MAX_SUPPLY,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            ISOLATION_DEBT_CAP
+            ISOLATION_DEBT_CAP,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
         vm.stopPrank();
 
@@ -82,8 +77,9 @@ contract UpdateAssetConfigTest is BasicDeploy {
             BORROW_THRESHOLD,
             LIQUIDATION_THRESHOLD,
             MAX_SUPPLY,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            ISOLATION_DEBT_CAP
+            ISOLATION_DEBT_CAP,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
     }
 
@@ -111,8 +107,9 @@ contract UpdateAssetConfigTest is BasicDeploy {
             BORROW_THRESHOLD,
             LIQUIDATION_THRESHOLD,
             MAX_SUPPLY,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            ISOLATION_DEBT_CAP
+            ISOLATION_DEBT_CAP,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Asset should now be listed
@@ -140,12 +137,13 @@ contract UpdateAssetConfigTest is BasicDeploy {
             BORROW_THRESHOLD,
             LIQUIDATION_THRESHOLD,
             MAX_SUPPLY,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            ISOLATION_DEBT_CAP
+            ISOLATION_DEBT_CAP,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Get stored asset info
-        ILendefiAssets.Asset memory assetInfo = assetsInstance.getAssetInfo(address(testToken));
+        IASSETS.Asset memory assetInfo = assetsInstance.getAssetInfo(address(testToken));
 
         // Verify all parameters
         assertEq(assetInfo.active, ASSET_ACTIVE, "Active status not stored correctly");
@@ -155,7 +153,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
         assertEq(assetInfo.borrowThreshold, BORROW_THRESHOLD, "Borrow threshold not stored correctly");
         assertEq(assetInfo.liquidationThreshold, LIQUIDATION_THRESHOLD, "Liquidation threshold not stored correctly");
         assertEq(assetInfo.maxSupplyThreshold, MAX_SUPPLY, "Max supply not stored correctly");
-        assertEq(uint8(assetInfo.tier), uint8(ILendefiAssets.CollateralTier.CROSS_A), "Tier not stored correctly");
+        assertEq(uint8(assetInfo.tier), uint8(IASSETS.CollateralTier.CROSS_A), "Tier not stored correctly");
         assertEq(assetInfo.isolationDebtCap, ISOLATION_DEBT_CAP, "Isolation debt cap not stored correctly");
     }
 
@@ -172,14 +170,15 @@ contract UpdateAssetConfigTest is BasicDeploy {
             BORROW_THRESHOLD,
             LIQUIDATION_THRESHOLD,
             MAX_SUPPLY,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            ISOLATION_DEBT_CAP
+            ISOLATION_DEBT_CAP,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Now update some parameters
         uint8 newActive = 0; // Deactivate
         uint32 newBorrowThreshold = 700; // 70%
-        ILendefiAssets.CollateralTier newTier = ILendefiAssets.CollateralTier.ISOLATED;
+        IASSETS.CollateralTier newTier = IASSETS.CollateralTier.ISOLATED;
         uint256 newDebtCap = 50_000e6;
 
         vm.prank(address(timelockInstance));
@@ -192,12 +191,13 @@ contract UpdateAssetConfigTest is BasicDeploy {
             newBorrowThreshold,
             LIQUIDATION_THRESHOLD,
             MAX_SUPPLY,
+            newDebtCap,
             newTier,
-            newDebtCap
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Verify updated parameters
-        ILendefiAssets.Asset memory assetInfo = assetsInstance.getAssetInfo(address(testToken));
+        IASSETS.Asset memory assetInfo = assetsInstance.getAssetInfo(address(testToken));
 
         assertEq(assetInfo.active, newActive, "Active status not updated correctly");
         assertEq(assetInfo.borrowThreshold, newBorrowThreshold, "Borrow threshold not updated correctly");
@@ -221,8 +221,9 @@ contract UpdateAssetConfigTest is BasicDeploy {
             BORROW_THRESHOLD,
             LIQUIDATION_THRESHOLD,
             MAX_SUPPLY,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            ISOLATION_DEBT_CAP
+            ISOLATION_DEBT_CAP,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
     }
 
@@ -239,8 +240,9 @@ contract UpdateAssetConfigTest is BasicDeploy {
             BORROW_THRESHOLD,
             LIQUIDATION_THRESHOLD,
             MAX_SUPPLY,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            ISOLATION_DEBT_CAP
+            ISOLATION_DEBT_CAP,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Setup user position - these still use LendefiInstance
@@ -258,12 +260,13 @@ contract UpdateAssetConfigTest is BasicDeploy {
             address(testOracle),
             ORACLE_DECIMALS,
             ASSET_DECIMALS,
-            0, // Deactivate
+            0, //deactivate
             BORROW_THRESHOLD,
             LIQUIDATION_THRESHOLD,
             MAX_SUPPLY,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            ISOLATION_DEBT_CAP
+            ISOLATION_DEBT_CAP,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Try supplying more collateral - should revert with NotListed error
