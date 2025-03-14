@@ -9,7 +9,7 @@ import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {IERC20, SafeERC20 as TH} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract PauseUnpauseTest is BasicDeploy {
@@ -50,16 +50,7 @@ contract PauseUnpauseTest is BasicDeploy {
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
 
-        // Set up flash loan fee
-        // LendefiInstance.updateFlashLoanFee(9); // 9 basis points = 0.09%
-        vm.stopPrank();
         // Deploy flash loan receiver
         flashLoanReceiver = new MockFlashLoanReceiver();
 
@@ -81,8 +72,9 @@ contract PauseUnpauseTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA token as ISOLATED tier
@@ -95,10 +87,13 @@ contract PauseUnpauseTest is BasicDeploy {
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // Isolation debt cap of 100,000 USDC
+            100_000e6, // Isolation debt cap of 100,000 USDC
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
-
+        // Register oracles with Oracle module
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
         vm.stopPrank();
     }
 
@@ -527,8 +522,9 @@ contract PauseUnpauseTest is BasicDeploy {
             600, // Change from 650 to 600
             700, // Change from 750 to 700
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6
+            100_000e6,
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Update flash loan fee using the new config approach
@@ -546,7 +542,7 @@ contract PauseUnpauseTest is BasicDeploy {
         vm.stopPrank();
 
         // Verify changes were applied
-        ILendefiAssets.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
         assertEq(asset.borrowThreshold, 600, "borrowThreshold should be updated to 600");
         assertEq(asset.liquidationThreshold, 700, "liquidationThreshold should be updated to 700");
 
