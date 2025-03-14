@@ -3,8 +3,7 @@ pragma solidity ^0.8.23;
 
 import "../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
-import {ILendefiAssets} from "../../contracts/interfaces/ILendefiAssets.sol";
-import {ILendefiOracle} from "../../contracts/interfaces/ILendefiOracle.sol";
+import {IASSETS} from "../../contracts/interfaces/IASSETS.sol";
 import {RWAPriceConsumerV3} from "../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../contracts/mock/WETHOracle.sol";
 import {MockRWA} from "../../contracts/mock/MockRWA.sol";
@@ -13,8 +12,8 @@ contract LendefiExtendedTest is BasicDeploy {
     uint256 constant WAD = 1e6;
     MockRWA internal rwaToken;
 
-    RWAPriceConsumerV3 internal rwaOracleInstance;
-    WETHPriceConsumerV3 internal wethOracleInstance;
+    RWAPriceConsumerV3 internal rwaassetsInstance;
+    WETHPriceConsumerV3 internal wethassetsInstance;
 
     function setUp() public {
         // Use deployCompleteWithOracle() instead of deployComplete()
@@ -31,21 +30,12 @@ contract LendefiExtendedTest is BasicDeploy {
         rwaToken = new MockRWA("Ondo Finance", "ONDO");
 
         // Deploy oracles
-        wethOracleInstance = new WETHPriceConsumerV3();
-        rwaOracleInstance = new RWAPriceConsumerV3();
+        wethassetsInstance = new WETHPriceConsumerV3();
+        rwaassetsInstance = new RWAPriceConsumerV3();
 
         // Set prices
-        wethOracleInstance.setPrice(2500e8); // $2500 per ETH
-        rwaOracleInstance.setPrice(1000e8); // $1000 per RWA token
-
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-        vm.stopPrank();
+        wethassetsInstance.setPrice(2500e8); // $2500 per ETH
+        rwaassetsInstance.setPrice(1000e8); // $1000 per RWA token
 
         // Setup roles
         vm.prank(guardian);
@@ -59,35 +49,44 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Configure RWA token (isolated)
-        // Changed from LendefiInstance to assetsInstance
+        // Updated parameter order and added OracleType parameter
         assetsInstance.updateAssetConfig(
             address(rwaToken), // asset
-            address(rwaOracleInstance), // oracle
+            address(rwaassetsInstance), // oracle
             8, // oracle decimals
             18, // asset decimals
             1, // active
             650, // borrow threshold (65%)
             750, // liquidation threshold (75%)
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // isolation debt cap
+            100_000e6, // isolation debt cap (moved before tier)
+            IASSETS.CollateralTier.ISOLATED, // tier
+            IASSETS.OracleType.CHAINLINK // new oracle type parameter
         );
 
         // Configure WETH (cross-collateral)
-        // Changed from LendefiInstance to assetsInstance
+        // Updated parameter order and added OracleType parameter
         assetsInstance.updateAssetConfig(
             address(wethInstance), // asset
-            address(wethOracleInstance), // oracle
+            address(wethassetsInstance), // oracle
             8, // oracle decimals
             18, // asset decimals
             1, // active
             800, // borrow threshold (80%)
             850, // liquidation threshold (85%)
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // no isolation debt cap
+            0, // no isolation debt cap (moved before tier)
+            IASSETS.CollateralTier.CROSS_A, // tier
+            IASSETS.OracleType.CHAINLINK // new oracle type parameter
         );
 
+        // Register oracles with Oracle module
+        // Updated addOracle calls with OracleType parameter
+        //assetsInstance.addOracle(address(wethInstance), address(wethassetsInstance), 8, IASSETS.OracleType.CHAINLINK);
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethassetsInstance));
+
+        //assetsInstance.addOracle(address(rwaToken), address(rwaassetsInstance), 8, IASSETS.OracleType.CHAINLINK);
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaassetsInstance));
         vm.stopPrank();
     }
 
@@ -109,7 +108,7 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.deal(bob, 100 ether);
 
         // Set initial prices
-        wethOracleInstance.setPrice(2500e8); // $2500 per ETH
+        wethassetsInstance.setPrice(2500e8); // $2500 per ETH
     }
 
     function test_FullPositionLifecycle() public {
@@ -125,7 +124,7 @@ contract LendefiExtendedTest is BasicDeploy {
         LendefiInstance.supplyCollateral(address(wethInstance), 10 ether, 0);
 
         // Pass CROSS_A tier since we're using WETH
-        uint256 borrowRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
+        uint256 borrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
         console2.log("Borrow rate (%):", borrowRate * 100 / 1e6);
 
         // Log rates and utilization
@@ -134,7 +133,7 @@ contract LendefiExtendedTest is BasicDeploy {
         // Get base borrow rate
         IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
         uint256 baseRate = config.borrowRate;
-        uint256 tierRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
+        uint256 tierRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
 
         console2.log("Initial utilization (%):", utilization * 100 / WAD);
         console2.log("Base borrow rate (%):", baseRate * 100 / 1e6);
@@ -225,7 +224,7 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.stopPrank();
     }
 
-    // Fixed - Using proper ILendefiOracle.OracleInvalidPrice error
+    // Fixed - Using proper IASSETS.OracleInvalidPrice error
     function test_OracleFailures() public {
         vm.startPrank(bob);
         wethInstance.deposit{value: 10 ether}();
@@ -234,12 +233,10 @@ contract LendefiExtendedTest is BasicDeploy {
         LendefiInstance.supplyCollateral(address(wethInstance), 10 ether, 0);
 
         // Mock oracle failure
-        wethOracleInstance.setPrice(0); // Set invalid price
+        wethassetsInstance.setPrice(0); // Set invalid price
 
-        // Use custom error from ILendefiOracle interface
-        vm.expectRevert(
-            abi.encodeWithSelector(ILendefiOracle.OracleInvalidPrice.selector, address(wethOracleInstance), 0)
-        );
+        // Use custom error from IASSETS interface
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.OracleInvalidPrice.selector, address(wethassetsInstance), 0));
         LendefiInstance.borrow(0, 1000e6);
         vm.stopPrank();
     }
@@ -260,9 +257,6 @@ contract LendefiExtendedTest is BasicDeploy {
 
         // Update protocol config using the new loadProtocolConfig function
         LendefiInstance.loadProtocolConfig(config);
-
-        // Update tier parameters - moved to assetsInstance
-        assetsInstance.updateTierParameters(ILendefiAssets.CollateralTier.CROSS_A, 0.1e6, 0.1e6);
 
         vm.stopPrank();
 
@@ -291,7 +285,7 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.stopPrank();
     }
 
-    // Fixed - Using proper ILendefiOracle.OracleTimeout error
+    // Fixed - Using proper IASSETS.OracleTimeout error
     function testRevert_OracleTimeout() public {
         vm.startPrank(bob);
         wethInstance.deposit{value: 10 ether}();
@@ -302,12 +296,12 @@ contract LendefiExtendedTest is BasicDeploy {
         // Warp time far into future to cause oracle timeout
         vm.warp(block.timestamp + 30 days);
 
-        // Use custom error from ILendefiOracle interface
+        // Use custom error from IASSETS interface
         // The parameters must match the exact format used in the contract
         vm.expectRevert(
             abi.encodeWithSelector(
-                ILendefiOracle.OracleTimeout.selector,
-                address(wethOracleInstance),
+                IASSETS.OracleTimeout.selector,
+                address(wethassetsInstance),
                 block.timestamp - 30 days, // Oracle timestamp
                 block.timestamp, // Current timestamp
                 8 hours // Max age
@@ -377,15 +371,16 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethOracleInstance),
+            address(wethassetsInstance),
             8,
             18,
             1,
             800,
             850,
             5 ether, // Low max supply of 5 ETH
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0
+            0, // no isolation debt cap (moved before tier)
+            IASSETS.CollateralTier.CROSS_A, // tier
+            IASSETS.OracleType.CHAINLINK // new oracle type parameter
         );
         vm.stopPrank();
 
