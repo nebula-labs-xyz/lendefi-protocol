@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {LendefiView} from "../../../contracts/lender/LendefiView.sol";
 import {TokenMock} from "../../../contracts/mock/TokenMock.sol";
@@ -48,12 +48,6 @@ contract GetLPInfoTest is BasicDeploy {
         wethOracleInstance = new WETHPriceConsumerV3();
         wethOracleInstance.setPrice(2500e8); // $2500 per ETH
 
-        // Register oracle with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -81,9 +75,12 @@ contract GetLPInfoTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // No isolation debt cap
+            0, // No isolation debt cap
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
         vm.stopPrank();
 
         // Add initial liquidity from guardian
