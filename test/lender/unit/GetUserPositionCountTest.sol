@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {MockPriceOracle} from "../../../contracts/mock/MockPriceOracle.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
@@ -41,15 +41,6 @@ contract GetUserPositionsCountTest is BasicDeploy {
         rwaOracle.setRoundId(1);
         rwaOracle.setAnsweredInRound(1);
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(ethOracle), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(ethOracle));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracle), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracle));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -71,8 +62,9 @@ contract GetUserPositionsCountTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.CROSS_A, // Changed from IPROTOCOL to ILendefiAssets
-            0 // no isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A, // Changed from IPROTOCOL to IASSETS
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA token as isolation-eligible - Changed from LendefiInstance to assetsInstance
@@ -85,9 +77,14 @@ contract GetUserPositionsCountTest is BasicDeploy {
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.ISOLATED, // Changed from IPROTOCOL to ILendefiAssets
-            100_000e6 // $100k max borrow cap
+            100_000e6, // $100k max borrow cap
+            IASSETS.CollateralTier.ISOLATED, // Changed from IPROTOCOL to IASSETS
+            IASSETS.OracleType.CHAINLINK
         );
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(ethOracle));
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracle));
         vm.stopPrank();
     }
 
