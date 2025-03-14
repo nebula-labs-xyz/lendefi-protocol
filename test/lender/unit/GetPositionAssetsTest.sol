@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
@@ -45,18 +45,6 @@ contract getPositionCollateralAssetsTest is BasicDeploy {
         stableOracleInstance.setPrice(1e8); // $1 per stable
         linkOracleInstance.setPrice(int256(LINK_PRICE)); // $15 per LINK
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(linkInstance), address(linkOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(linkInstance), address(linkOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -85,8 +73,9 @@ contract getPositionCollateralAssetsTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            10_000e6 // Isolation debt cap
+            10_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure USDC as STABLE tier
@@ -99,8 +88,9 @@ contract getPositionCollateralAssetsTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000e6, // Supply limit
-            ILendefiAssets.CollateralTier.STABLE,
-            0 // No isolation debt cap
+            0, // No isolation debt cap
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure LINK as ISOLATED tier
@@ -113,10 +103,18 @@ contract getPositionCollateralAssetsTest is BasicDeploy {
             700, // 70% borrow threshold
             750, // 75% liquidation threshold
             100_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.ISOLATED,
-            5_000e6 // Isolation debt cap
+            5_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(linkInstance), address(linkOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
         vm.stopPrank();
     }
 
