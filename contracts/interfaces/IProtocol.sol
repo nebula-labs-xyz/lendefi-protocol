@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.23;
 
-import {ILendefiAssets} from "../interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../interfaces/IASSETS.sol";
 
 interface IPROTOCOL {
     // Enums
@@ -589,7 +589,7 @@ interface IPROTOCOL {
      * @param tier The collateral tier to query
      * @return The borrow interest rate (scaled by RAY)
      */
-    function getBorrowRate(ILendefiAssets.CollateralTier tier) external view returns (uint256);
+    function getBorrowRate(IASSETS.CollateralTier tier) external view returns (uint256);
 
     /**
      * @notice Checks if a user is eligible for rewards
@@ -649,7 +649,7 @@ interface IPROTOCOL {
      * @dev For cross-collateral positions, returns the tier of the riskiest asset
      * @dev For isolated positions, returns ISOLATED tier regardless of asset
      */
-    function getPositionTier(address user, uint256 positionId) external view returns (ILendefiAssets.CollateralTier);
+    function getPositionTier(address user, uint256 positionId) external view returns (IASSETS.CollateralTier);
 
     /**
      * @notice Transfers collateral between two positions owned by the same user
