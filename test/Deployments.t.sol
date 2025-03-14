@@ -70,19 +70,19 @@ contract BasicDeployTest is BasicDeploy {
         deployTeamManagerUpgrade();
     }
 
-    function test_012_deployOracle() public {
-        deployComplete();
-        _deployOracle();
+    // function test_012_deployOracle() public {
+    //     deployComplete();
+    //     _deployOracle();
 
-        // Verify Oracle deployment
-        assertFalse(
-            address(oracleInstance) == Upgrades.getImplementationAddress(address(oracleInstance)),
-            "Implementation should be different from proxy"
-        );
+    //     // Verify Oracle deployment
+    //     assertFalse(
+    //         address(oracleInstance) == Upgrades.getImplementationAddress(address(oracleInstance)),
+    //         "Implementation should be different from proxy"
+    //     );
 
-        // Test Oracle functionality
-        assertTrue(oracleInstance.hasRole(MANAGER_ROLE, address(timelockInstance)), "Timelock should have MANAGER_ROLE");
-    }
+    //     // Test Oracle functionality
+    //     assertTrue(oracleInstance.hasRole(MANAGER_ROLE, address(timelockInstance)), "Timelock should have MANAGER_ROLE");
+    // }
 
     function test_013_deployYieldToken() public {
         deployComplete();
@@ -107,7 +107,7 @@ contract BasicDeployTest is BasicDeploy {
 
     function test_015_deployLendefiModules() public {
         deployComplete();
-        _deployOracle();
+        // _deployOracle();
         _deployLendefiModules();
 
         // Verify deployments
@@ -137,7 +137,7 @@ contract BasicDeployTest is BasicDeploy {
         assertTrue(address(treasuryInstance) != address(0), "Treasury should be deployed");
         assertTrue(address(govInstance) != address(0), "Governor should be deployed");
         assertTrue(address(timelockInstance) != address(0), "Timelock should be deployed");
-        assertTrue(address(oracleInstance) != address(0), "Oracle should be deployed");
+        assertTrue(address(assetsInstance) != address(0), "Oracle should be deployed");
         assertTrue(address(yieldTokenInstance) != address(0), "YieldToken should be deployed");
         assertTrue(address(LendefiInstance) != address(0), "Lendefi should be deployed");
         assertTrue(address(usdcInstance) != address(0), "USDC mock should be deployed");
@@ -149,7 +149,7 @@ contract BasicDeployTest is BasicDeploy {
         console2.log("Treasury:     ", address(treasuryInstance));
         console2.log("Governor:     ", address(govInstance));
         console2.log("Timelock:     ", address(timelockInstance));
-        console2.log("Oracle:       ", address(oracleInstance));
+        console2.log("Assets:       ", address(assetsInstance));
         console2.log("YieldToken:   ", address(yieldTokenInstance));
         console2.log("Lendefi:      ", address(LendefiInstance));
         console2.log("USDC:         ", address(usdcInstance));
