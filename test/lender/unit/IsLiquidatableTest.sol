@@ -7,7 +7,7 @@ import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 
 contract IsLiquidatableTest is BasicDeploy {
     WETHPriceConsumerV3 internal wethOracleInstance;
@@ -37,16 +37,6 @@ contract IsLiquidatableTest is BasicDeploy {
         wethOracleInstance.setPrice(ETH_PRICE); // $2500 per ETH
         stableOracleInstance.setPrice(1e8); // $1 per stable
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        // Register USDC oracle if needed
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -68,10 +58,14 @@ contract IsLiquidatableTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // No isolation debt cap
+            0, // No isolation debt cap
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
         vm.stopPrank();
     }
 
