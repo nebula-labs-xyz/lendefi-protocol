@@ -8,7 +8,7 @@ import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 
 contract BorrowTest is BasicDeploy {
     // Events to verify
@@ -38,15 +38,6 @@ contract BorrowTest is BasicDeploy {
         wethOracleInstance.setPrice(2500e8); // $2500 per ETH
         rwaOracleInstance.setPrice(1000e8); // $1000 per RWA token
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -68,8 +59,9 @@ contract BorrowTest is BasicDeploy {
             800,
             850,
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA token as ISOLATED tier
@@ -82,10 +74,17 @@ contract BorrowTest is BasicDeploy {
             650,
             750,
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // Isolation debt cap of 100,000 USDC
+            100_000e6,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        vm.startPrank(address(timelockInstance));
+        //assetsInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+
+        //assetsInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
         vm.stopPrank();
     }
 
@@ -323,7 +322,7 @@ contract BorrowTest is BasicDeploy {
         vm.startPrank(bob);
 
         // Get isolation debt cap from asset config
-        ILendefiAssets.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
         uint256 isolationDebtCap = asset.isolationDebtCap;
         console2.log("Isolation debt cap (USDC):", isolationDebtCap / 1e6);
 
@@ -467,8 +466,8 @@ contract BorrowTest is BasicDeploy {
         // Update with modified config
         LendefiInstance.loadProtocolConfig(config);
 
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.ISOLATED,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.ISOLATED,
             0.25e6, // 25% for isolated assets - maximum allowed
             0.1e6 // 10% liquidation bonus
         );
@@ -493,7 +492,7 @@ contract BorrowTest is BasicDeploy {
         require(creditLimit >= borrowAmount, "Credit limit too low for test");
 
         // Get isolated rate
-        uint256 isolatedRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.ISOLATED);
+        uint256 isolatedRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.ISOLATED);
         console2.log("ISOLATED tier rate (%):", isolatedRate * 100 / 1e6);
 
         // Borrow
@@ -529,8 +528,8 @@ contract BorrowTest is BasicDeploy {
         // Update with modified config
         LendefiInstance.loadProtocolConfig(config);
 
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.CROSS_B,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.CROSS_B,
             0.15e6, // 15% for CROSS_B tier
             0.09e6 // 9% liquidation bonus
         );
@@ -545,8 +544,9 @@ contract BorrowTest is BasicDeploy {
             700, // 70% borrow threshold
             800, // 80% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_B,
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_B,
+            IASSETS.OracleType.CHAINLINK
         );
         vm.stopPrank();
 
@@ -569,7 +569,7 @@ contract BorrowTest is BasicDeploy {
         require(creditLimit >= borrowAmount, "Credit limit too low for test");
 
         // Get cross B rate
-        uint256 crossBRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_B);
+        uint256 crossBRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_B);
         console2.log("CROSS_B tier rate (%):", crossBRate * 100 / 1e6);
 
         // Borrow
@@ -600,8 +600,8 @@ contract BorrowTest is BasicDeploy {
         // Update with modified config
         LendefiInstance.loadProtocolConfig(config);
 
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.CROSS_A,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.CROSS_A,
             0.05e6, // 5% for CROSS_A tier
             0.08e6 // 8% liquidation bonus
         );
@@ -626,7 +626,7 @@ contract BorrowTest is BasicDeploy {
         require(creditLimit >= borrowAmount, "Credit limit too low for test");
 
         // Get cross A rate
-        uint256 crossARate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
+        uint256 crossARate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
         console2.log("CROSS_A tier rate (%):", crossARate * 100 / 1e6);
 
         // Borrow
