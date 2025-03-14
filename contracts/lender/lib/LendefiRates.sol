@@ -6,8 +6,6 @@ pragma solidity 0.8.23;
  * @dev Contains math-heavy functions to reduce main contract size
  */
 
-import {ILendefiAssets} from "../../interfaces/ILendefiAssets.sol";
-
 library LendefiRates {
     // using EnumerableSet for EnumerableSet.AddressSet;
 
