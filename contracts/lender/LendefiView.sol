@@ -11,10 +11,10 @@ pragma solidity 0.8.23;
  * @custom:copyright Copyright (c) 2025 Nebula Holding Inc. All rights reserved.
  */
 import {IPROTOCOL} from "../interfaces/IProtocol.sol";
+import {IASSETS} from "../interfaces/IASSETS.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ILendefiYieldToken} from "../interfaces/ILendefiYieldToken.sol";
 import {IECOSYSTEM} from "../interfaces/IEcosystem.sol";
-import {ILendefiAssets} from "../interfaces/ILendefiAssets.sol";
 import {ILendefiView} from "../interfaces/ILendefiView.sol";
 
 /**
@@ -129,7 +129,7 @@ contract LendefiView is ILendefiView {
         IPROTOCOL.ProtocolConfig memory config = protocol.getConfig();
         return ProtocolSnapshot({
             utilization: protocol.getUtilization(),
-            borrowRate: protocol.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A),
+            borrowRate: protocol.getBorrowRate(IASSETS.CollateralTier.CROSS_A),
             supplyRate: protocol.getSupplyRate(),
             totalBorrow: protocol.totalBorrow(),
             totalSuppliedLiquidity: protocol.totalSuppliedLiquidity(),
