@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
@@ -15,9 +15,9 @@ import {LendefiRates} from "../../../contracts/lender/lib/LendefiRates.sol";
 contract CalculateDebtWithInterestTest is BasicDeploy {
     MockRWA internal rwaToken;
 
-    RWAPriceConsumerV3 internal rwaOracleInstance;
-    WETHPriceConsumerV3 internal wethOracleInstance;
-    StablePriceConsumerV3 internal stableOracleInstance;
+    RWAPriceConsumerV3 internal rwaassetsInstance;
+    WETHPriceConsumerV3 internal wethassetsInstance;
+    StablePriceConsumerV3 internal stableassetsInstance;
 
     function setUp() public {
         deployCompleteWithOracle();
@@ -32,26 +32,14 @@ contract CalculateDebtWithInterestTest is BasicDeploy {
         rwaToken = new MockRWA("Ondo Finance", "ONDO");
 
         // Deploy oracles
-        wethOracleInstance = new WETHPriceConsumerV3();
-        rwaOracleInstance = new RWAPriceConsumerV3();
-        stableOracleInstance = new StablePriceConsumerV3();
+        wethassetsInstance = new WETHPriceConsumerV3();
+        rwaassetsInstance = new RWAPriceConsumerV3();
+        stableassetsInstance = new StablePriceConsumerV3();
 
         // Set prices
-        wethOracleInstance.setPrice(2500e8); // $2500 per ETH
-        rwaOracleInstance.setPrice(1000e8); // $1000 per RWA token
-        stableOracleInstance.setPrice(1e8); // $1 per stable token
-
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
+        wethassetsInstance.setPrice(2500e8); // $2500 per ETH
+        rwaassetsInstance.setPrice(1000e8); // $1000 per RWA token
+        stableassetsInstance.setPrice(1e8); // $1 per stable token
 
         // Setup roles
         vm.prank(guardian);
@@ -68,45 +56,56 @@ contract CalculateDebtWithInterestTest is BasicDeploy {
         // Configure WETH as CROSS_A tier
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethOracleInstance),
+            address(wethassetsInstance),
             8,
             18,
             1,
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA token as ISOLATED tier
         assetsInstance.updateAssetConfig(
             address(rwaToken),
-            address(rwaOracleInstance),
+            address(rwaassetsInstance),
             8,
             18,
             1,
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // Isolation debt cap of 100,000 USDC
+            100_000e6, // Isolation debt cap of 100,000 USDC
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure stable token as STABLE tier
         assetsInstance.updateAssetConfig(
             address(usdcInstance),
-            address(stableOracleInstance),
+            address(stableassetsInstance),
             8,
             6,
             1,
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.STABLE,
-            0
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+        vm.startPrank(address(timelockInstance));
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethassetsInstance));
+
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaassetsInstance));
+
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(stableassetsInstance));
         vm.stopPrank();
     }
 
@@ -188,8 +187,8 @@ contract CalculateDebtWithInterestTest is BasicDeploy {
         uint256 debtWithInterest = LendefiInstance.calculateDebtWithInterest(alice, positionId);
         assertTrue(debtWithInterest > borrowAmount, "Debt should increase due to interest");
 
-        // Get isolated tier rate for verification - UPDATED: using ILendefiAssets.CollateralTier
-        uint256 isolatedRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.ISOLATED);
+        // Get isolated tier rate for verification - UPDATED: using IASSETS.CollateralTier
+        uint256 isolatedRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.ISOLATED);
 
         // Calculate expected interest manually using LendefiRates
         uint256 timeElapsed = 30 days;
@@ -219,12 +218,12 @@ contract CalculateDebtWithInterestTest is BasicDeploy {
         IPROTOCOL.UserPosition memory position = LendefiInstance.getUserPosition(alice, positionId);
 
         // Get highest tier from collateral assets - UPDATED: use LendefiRates library via the contract
-        ILendefiAssets.CollateralTier tier = LendefiInstance.getPositionTier(alice, positionId);
+        IASSETS.CollateralTier tier = LendefiInstance.getPositionTier(alice, positionId);
 
         uint256 actualTierRate = LendefiInstance.getBorrowRate(tier);
 
         console2.log("Highest tier detected:", uint256(tier));
-        console2.log("CROSS_A tier value:", uint256(ILendefiAssets.CollateralTier.CROSS_A));
+        console2.log("CROSS_A tier value:", uint256(IASSETS.CollateralTier.CROSS_A));
 
         // Calculate using the same tier determined by the contract
         uint256 timeElapsed = block.timestamp - position.lastInterestAccrual;
@@ -272,16 +271,16 @@ contract CalculateDebtWithInterestTest is BasicDeploy {
         // The highest tier should be CROSS_A (not STABLE)
         // This is because numerically CROSS_A (1) > STABLE (0)
         // UPDATED: Get highest tier using LendefiRates
-        ILendefiAssets.CollateralTier tier = LendefiInstance.getPositionTier(alice, positionId);
+        IASSETS.CollateralTier tier = LendefiInstance.getPositionTier(alice, positionId);
 
         // Debug information
         console2.log("Highest tier value:", uint256(tier));
-        console2.log("STABLE tier value:", uint256(ILendefiAssets.CollateralTier.STABLE));
-        console2.log("CROSS_A tier value:", uint256(ILendefiAssets.CollateralTier.CROSS_A));
+        console2.log("STABLE tier value:", uint256(IASSETS.CollateralTier.STABLE));
+        console2.log("CROSS_A tier value:", uint256(IASSETS.CollateralTier.CROSS_A));
 
         assertEq(
             uint256(tier),
-            uint256(ILendefiAssets.CollateralTier.CROSS_A),
+            uint256(IASSETS.CollateralTier.CROSS_A),
             "Highest tier should be CROSS_A (numerically higher than STABLE)"
         );
 
@@ -322,8 +321,8 @@ contract CalculateDebtWithInterestTest is BasicDeploy {
         // Check debt with interest
         uint256 debtWithInterest = LendefiInstance.calculateDebtWithInterest(alice, positionId);
 
-        // Get rate - UPDATED: using ILendefiAssets.CollateralTier
-        uint256 tierRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
+        // Get rate - UPDATED: using IASSETS.CollateralTier
+        uint256 tierRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
 
         // For a full year, interest should be approximately borrowAmount * rate
         uint256 expectedInterest = (borrowAmount * tierRate) / 1e6;
