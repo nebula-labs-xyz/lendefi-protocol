@@ -5,7 +5,7 @@ import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
@@ -158,11 +158,11 @@ contract InitializeTest is BasicDeploy {
     // Test that initialization properly sets up protocol parameters for each tier
     function test_InitializationSetsAllTierParameters() public {
         // Define the CollateralTier enums (only for documentation)
-        ILendefiAssets.CollateralTier[] memory tiers = new ILendefiAssets.CollateralTier[](4);
-        tiers[3] = ILendefiAssets.CollateralTier.ISOLATED;
-        tiers[2] = ILendefiAssets.CollateralTier.CROSS_A;
-        tiers[1] = ILendefiAssets.CollateralTier.CROSS_B;
-        tiers[0] = ILendefiAssets.CollateralTier.STABLE;
+        IASSETS.CollateralTier[] memory tiers = new IASSETS.CollateralTier[](4);
+        tiers[3] = IASSETS.CollateralTier.ISOLATED;
+        tiers[2] = IASSETS.CollateralTier.CROSS_A;
+        tiers[1] = IASSETS.CollateralTier.CROSS_B;
+        tiers[0] = IASSETS.CollateralTier.STABLE;
 
         // Get tier parameters from the contract
         (uint256[4] memory jumpRates, uint256[4] memory liquidationFees) = assetsInstance.getTierRates();
