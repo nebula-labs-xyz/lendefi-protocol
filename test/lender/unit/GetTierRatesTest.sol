@@ -5,7 +5,7 @@ import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 
 contract GetTierRatesTest is BasicDeploy {
     function setUp() public {
@@ -43,15 +43,15 @@ contract GetTierRatesTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Update ISOLATED tier
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.ISOLATED,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.ISOLATED,
             0.2e6, // Change from 15% to 20%
             0.07e6 // Change from 4% to 7%
         );
 
         // Update STABLE tier
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.STABLE,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.STABLE,
             0.06e6, // Change from 5% to 6%
             0.03e6 // Change from 1% to 3%
         );
@@ -80,26 +80,26 @@ contract GetTierRatesTest is BasicDeploy {
         // We'll update each tier with unique values and then check the array positions
         vm.startPrank(address(timelockInstance));
 
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.ISOLATED,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.ISOLATED,
             0.1e6, // Unique value for ISOLATED
             0.09e6
         );
 
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.CROSS_A,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.CROSS_A,
             0.12e6, // Unique value for CROSS_A
             0.07e6
         );
 
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.CROSS_B,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.CROSS_B,
             0.14e6, // Unique value for CROSS_B
             0.05e6
         );
 
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.STABLE,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.STABLE,
             0.16e6, // Unique value for STABLE
             0.03e6
         );
