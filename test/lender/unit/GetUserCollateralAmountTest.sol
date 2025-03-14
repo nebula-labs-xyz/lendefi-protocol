@@ -8,7 +8,7 @@ import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {MockWBTC} from "../../../contracts/mock/MockWBTC.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 
 contract getCollateralAmountTest is BasicDeploy {
     // Token instances
@@ -42,18 +42,6 @@ contract getCollateralAmountTest is BasicDeploy {
         wbtcOracleInstance.setPrice(60000e8); // $60,000 per BTC
         stableOracleInstance.setPrice(1e8); // $1 per stable
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(mockWbtc), address(wbtcOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(mockWbtc), address(wbtcOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -75,8 +63,9 @@ contract getCollateralAmountTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // No isolation debt cap
+            0, // Isolation debt cap
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure WBTC as both ISOLATED and CROSS_A tier
@@ -89,8 +78,9 @@ contract getCollateralAmountTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000 * 1e8, // Supply limit
-            ILendefiAssets.CollateralTier.ISOLATED,
-            1_000_000e6 // Isolation debt cap
+            1_000_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure USDC as STABLE tier
@@ -103,10 +93,15 @@ contract getCollateralAmountTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000e6, // Supply limit
-            ILendefiAssets.CollateralTier.STABLE,
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+        assetsInstance.setPrimaryOracle(address(mockWbtc), address(wbtcOracleInstance));
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
         vm.stopPrank();
     }
 
