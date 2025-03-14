@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
@@ -47,21 +47,6 @@ contract getPositionLiquidationFeeTest is BasicDeploy {
         wethOracleInstance.setPrice(2500e8); // $2500 per ETH
         stableOracleInstance.setPrice(1e8); // $1 per stable
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(linkInstance), address(wethOracleInstance), 8); // Reusing oracle for simplicity
-        oracleInstance.setPrimaryOracle(address(linkInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(uniInstance), address(wethOracleInstance), 8); // Reusing oracle for simplicity
-        oracleInstance.setPrimaryOracle(address(uniInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -82,8 +67,9 @@ contract getPositionLiquidationFeeTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // No isolation debt cap
+            0, // No isolation debt cap
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure USDC as STABLE tier
@@ -96,8 +82,9 @@ contract getPositionLiquidationFeeTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000e6, // Supply limit
-            ILendefiAssets.CollateralTier.STABLE,
-            0 // No isolation debt cap
+            0, // No isolation debt cap
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure LINK as ISOLATED tier
@@ -110,8 +97,9 @@ contract getPositionLiquidationFeeTest is BasicDeploy {
             700, // 70% borrow threshold
             750, // 75% liquidation threshold
             100_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.ISOLATED,
-            10_000e6 // Isolation debt cap
+            10_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure UNI as CROSS_B tier
@@ -124,10 +112,21 @@ contract getPositionLiquidationFeeTest is BasicDeploy {
             750, // 75% borrow threshold
             800, // 80% liquidation threshold
             200_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_B,
-            0 // No isolation debt cap
+            0, // No isolation debt cap
+            IASSETS.CollateralTier.CROSS_B,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+        vm.startPrank(address(timelockInstance));
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(linkInstance), address(wethOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(uniInstance), address(wethOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
         vm.stopPrank();
     }
 
@@ -279,8 +278,8 @@ contract getPositionLiquidationFeeTest is BasicDeploy {
         uint256 isolatedPosFee = LendefiInstance.getPositionLiquidationFee(alice, isolatedPositionId);
         uint256 crossBPosFee = LendefiInstance.getPositionLiquidationFee(alice, crossBPositionId);
 
-        uint256 isolatedAssetFee = assetsInstance.getTierLiquidationFee(ILendefiAssets.CollateralTier.ISOLATED);
-        uint256 crossBAssetFee = assetsInstance.getTierLiquidationFee(ILendefiAssets.CollateralTier.CROSS_B);
+        uint256 isolatedAssetFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.ISOLATED);
+        uint256 crossBAssetFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_B);
 
         // Log values
         console2.log("ISOLATED position fee:", isolatedPosFee);
@@ -315,11 +314,11 @@ contract getPositionLiquidationFeeTest is BasicDeploy {
         uint256 newFee = 0.08e6; // 8% fee (below 10% max)
 
         // Get current jump rate to preserve it
-        uint256 currentJumpRate = assetsInstance.getTierJumpRate(ILendefiAssets.CollateralTier.ISOLATED);
+        uint256 currentJumpRate = assetsInstance.getTierJumpRate(IASSETS.CollateralTier.ISOLATED);
 
         vm.startPrank(address(timelockInstance));
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.ISOLATED,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.ISOLATED,
             currentJumpRate, // Keep current jump rate
             newFee // New liquidation fee (8%)
         );
@@ -365,8 +364,8 @@ contract getPositionLiquidationFeeTest is BasicDeploy {
         vm.stopPrank();
 
         // Debug: Get position tiers directly
-        ILendefiAssets.CollateralTier crossBPosTier = LendefiInstance.getPositionTier(alice, crossBPositionId);
-        ILendefiAssets.CollateralTier crossAPosTier = LendefiInstance.getPositionTier(alice, crossAPositionId);
+        IASSETS.CollateralTier crossBPosTier = LendefiInstance.getPositionTier(alice, crossBPositionId);
+        IASSETS.CollateralTier crossAPosTier = LendefiInstance.getPositionTier(alice, crossAPositionId);
 
         console2.log("Cross B Position Tier:", uint256(crossBPosTier));
         console2.log("Cross A Position Tier:", uint256(crossAPosTier));
@@ -404,7 +403,7 @@ contract getPositionLiquidationFeeTest is BasicDeploy {
         console2.log("ISOLATED position liquidation fee:", fee);
 
         // Get tier fee directly for verification
-        uint256 isolatedTierFee = assetsInstance.getTierLiquidationFee(ILendefiAssets.CollateralTier.ISOLATED);
+        uint256 isolatedTierFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.ISOLATED);
         console2.log("Expected ISOLATED tier fee:", isolatedTierFee);
 
         // Verify isolated position uses ISOLATED tier fee
