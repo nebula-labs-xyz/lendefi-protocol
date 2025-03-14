@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {TokenMock} from "../../../contracts/mock/TokenMock.sol";
@@ -51,24 +51,6 @@ contract ExitPositionTest is BasicDeploy {
         stableOracleInstance.setPrice(1e8); // $1 per USDT
         crossBOracleInstance.setPrice(500e8); // $500 per CROSSB token
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-
-        oracleInstance.addOracle(address(stableToken), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(stableToken), address(stableOracleInstance));
-
-        oracleInstance.addOracle(address(crossBToken), address(crossBOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(crossBToken), address(crossBOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -91,8 +73,9 @@ contract ExitPositionTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA token as ISOLATED tier
@@ -105,8 +88,9 @@ contract ExitPositionTest is BasicDeploy {
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // Isolation debt cap of 100,000 USDC
+            100_000e6, // Isolation debt cap of 100,000 USDC
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure USDT as STABLE tier
@@ -119,8 +103,9 @@ contract ExitPositionTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.STABLE,
-            0
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure Cross B token
@@ -133,9 +118,21 @@ contract ExitPositionTest is BasicDeploy {
             700, // 70% borrow threshold
             800, // 80% liquidation threshold
             1_000_000 ether,
-            ILendefiAssets.CollateralTier.CROSS_B,
-            0
+            0,
+            IASSETS.CollateralTier.CROSS_B,
+            IASSETS.OracleType.CHAINLINK
         );
+
+        // Register oracles with Oracle module
+        vm.startPrank(address(timelockInstance));
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(stableToken), address(stableOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(crossBToken), address(crossBOracleInstance));
 
         vm.stopPrank();
     }
