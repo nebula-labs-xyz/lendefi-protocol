@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import "../../BasicDeploy.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {console2} from "forge-std/console2.sol";
 import {MockPriceOracle} from "../../../contracts/mock/MockPriceOracle.sol";
@@ -10,7 +10,7 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 
 contract UpdateAssetTierTest is BasicDeploy {
     // Events
-    event AssetTierUpdated(address indexed asset, ILendefiAssets.CollateralTier tier);
+    event AssetTierUpdated(address indexed asset, IASSETS.CollateralTier tier);
 
     MockPriceOracle internal wethOracle;
     MockPriceOracle internal usdcOracle;
@@ -43,11 +43,6 @@ contract UpdateAssetTierTest is BasicDeploy {
 
         // Register oracles with Oracle module
         vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracle), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracle));
-
-        oracleInstance.addOracle(address(usdcInstance), address(usdcOracle), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(usdcOracle));
 
         // Add WETH as CROSS_A initially
         assetsInstance.updateAssetConfig(
@@ -59,8 +54,9 @@ contract UpdateAssetTierTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // no isolation debt cap
+            0, // no isolation debt cap
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Add USDC as STABLE initially
@@ -73,10 +69,13 @@ contract UpdateAssetTierTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             10_000_000e6, // max supply
-            ILendefiAssets.CollateralTier.STABLE,
-            0 // no isolation debt cap
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracle));
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(usdcOracle));
         vm.stopPrank();
     }
 
@@ -92,16 +91,16 @@ contract UpdateAssetTierTest is BasicDeploy {
         );
 
         // Call to assetsInstance instead of LendefiInstance
-        assetsInstance.updateAssetTier(address(wethInstance), ILendefiAssets.CollateralTier.ISOLATED);
+        assetsInstance.updateAssetTier(address(wethInstance), IASSETS.CollateralTier.ISOLATED);
         vm.stopPrank();
 
         // Manager should be able to update asset tier
         vm.prank(address(timelockInstance));
-        assetsInstance.updateAssetTier(address(wethInstance), ILendefiAssets.CollateralTier.ISOLATED);
+        assetsInstance.updateAssetTier(address(wethInstance), IASSETS.CollateralTier.ISOLATED);
 
         // Verify tier was updated
-        ILendefiAssets.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
-        assertEq(uint256(asset.tier), uint256(ILendefiAssets.CollateralTier.ISOLATED));
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
+        assertEq(uint256(asset.tier), uint256(IASSETS.CollateralTier.ISOLATED));
     }
 
     function testRevert_UpdateAssetTier_RequireAssetListed() public {
@@ -110,8 +109,8 @@ contract UpdateAssetTierTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Using custom error format in LendefiAssets
-        vm.expectRevert(abi.encodeWithSelector(ILendefiAssets.AssetNotListed.selector, unlisted));
-        assetsInstance.updateAssetTier(unlisted, ILendefiAssets.CollateralTier.ISOLATED);
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.AssetNotListed.selector, unlisted));
+        assetsInstance.updateAssetTier(unlisted, IASSETS.CollateralTier.ISOLATED);
         vm.stopPrank();
     }
 
@@ -120,24 +119,24 @@ contract UpdateAssetTierTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Update to ISOLATED
-        assetsInstance.updateAssetTier(address(wethInstance), ILendefiAssets.CollateralTier.ISOLATED);
-        ILendefiAssets.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
-        assertEq(uint256(asset.tier), uint256(ILendefiAssets.CollateralTier.ISOLATED));
+        assetsInstance.updateAssetTier(address(wethInstance), IASSETS.CollateralTier.ISOLATED);
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
+        assertEq(uint256(asset.tier), uint256(IASSETS.CollateralTier.ISOLATED));
 
         // Update to CROSS_A
-        assetsInstance.updateAssetTier(address(wethInstance), ILendefiAssets.CollateralTier.CROSS_A);
+        assetsInstance.updateAssetTier(address(wethInstance), IASSETS.CollateralTier.CROSS_A);
         asset = assetsInstance.getAssetInfo(address(wethInstance));
-        assertEq(uint256(asset.tier), uint256(ILendefiAssets.CollateralTier.CROSS_A));
+        assertEq(uint256(asset.tier), uint256(IASSETS.CollateralTier.CROSS_A));
 
         // Update to CROSS_B
-        assetsInstance.updateAssetTier(address(wethInstance), ILendefiAssets.CollateralTier.CROSS_B);
+        assetsInstance.updateAssetTier(address(wethInstance), IASSETS.CollateralTier.CROSS_B);
         asset = assetsInstance.getAssetInfo(address(wethInstance));
-        assertEq(uint256(asset.tier), uint256(ILendefiAssets.CollateralTier.CROSS_B));
+        assertEq(uint256(asset.tier), uint256(IASSETS.CollateralTier.CROSS_B));
 
         // Update to STABLE
-        assetsInstance.updateAssetTier(address(wethInstance), ILendefiAssets.CollateralTier.STABLE);
+        assetsInstance.updateAssetTier(address(wethInstance), IASSETS.CollateralTier.STABLE);
         asset = assetsInstance.getAssetInfo(address(wethInstance));
-        assertEq(uint256(asset.tier), uint256(ILendefiAssets.CollateralTier.STABLE));
+        assertEq(uint256(asset.tier), uint256(IASSETS.CollateralTier.STABLE));
 
         vm.stopPrank();
     }
@@ -146,18 +145,18 @@ contract UpdateAssetTierTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Update WETH to ISOLATED
-        assetsInstance.updateAssetTier(address(wethInstance), ILendefiAssets.CollateralTier.ISOLATED);
-        ILendefiAssets.Asset memory wethAsset = assetsInstance.getAssetInfo(address(wethInstance));
-        assertEq(uint256(wethAsset.tier), uint256(ILendefiAssets.CollateralTier.ISOLATED));
+        assetsInstance.updateAssetTier(address(wethInstance), IASSETS.CollateralTier.ISOLATED);
+        IASSETS.Asset memory wethAsset = assetsInstance.getAssetInfo(address(wethInstance));
+        assertEq(uint256(wethAsset.tier), uint256(IASSETS.CollateralTier.ISOLATED));
 
         // Update USDC to CROSS_B
-        assetsInstance.updateAssetTier(address(usdcInstance), ILendefiAssets.CollateralTier.CROSS_B);
-        ILendefiAssets.Asset memory usdcAsset = assetsInstance.getAssetInfo(address(usdcInstance));
-        assertEq(uint256(usdcAsset.tier), uint256(ILendefiAssets.CollateralTier.CROSS_B));
+        assetsInstance.updateAssetTier(address(usdcInstance), IASSETS.CollateralTier.CROSS_B);
+        IASSETS.Asset memory usdcAsset = assetsInstance.getAssetInfo(address(usdcInstance));
+        assertEq(uint256(usdcAsset.tier), uint256(IASSETS.CollateralTier.CROSS_B));
 
         // Ensure updates are independent
         wethAsset = assetsInstance.getAssetInfo(address(wethInstance));
-        assertEq(uint256(wethAsset.tier), uint256(ILendefiAssets.CollateralTier.ISOLATED));
+        assertEq(uint256(wethAsset.tier), uint256(IASSETS.CollateralTier.ISOLATED));
 
         vm.stopPrank();
     }
@@ -165,18 +164,18 @@ contract UpdateAssetTierTest is BasicDeploy {
     function test_UpdateAssetTier_EventEmission() public {
         // The second parameter needs to be a uint8 representation of the enum
         vm.expectEmit(true, true, false, false);
-        emit AssetTierUpdated(address(wethInstance), ILendefiAssets.CollateralTier.ISOLATED);
+        emit AssetTierUpdated(address(wethInstance), IASSETS.CollateralTier.ISOLATED);
 
         vm.prank(address(timelockInstance));
-        assetsInstance.updateAssetTier(address(wethInstance), ILendefiAssets.CollateralTier.ISOLATED);
+        assetsInstance.updateAssetTier(address(wethInstance), IASSETS.CollateralTier.ISOLATED);
     }
 
     function test_UpdateAssetTier_NoChangeWhenSameTier() public {
         vm.startPrank(address(timelockInstance));
 
         // Get initial tier
-        ILendefiAssets.Asset memory initialAsset = assetsInstance.getAssetInfo(address(wethInstance));
-        ILendefiAssets.CollateralTier initialTier = initialAsset.tier;
+        IASSETS.Asset memory initialAsset = assetsInstance.getAssetInfo(address(wethInstance));
+        IASSETS.CollateralTier initialTier = initialAsset.tier;
 
         // The second parameter is also indexed in the contract
         vm.expectEmit(true, true, false, false);
@@ -186,7 +185,7 @@ contract UpdateAssetTierTest is BasicDeploy {
         assetsInstance.updateAssetTier(address(wethInstance), initialTier);
 
         // Verify tier is unchanged
-        ILendefiAssets.Asset memory updatedAsset = assetsInstance.getAssetInfo(address(wethInstance));
+        IASSETS.Asset memory updatedAsset = assetsInstance.getAssetInfo(address(wethInstance));
         assertEq(uint256(updatedAsset.tier), uint256(initialTier));
 
         vm.stopPrank();
