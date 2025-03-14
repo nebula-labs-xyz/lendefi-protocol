@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {MockPriceOracle} from "../../../contracts/mock/MockPriceOracle.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
@@ -57,21 +57,6 @@ contract CalculateCollateralValueTest is BasicDeploy {
         stableOracle.setRoundId(1);
         stableOracle.setAnsweredInRound(1);
 
-        // Register oracles with Oracle module - use guardian for registration
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(ethOracle), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(ethOracle));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracle), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracle));
-
-        oracleInstance.addOracle(address(stableToken), address(stableOracle), 8);
-        oracleInstance.setPrimaryOracle(address(stableToken), address(stableOracle));
-
-        // Set minimum required oracles to 1 to avoid NotEnoughOracles errors
-        oracleInstance.updateMinimumOracles(1);
-        vm.stopPrank();
-
         _setupAssets();
         _supplyProtocolLiquidity();
     }
@@ -89,8 +74,9 @@ contract CalculateCollateralValueTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // no isolation debt cap
+            0, // no isolation debt cap
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA token as ISOLATED tier - UPDATED: use assetsInstance
@@ -103,8 +89,9 @@ contract CalculateCollateralValueTest is BasicDeploy {
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // isolation debt cap of 100,000 USDC
+            100_000e6, // isolation debt cap of 100,000 USDC
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure Stable token as STABLE tier - UPDATED: use assetsInstance
@@ -117,10 +104,24 @@ contract CalculateCollateralValueTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.STABLE,
-            0 // no isolation debt cap
+            0, // no isolation debt cap
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module - use guardian for registration
+        vm.startPrank(address(timelockInstance));
+        //assetsInstance.addOracle(address(wethInstance), address(ethOracle), 8, IASSETS.OracleType.CHAINLINK);
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(ethOracle));
+
+        //assetsInstance.addOracle(address(rwaToken), address(rwaOracle), 8,IASSETS.OracleType.CHAINLINK);
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracle));
+
+        //assetsInstance.addOracle(address(stableToken), address(stableOracle), 8, IASSETS.OracleType.CHAINLINK);
+        assetsInstance.setPrimaryOracle(address(stableToken), address(stableOracle));
+
+        // Set minimum required oracles to 1 to avoid NotEnoughOracles errors
+        //assetsInstance.updateMinimumOracles(1);
         vm.stopPrank();
     }
 
