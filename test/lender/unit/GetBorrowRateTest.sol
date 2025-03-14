@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
@@ -33,15 +33,6 @@ contract GetBorrowRateTest is BasicDeploy {
         wethOracleInstance.setPrice(2500e8); // $2500 per ETH
         stableOracleInstance.setPrice(1e8); // $1 per stable
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -63,8 +54,9 @@ contract GetBorrowRateTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A, // UPDATED: Use ILendefiAssets.CollateralTier
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A, // UPDATED: Use IASSETS.CollateralTier
+            IASSETS.OracleType.CHAINLINK
         );
 
         // UPDATED: Use assetsInstance instead of LendefiInstance
@@ -78,10 +70,16 @@ contract GetBorrowRateTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000e6, // Supply limit
-            ILendefiAssets.CollateralTier.STABLE, // UPDATED: Use ILendefiAssets.CollateralTier
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.STABLE, // UPDATED: Use IASSETS.CollateralTier
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
         vm.stopPrank();
     }
 
@@ -126,11 +124,11 @@ contract GetBorrowRateTest is BasicDeploy {
     // Test borrow rates for different tiers
     function test_GetBorrowRate_DifferentTiers() public {
         // Check initial rates with no utilization
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        uint256 stableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
-        uint256 crossARate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
-        uint256 crossBRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_B);
-        uint256 isolatedRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.ISOLATED);
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        uint256 stableRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
+        uint256 crossARate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
+        uint256 crossBRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_B);
+        uint256 isolatedRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.ISOLATED);
 
         console2.log("Initial STABLE borrow rate:", stableRate);
         console2.log("Initial CROSS_A borrow rate:", crossARate);
@@ -139,10 +137,10 @@ contract GetBorrowRateTest is BasicDeploy {
 
         // Get tier base rates from assetsInstance
         // UPDATED: Get tier rates from assetsInstance
-        uint256 stableTierRate = assetsInstance.getTierJumpRate(ILendefiAssets.CollateralTier.STABLE);
-        uint256 crossATierRate = assetsInstance.getTierJumpRate(ILendefiAssets.CollateralTier.CROSS_A);
-        uint256 crossBTierRate = assetsInstance.getTierJumpRate(ILendefiAssets.CollateralTier.CROSS_B);
-        uint256 isolatedTierRate = assetsInstance.getTierJumpRate(ILendefiAssets.CollateralTier.ISOLATED);
+        uint256 stableTierRate = assetsInstance.getTierJumpRate(IASSETS.CollateralTier.STABLE);
+        uint256 crossATierRate = assetsInstance.getTierJumpRate(IASSETS.CollateralTier.CROSS_A);
+        uint256 crossBTierRate = assetsInstance.getTierJumpRate(IASSETS.CollateralTier.CROSS_B);
+        uint256 isolatedTierRate = assetsInstance.getTierJumpRate(IASSETS.CollateralTier.ISOLATED);
 
         // Log tier base rates
         console2.log("STABLE tier jump rate:", stableTierRate);
@@ -160,11 +158,11 @@ contract GetBorrowRateTest is BasicDeploy {
         _createPositionAndBorrow(alice, 500 ether, 500_000e6); // 50% utilization
 
         // Now get the rates with utilization
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        uint256 stableRateWithUtil = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
-        uint256 crossARateWithUtil = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
-        uint256 crossBRateWithUtil = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_B);
-        uint256 isolatedRateWithUtil = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.ISOLATED);
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        uint256 stableRateWithUtil = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
+        uint256 crossARateWithUtil = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
+        uint256 crossBRateWithUtil = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_B);
+        uint256 isolatedRateWithUtil = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.ISOLATED);
 
         console2.log("Utilization:", LendefiInstance.getUtilization());
         console2.log("STABLE borrow rate with utilization:", stableRateWithUtil);
@@ -193,14 +191,14 @@ contract GetBorrowRateTest is BasicDeploy {
         _addLiquidity(1_000_000e6); // 1M USDC
 
         // Check rates before borrowing
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        uint256 initialStableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        uint256 initialStableRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
         console2.log("STABLE borrow rate at 0% utilization:", initialStableRate);
 
         // Create 25% utilization - with enough collateral
         _createPositionAndBorrow(alice, 250 ether, 250_000e6); // Borrow 250k USDC (25% utilization)
         uint256 utilization25 = LendefiInstance.getUtilization();
-        uint256 stableRate25 = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        uint256 stableRate25 = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
 
         console2.log("Utilization at 25%:", utilization25);
         console2.log("STABLE borrow rate at 25% utilization:", stableRate25);
@@ -208,7 +206,7 @@ contract GetBorrowRateTest is BasicDeploy {
         // Create 50% utilization - with enough collateral
         _createPositionAndBorrow(bob, 250 ether, 250_000e6); // Borrow another 250k USDC (50% utilization)
         uint256 utilization50 = LendefiInstance.getUtilization();
-        uint256 stableRate50 = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        uint256 stableRate50 = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
 
         console2.log("Utilization at 50%:", utilization50);
         console2.log("STABLE borrow rate at 50% utilization:", stableRate50);
@@ -216,7 +214,7 @@ contract GetBorrowRateTest is BasicDeploy {
         // Create 75% utilization - with enough collateral
         _createPositionAndBorrow(charlie, 250 ether, 250_000e6); // Borrow another 250k USDC (75% utilization)
         uint256 utilization75 = LendefiInstance.getUtilization();
-        uint256 stableRate75 = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        uint256 stableRate75 = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
 
         console2.log("Utilization at 75%:", utilization75);
         console2.log("STABLE borrow rate at 75% utilization:", stableRate75);
@@ -236,8 +234,8 @@ contract GetBorrowRateTest is BasicDeploy {
         _createPositionAndBorrow(alice, 400 ether, 400_000e6); // 400 ETH worth $1M, loan $400k
 
         // Get original rates
-        uint256 originalStableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
-        uint256 originalCrossARate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
+        uint256 originalStableRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
+        uint256 originalCrossARate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
 
         console2.log("Original STABLE borrow rate:", originalStableRate);
         console2.log("Original CROSS_A borrow rate:", originalCrossARate);
@@ -257,8 +255,8 @@ contract GetBorrowRateTest is BasicDeploy {
         vm.stopPrank();
 
         // Get new rates
-        uint256 newStableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
-        uint256 newCrossARate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
+        uint256 newStableRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
+        uint256 newCrossARate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
 
         console2.log("New STABLE borrow rate after base rate increase:", newStableRate);
         console2.log("New CROSS_A borrow rate after base rate increase:", newCrossARate);
@@ -279,18 +277,18 @@ contract GetBorrowRateTest is BasicDeploy {
         _createPositionAndBorrow(alice, 400 ether, 400_000e6); // 400 ETH worth $1M, loan $400k
 
         // Get original rates
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        uint256 originalStableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        uint256 originalStableRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
         console2.log("Original STABLE borrow rate:", originalStableRate);
 
         // Get the current tier rate
         // UPDATED: Use assetsInstance for tier rates
-        uint256 currentTierRate = assetsInstance.getTierJumpRate(ILendefiAssets.CollateralTier.STABLE);
+        uint256 currentTierRate = assetsInstance.getTierJumpRate(IASSETS.CollateralTier.STABLE);
         console2.log("Current tier jump rate for STABLE:", currentTierRate);
 
         // Get current liquidation bonus
         // UPDATED: Use assetsInstance for tier liquidation fee
-        uint256 liquidationBonus = assetsInstance.getTierLiquidationFee(ILendefiAssets.CollateralTier.STABLE);
+        uint256 liquidationBonus = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.STABLE);
         console2.log("Current liquidation bonus:", liquidationBonus);
 
         // Try a smaller increase (10% instead of 50%)
@@ -300,8 +298,8 @@ contract GetBorrowRateTest is BasicDeploy {
         // Update tier parameters for STABLE tier
         vm.startPrank(address(timelockInstance));
         // UPDATED: Use assetsInstance for updating tier params
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.STABLE,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.STABLE,
             newRate, // Use smaller increase
             liquidationBonus // Keep current liquidation bonus
         );
@@ -309,11 +307,11 @@ contract GetBorrowRateTest is BasicDeploy {
 
         // Get new tier parameters
         // UPDATED: Use assetsInstance for tier rates
-        uint256 newTierRate = assetsInstance.getTierJumpRate(ILendefiAssets.CollateralTier.STABLE);
+        uint256 newTierRate = assetsInstance.getTierJumpRate(IASSETS.CollateralTier.STABLE);
         console2.log("New tier jump rate for STABLE:", newTierRate);
 
         // Get new borrow rate
-        uint256 newStableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        uint256 newStableRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
         console2.log("New STABLE borrow rate after tier parameter update:", newStableRate);
 
         // Verify rates - but check for ANY change rather than specific change
@@ -338,7 +336,7 @@ contract GetBorrowRateTest is BasicDeploy {
         // Get original rate and profit target
         IPROTOCOL.ProtocolConfig memory originalConfig = LendefiInstance.getConfig();
         uint256 originalProfitTarget = originalConfig.profitTargetRate;
-        uint256 originalStableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        uint256 originalStableRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
 
         console2.log("Original STABLE borrow rate:", originalStableRate);
         console2.log("Original profit target:", originalProfitTarget);
@@ -354,7 +352,7 @@ contract GetBorrowRateTest is BasicDeploy {
 
         // Get new values
         uint256 updatedProfitTarget = LendefiInstance.getConfig().profitTargetRate;
-        uint256 newStableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        uint256 newStableRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
 
         console2.log("New STABLE borrow rate after profit target update:", newStableRate);
         console2.log("New profit target:", updatedProfitTarget);
@@ -385,11 +383,11 @@ contract GetBorrowRateTest is BasicDeploy {
         console2.log("Current utilization:", utilization);
 
         // Get tier rates for each tier
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        uint256 stableRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
-        uint256 crossARate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
-        uint256 crossBRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_B);
-        uint256 isolatedRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.ISOLATED);
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        uint256 stableRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
+        uint256 crossARate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
+        uint256 crossBRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_B);
+        uint256 isolatedRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.ISOLATED);
 
         console2.log("STABLE borrow rate:", stableRate);
         console2.log("CROSS_A borrow rate:", crossARate);
@@ -398,10 +396,10 @@ contract GetBorrowRateTest is BasicDeploy {
 
         // Get the base rates from contract
         // UPDATED: Get tier jump rates from assetsInstance
-        uint256 stableTierRate = assetsInstance.getTierJumpRate(ILendefiAssets.CollateralTier.STABLE);
-        uint256 crossATierRate = assetsInstance.getTierJumpRate(ILendefiAssets.CollateralTier.CROSS_A);
-        uint256 crossBTierRate = assetsInstance.getTierJumpRate(ILendefiAssets.CollateralTier.CROSS_B);
-        uint256 isolatedTierRate = assetsInstance.getTierJumpRate(ILendefiAssets.CollateralTier.ISOLATED);
+        uint256 stableTierRate = assetsInstance.getTierJumpRate(IASSETS.CollateralTier.STABLE);
+        uint256 crossATierRate = assetsInstance.getTierJumpRate(IASSETS.CollateralTier.CROSS_A);
+        uint256 crossBTierRate = assetsInstance.getTierJumpRate(IASSETS.CollateralTier.CROSS_B);
+        uint256 isolatedTierRate = assetsInstance.getTierJumpRate(IASSETS.CollateralTier.ISOLATED);
 
         console2.log("STABLE tier jump rate:", stableTierRate);
         console2.log("CROSS_A tier jump rate:", crossATierRate);
@@ -429,8 +427,8 @@ contract GetBorrowRateTest is BasicDeploy {
         _addLiquidity(10_000_000e6); // 10M USDC
 
         // Check rates at 0% utilization for baseline
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        uint256 initialRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        uint256 initialRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
         console2.log("\n=== Testing High Utilization Scenarios ===");
         console2.log("Starting STABLE borrow rate at 0% utilization:", initialRate);
 
@@ -450,8 +448,8 @@ contract GetBorrowRateTest is BasicDeploy {
     {
         _createPositionAndBorrow(user, collateralAmount, borrowAmount); // 90% utilization
         utilization = LendefiInstance.getUtilization();
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        rate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        rate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
 
         console2.log("------------------------------");
         console2.log("Utilization at ~90%:", utilization);
@@ -470,8 +468,8 @@ contract GetBorrowRateTest is BasicDeploy {
     ) internal returns (uint256 utilization, uint256 rate) {
         _createPositionAndBorrow(user, collateralAmount, borrowAmount);
         utilization = LendefiInstance.getUtilization();
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        rate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.STABLE);
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        rate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.STABLE);
 
         console2.log("------------------------------");
         console2.log("Utilization at ", utilizationLabel, ":", utilization);
@@ -483,10 +481,10 @@ contract GetBorrowRateTest is BasicDeploy {
 
     function _verifyRateChanges(uint256 initialRate, uint256 rate90, uint256 rate95, uint256 rate99) internal {
         // Check tier differentiation at very high utilization
-        // UPDATED: Use ILendefiAssets.CollateralTier instead of IPROTOCOL.CollateralTier
-        uint256 crossARate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
-        uint256 crossBRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_B);
-        uint256 isolatedRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.ISOLATED);
+        // UPDATED: Use IASSETS.CollateralTier instead of IPROTOCOL.CollateralTier
+        uint256 crossARate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
+        uint256 crossBRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_B);
+        uint256 isolatedRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.ISOLATED);
 
         // Calculate actual rate increases
         uint256 increase90to95 = rate95 - rate90;
