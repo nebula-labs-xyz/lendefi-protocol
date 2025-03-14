@@ -25,7 +25,7 @@ pragma solidity 0.8.23;
  */
 
 import {IPROTOCOL} from "../interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../interfaces/IASSETS.sol";
 import {IVault} from "../vendor/@balancer-labs/v2-interfaces/contracts/vault/IVault.sol";
 import {IFlashLoanRecipient} from "../vendor/@balancer-labs/v2-interfaces/contracts/vault/IFlashLoanRecipient.sol";
 import {ISwapRouter} from "../vendor/@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
@@ -43,7 +43,7 @@ contract FlashLoanRecipient is IFlashLoanRecipient, Ownable {
     /// @dev gov token instance
     IERC20 public immutable TOKEN_INSTANCE;
     /// @dev gov assets instance
-    ILendefiAssets public immutable ASSETS_INSTANCE;
+    IASSETS public immutable ASSETS_INSTANCE;
     /// @dev Uniswap router instance
     ISwapRouter public immutable UNISWAP_ROUTER;
 
@@ -72,7 +72,7 @@ contract FlashLoanRecipient is IFlashLoanRecipient, Ownable {
         BALANCER_VAULT = IVault(balancerVault);
         UNISWAP_ROUTER = ISwapRouter(uniswapRouter); //uniswapV3
         TOKEN_INSTANCE = IERC20(govToken);
-        ASSETS_INSTANCE = ILendefiAssets(assets);
+        ASSETS_INSTANCE = IASSETS(assets);
     }
 
     /**
@@ -140,8 +140,8 @@ contract FlashLoanRecipient is IFlashLoanRecipient, Ownable {
         uint256 recievedBase;
         for (uint256 i = 0; i < len; ++i) {
             if (tokenAmounts[i] > 0) {
-                ILendefiAssets.Asset memory assetInfo = ASSETS_INSTANCE.getAssetInfo(assets[i]);
-                uint256 assetPrice = ASSETS_INSTANCE.getAssetPrice(assetInfo.oracleUSD);
+                IASSETS.Asset memory assetInfo = ASSETS_INSTANCE.getAssetInfo(assets[i]);
+                uint256 assetPrice = ASSETS_INSTANCE.getAssetPrice(assets[i]);
                 uint256 amountOutMin = (tokenAmounts[i] * assetPrice * 99) / 10 ** assetInfo.oracleDecimals / 100;
                 uint256 outAmount = uniswapV3(assets[i], tokenAmounts[i], amountOutMin);
                 recievedBase += outAmount;
