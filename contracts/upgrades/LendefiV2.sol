@@ -63,6 +63,7 @@ pragma solidity 0.8.23;
 
 import {IPROTOCOL} from "../interfaces/IProtocol.sol";
 import {IECOSYSTEM} from "../interfaces/IEcosystem.sol";
+import {IASSETS} from "../interfaces/IASSETS.sol";
 import {IFlashLoanReceiver} from "../interfaces/IFlashLoanReceiver.sol";
 import {ILendefiYieldToken} from "../interfaces/ILendefiYieldToken.sol";
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
@@ -71,7 +72,6 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {ILendefiAssets} from "../interfaces/ILendefiAssets.sol";
 import {LendefiRates} from "../lender/lib/LendefiRates.sol";
 
 /// @custom:oz-upgrades-from contracts/lender/Lendefi.sol:Lendefi
@@ -133,7 +133,8 @@ contract LendefiV2 is
     /**
      * @dev Reference to the assets module for collateral management
      */
-    ILendefiAssets internal assetsModule;
+    // IASSETS internal assetsModule;
+    IASSETS internal assetsModule;
 
     /**
      * @notice Total amount borrowed from the protocol (in USDC)
@@ -284,7 +285,7 @@ contract LendefiV2 is
         ecosystemInstance = IECOSYSTEM(payable(ecosystem));
         treasury = treasury_;
         yieldTokenInstance = ILendefiYieldToken(yieldToken);
-        assetsModule = ILendefiAssets(assetsModule_);
+        assetsModule = IASSETS(assetsModule_);
 
         // Initialize default parameters in mainConfig
         mainConfig = ProtocolConfig({
@@ -768,7 +769,7 @@ contract LendefiV2 is
         if (position.isIsolated) {
             EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
             (address posAsset,) = collaterals.at(0);
-            ILendefiAssets.Asset memory asset = assetsModule.getAssetInfo(posAsset);
+            IASSETS.Asset memory asset = assetsModule.getAssetInfo(posAsset);
             if (currentDebt + amount > asset.isolationDebtCap) revert IsolationDebtCapExceeded();
         }
 
@@ -1162,7 +1163,7 @@ contract LendefiV2 is
         UserPosition storage position = positions[user][positionId];
         if (position.debtAmount == 0) return 0;
 
-        ILendefiAssets.CollateralTier tier = getPositionTier(user, positionId);
+        IASSETS.CollateralTier tier = getPositionTier(user, positionId);
         uint256 borrowRate = getBorrowRate(tier);
         uint256 timeElapsed = block.timestamp - position.lastInterestAccrual;
 
@@ -1202,8 +1203,8 @@ contract LendefiV2 is
         validPosition(user, positionId)
         returns (uint256)
     {
-        ILendefiAssets.CollateralTier tier = getPositionTier(user, positionId);
-        return assetsModule.tierLiquidationFee(tier);
+        IASSETS.CollateralTier tier = getPositionTier(user, positionId);
+        return assetsModule.getTierLiquidationFee(tier);
     }
 
     /**
@@ -1230,7 +1231,7 @@ contract LendefiV2 is
             (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount > 0) {
-                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
+                IASSETS.Asset memory item = assetsModule.getAssetInfo(asset);
                 credit += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * item.borrowThreshold * WAD)
                     / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
             }
@@ -1260,7 +1261,7 @@ contract LendefiV2 is
             (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount > 0) {
-                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
+                IASSETS.Asset memory item = assetsModule.getAssetInfo(asset);
                 value += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * WAD)
                     / (10 ** item.decimals * 10 ** item.oracleDecimals);
             }
@@ -1317,7 +1318,7 @@ contract LendefiV2 is
             (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount != 0) {
-                ILendefiAssets.Asset memory item = assetsModule.getAssetInfo(asset);
+                IASSETS.Asset memory item = assetsModule.getAssetInfo(asset);
                 liqLevel += (
                     amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * item.liquidationThreshold * WAD
                 ) / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
@@ -1357,7 +1358,7 @@ contract LendefiV2 is
      * @param tier The collateral tier to calculate the borrow rate for
      * @return The current annual borrow interest rate in WAD format
      */
-    function getBorrowRate(ILendefiAssets.CollateralTier tier) public view returns (uint256) {
+    function getBorrowRate(IASSETS.CollateralTier tier) public view returns (uint256) {
         return LendefiRates.getBorrowRate(
             getUtilization(),
             mainConfig.borrowRate,
@@ -1392,17 +1393,17 @@ contract LendefiV2 is
         public
         view
         validPosition(user, positionId)
-        returns (ILendefiAssets.CollateralTier)
+        returns (IASSETS.CollateralTier)
     {
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
         uint256 len = collaterals.length();
-        ILendefiAssets.CollateralTier tier = ILendefiAssets.CollateralTier.STABLE;
+        IASSETS.CollateralTier tier = IASSETS.CollateralTier.STABLE;
 
         for (uint256 i; i < len; i++) {
             (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount > 0) {
-                ILendefiAssets.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
+                IASSETS.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
                 if (uint8(assetConfig.tier) > uint8(tier)) {
                     tier = assetConfig.tier;
                 }
@@ -1466,13 +1467,13 @@ contract LendefiV2 is
         validAsset(asset)
         activePosition(msg.sender, positionId)
     {
-        ILendefiAssets.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
+        IASSETS.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
         if (assetsModule.isAssetAtCapacity(asset, amount)) revert AssetCapacityReached(); // Asset capacity reached
 
         UserPosition storage position = positions[msg.sender][positionId];
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
 
-        if (assetConfig.tier == ILendefiAssets.CollateralTier.ISOLATED && !position.isIsolated) {
+        if (assetConfig.tier == IASSETS.CollateralTier.ISOLATED && !position.isIsolated) {
             revert IsolatedAssetViolation();
         }
 
