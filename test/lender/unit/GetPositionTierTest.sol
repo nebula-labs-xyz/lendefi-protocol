@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {MockWBTC} from "../../../contracts/mock/MockWBTC.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
@@ -49,21 +49,6 @@ contract GetPositionTierTest is BasicDeploy {
         stableOracleInstance.setPrice(1e8); // $1 per stable
         rwaOracleInstance.setPrice(100e8); // $100 per RWA token
 
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(wbtcToken), address(wbtcOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wbtcToken), address(wbtcOracleInstance));
-
-        oracleInstance.addOracle(address(usdcInstance), address(stableOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-        vm.stopPrank();
-
         // Setup roles
         vm.prank(guardian);
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
@@ -86,8 +71,9 @@ contract GetPositionTierTest is BasicDeploy {
             900, // 90% borrow threshold
             950, // 95% liquidation threshold
             1_000_000e6, // Supply limit
-            ILendefiAssets.CollateralTier.STABLE, // 0 - UPDATED: Use ILendefiAssets.CollateralTier
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.STABLE, // 0 - UPDATED: Use IASSETS.CollateralTier
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure WETH as CROSS_A tier (1)
@@ -100,8 +86,9 @@ contract GetPositionTierTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A, // 1 - UPDATED: Use ILendefiAssets.CollateralTier
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A, // 1 - UPDATED: Use IASSETS.CollateralTier
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure WBTC as CROSS_A tier (1)
@@ -114,8 +101,9 @@ contract GetPositionTierTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000 * 1e8, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A, // 1 - UPDATED: Use ILendefiAssets.CollateralTier
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A, // 1 - UPDATED: Use IASSETS.CollateralTier
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure RWA as CROSS_B tier (2)
@@ -128,8 +116,9 @@ contract GetPositionTierTest is BasicDeploy {
             700, // 70% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_B, // 2 - UPDATED: Use ILendefiAssets.CollateralTier
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_B, // 2 - UPDATED: Use IASSETS.CollateralTier
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure a token for ISOLATED tier (3)
@@ -143,10 +132,16 @@ contract GetPositionTierTest is BasicDeploy {
             600, // 60% borrow threshold
             650, // 65% liquidation threshold
             1_000 * 1e8, // Supply limit
-            ILendefiAssets.CollateralTier.ISOLATED, // 3 - UPDATED: Use ILendefiAssets.CollateralTier
-            1_000_000e6 // Isolation debt cap
+            1_000_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.ISOLATED, // 3 - UPDATED: Use IASSETS.CollateralTier
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
+        assetsInstance.setPrimaryOracle(address(wbtcToken), address(wbtcOracleInstance));
+        assetsInstance.setPrimaryOracle(address(usdcInstance), address(stableOracleInstance));
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
         vm.stopPrank();
     }
 
@@ -189,12 +184,10 @@ contract GetPositionTierTest is BasicDeploy {
         uint256 positionId = _createAndSupply(address(usdcInstance), 10_000e6, false);
 
         // UPDATED: Use getPositionTier instead of getHighestTier
-        ILendefiAssets.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
+        IASSETS.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
         console2.log("Highest tier with STABLE only:", uint256(highestTier));
 
-        assertEq(
-            uint256(highestTier), uint256(ILendefiAssets.CollateralTier.STABLE), "Highest tier should be STABLE (0)"
-        );
+        assertEq(uint256(highestTier), uint256(IASSETS.CollateralTier.STABLE), "Highest tier should be STABLE (0)");
     }
 
     // Test 2: Position with only CROSS_A tier asset
@@ -202,12 +195,10 @@ contract GetPositionTierTest is BasicDeploy {
         uint256 positionId = _createAndSupply(address(wethInstance), 5 ether, false);
 
         // UPDATED: Use getPositionTier instead of getHighestTier
-        ILendefiAssets.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
+        IASSETS.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
         console2.log("Highest tier with CROSS_A only:", uint256(highestTier));
 
-        assertEq(
-            uint256(highestTier), uint256(ILendefiAssets.CollateralTier.CROSS_A), "Highest tier should be CROSS_A (1)"
-        );
+        assertEq(uint256(highestTier), uint256(IASSETS.CollateralTier.CROSS_A), "Highest tier should be CROSS_A (1)");
     }
 
     // Test 3: Position with only CROSS_B tier asset
@@ -215,12 +206,10 @@ contract GetPositionTierTest is BasicDeploy {
         uint256 positionId = _createAndSupply(address(rwaToken), 10 ether, false);
 
         // UPDATED: Use getPositionTier instead of getHighestTier
-        ILendefiAssets.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
+        IASSETS.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
         console2.log("Highest tier with CROSS_B only:", uint256(highestTier));
 
-        assertEq(
-            uint256(highestTier), uint256(ILendefiAssets.CollateralTier.CROSS_B), "Highest tier should be CROSS_B (2)"
-        );
+        assertEq(uint256(highestTier), uint256(IASSETS.CollateralTier.CROSS_B), "Highest tier should be CROSS_B (2)");
     }
 
     // Test 4: Position with STABLE and CROSS_A
@@ -235,14 +224,12 @@ contract GetPositionTierTest is BasicDeploy {
         vm.stopPrank();
 
         // UPDATED: Use getPositionTier instead of getHighestTier
-        ILendefiAssets.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
+        IASSETS.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
         console2.log("Highest tier with STABLE and CROSS_A:", uint256(highestTier));
 
         // Based on the Lendefi contract's getPositionTier function behavior,
         // it will return the numerically highest tier, which is CROSS_A (1) since it's greater than STABLE (0)
-        assertEq(
-            uint256(highestTier), uint256(ILendefiAssets.CollateralTier.CROSS_A), "Highest tier should be CROSS_A (1)"
-        );
+        assertEq(uint256(highestTier), uint256(IASSETS.CollateralTier.CROSS_A), "Highest tier should be CROSS_A (1)");
     }
 
     // Test 5: Position with CROSS_A and CROSS_B
@@ -257,14 +244,12 @@ contract GetPositionTierTest is BasicDeploy {
         vm.stopPrank();
 
         // UPDATED: Use getPositionTier instead of getHighestTier
-        ILendefiAssets.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
+        IASSETS.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
         console2.log("Highest tier with CROSS_A and CROSS_B:", uint256(highestTier));
 
         // Based on the Lendefi contract's getPositionTier function behavior,
         // it will return the numerically highest tier, which is CROSS_B (2) since it's greater than CROSS_A (1)
-        assertEq(
-            uint256(highestTier), uint256(ILendefiAssets.CollateralTier.CROSS_B), "Highest tier should be CROSS_B (2)"
-        );
+        assertEq(uint256(highestTier), uint256(IASSETS.CollateralTier.CROSS_B), "Highest tier should be CROSS_B (2)");
     }
 
     // Test 6: Position with multiple assets from all tiers
@@ -287,14 +272,12 @@ contract GetPositionTierTest is BasicDeploy {
         vm.stopPrank();
 
         // UPDATED: Use getPositionTier instead of getHighestTier
-        ILendefiAssets.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
+        IASSETS.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
         console2.log("Highest tier with all tiers:", uint256(highestTier));
 
         // Based on the Lendefi contract's getPositionTier function behavior,
         // it will return the numerically highest tier among all assets, which is CROSS_B (2)
-        assertEq(
-            uint256(highestTier), uint256(ILendefiAssets.CollateralTier.CROSS_B), "Highest tier should be CROSS_B (2)"
-        );
+        assertEq(uint256(highestTier), uint256(IASSETS.CollateralTier.CROSS_B), "Highest tier should be CROSS_B (2)");
     }
 
     // Test 7: Position with no collateral
@@ -304,13 +287,13 @@ contract GetPositionTierTest is BasicDeploy {
         uint256 positionId = LendefiInstance.getUserPositionsCount(alice) - 1;
         vm.stopPrank();
 
-        ILendefiAssets.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
+        IASSETS.CollateralTier highestTier = LendefiInstance.getPositionTier(alice, positionId);
         console2.log("Highest tier with no collateral:", uint256(highestTier));
 
         // With no collateral, it should return the default value, which is STABLE (0)
         assertEq(
             uint256(highestTier),
-            uint256(ILendefiAssets.CollateralTier.STABLE),
+            uint256(IASSETS.CollateralTier.STABLE),
             "Highest tier with no collateral should be STABLE (0)"
         );
     }
@@ -324,9 +307,9 @@ contract GetPositionTierTest is BasicDeploy {
 
     // Test 9: Documentation check - print all tier values
     function test_TierValues() public pure {
-        console2.log("STABLE tier value:", uint256(ILendefiAssets.CollateralTier.STABLE));
-        console2.log("CROSS_A tier value:", uint256(ILendefiAssets.CollateralTier.CROSS_A));
-        console2.log("CROSS_B tier value:", uint256(ILendefiAssets.CollateralTier.CROSS_B));
-        console2.log("ISOLATED tier value:", uint256(ILendefiAssets.CollateralTier.ISOLATED));
+        console2.log("STABLE tier value:", uint256(IASSETS.CollateralTier.STABLE));
+        console2.log("CROSS_A tier value:", uint256(IASSETS.CollateralTier.CROSS_A));
+        console2.log("CROSS_B tier value:", uint256(IASSETS.CollateralTier.CROSS_B));
+        console2.log("ISOLATED tier value:", uint256(IASSETS.CollateralTier.ISOLATED));
     }
 }
