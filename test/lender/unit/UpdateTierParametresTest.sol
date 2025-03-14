@@ -2,17 +2,17 @@
 pragma solidity ^0.8.23;
 
 import "../../BasicDeploy.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
-contract UpdateTierParametersTest is BasicDeploy {
+contract updateTierConfigTest is BasicDeploy {
     // Add this to your contract's state variables
     WETHPriceConsumerV3 internal wethOracleInstance;
 
-    event TierParametersUpdated(ILendefiAssets.CollateralTier tier, uint256 borrowRate, uint256 liquidationFee);
+    event TierParametersUpdated(IASSETS.CollateralTier tier, uint256 borrowRate, uint256 liquidationFee);
 
     // Default parameter values
     uint256 constant DEFAULT_BORROW_RATE = 0.08e6; // 8%
@@ -43,8 +43,6 @@ contract UpdateTierParametersTest is BasicDeploy {
 
         // Register the WETH oracle with the Oracle module
         vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
 
         // Configure WETH asset using assetsInstance instead of LendefiInstance
         assetsInstance.updateAssetConfig(
@@ -56,14 +54,17 @@ contract UpdateTierParametersTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // max supply
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // no isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
         vm.stopPrank();
     }
 
     // Test 1: Only manager can update tier parameters
-    function testRevert_OnlyManagerCanUpdateTierParameters() public {
+    function testRevert_OnlyManagerCanupdateTierConfig() public {
         // Regular user should not be able to update tier parameters
         vm.startPrank(alice);
 
@@ -73,19 +74,19 @@ contract UpdateTierParametersTest is BasicDeploy {
         );
 
         // Call should be to assetsInstance now
-        assetsInstance.updateTierParameters(ILendefiAssets.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
+        assetsInstance.updateTierConfig(IASSETS.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
         vm.stopPrank();
 
         // Manager (timelock) should be able to update tier parameters
         vm.prank(address(timelockInstance));
-        assetsInstance.updateTierParameters(ILendefiAssets.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
+        assetsInstance.updateTierConfig(IASSETS.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
     }
 
     // Test 2: Correctly updates tier parameters
     function test_CorrectlyUpdatesTierParameters() public {
         // Update CROSS_A tier parameters
         vm.prank(address(timelockInstance));
-        assetsInstance.updateTierParameters(ILendefiAssets.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
+        assetsInstance.updateTierConfig(IASSETS.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
 
         // Get updated parameters
         (uint256[4] memory jumpRates, uint256[4] memory liquidationFees) = assetsInstance.getTierRates();
@@ -101,29 +102,29 @@ contract UpdateTierParametersTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Update ISOLATED tier - index 3
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.ISOLATED,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.ISOLATED,
             0.15e6, // 15%
             0.09e6 // 9%
         );
 
         // Update CROSS_A tier - index 1
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.CROSS_A,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.CROSS_A,
             0.08e6, // 8%
             0.08e6 // 8%
         );
 
         // Update CROSS_B tier - index 2
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.CROSS_B,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.CROSS_B,
             0.12e6, // 12%
             0.1e6 // 10%
         );
 
         // Update STABLE tier - index 0
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.STABLE,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.STABLE,
             0.05e6, // 5%
             0.05e6 // 5%
         );
@@ -151,20 +152,18 @@ contract UpdateTierParametersTest is BasicDeploy {
         vm.prank(address(timelockInstance));
 
         // Use custom error format for rate validation errors
-        vm.expectRevert(
-            abi.encodeWithSelector(ILendefiAssets.RateTooHigh.selector, MAX_BORROW_RATE + 1, MAX_BORROW_RATE)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.RateTooHigh.selector, MAX_BORROW_RATE + 1, MAX_BORROW_RATE));
 
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.STABLE,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.STABLE,
             MAX_BORROW_RATE + 1, // Just above max
             MAX_LIQUIDATION_FEE // Valid fee
         );
 
         // Should succeed with maximum value
         vm.prank(address(timelockInstance));
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.STABLE,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.STABLE,
             MAX_BORROW_RATE, // Exactly max
             MAX_LIQUIDATION_FEE // Valid fee
         );
@@ -177,19 +176,19 @@ contract UpdateTierParametersTest is BasicDeploy {
 
         // Use custom error format for fee validation errors
         vm.expectRevert(
-            abi.encodeWithSelector(ILendefiAssets.FeeTooHigh.selector, MAX_LIQUIDATION_FEE + 1, MAX_LIQUIDATION_FEE)
+            abi.encodeWithSelector(IASSETS.FeeTooHigh.selector, MAX_LIQUIDATION_FEE + 1, MAX_LIQUIDATION_FEE)
         );
 
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.STABLE,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.STABLE,
             MAX_BORROW_RATE, // Valid rate
             MAX_LIQUIDATION_FEE + 1 // Just above max
         );
 
         // Should succeed with maximum value
         vm.prank(address(timelockInstance));
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.STABLE,
+        assetsInstance.updateTierConfig(
+            IASSETS.CollateralTier.STABLE,
             MAX_BORROW_RATE, // Valid rate
             MAX_LIQUIDATION_FEE // Exactly max
         );
@@ -199,10 +198,10 @@ contract UpdateTierParametersTest is BasicDeploy {
     function test_EventEmission() public {
         // Event is emitted from assetsInstance
         vm.expectEmit(true, true, true, true);
-        emit TierParametersUpdated(ILendefiAssets.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
+        emit TierParametersUpdated(IASSETS.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
 
         vm.prank(address(timelockInstance));
-        assetsInstance.updateTierParameters(ILendefiAssets.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
+        assetsInstance.updateTierConfig(IASSETS.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
     }
 
     // Test 7: Effect on borrow rate calculation
@@ -242,21 +241,19 @@ contract UpdateTierParametersTest is BasicDeploy {
         assertTrue(utilization > 0, "Test should have non-zero utilization");
 
         // Get initial borrow rate for CROSS_A tier
-        uint256 initialBorrowRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
+        uint256 initialBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
 
         // Update CROSS_A tier borrow rate to double
         uint256 doubleBorrowRate = DEFAULT_BORROW_RATE * 2;
 
         vm.prank(address(timelockInstance));
-        assetsInstance.updateTierParameters(
-            ILendefiAssets.CollateralTier.CROSS_A, doubleBorrowRate, NEW_LIQUIDATION_FEE
-        );
+        assetsInstance.updateTierConfig(IASSETS.CollateralTier.CROSS_A, doubleBorrowRate, NEW_LIQUIDATION_FEE);
 
         // Update price again to ensure fresh data for rate calculation
         wethOracleInstance.setPrice(2500e8);
 
         // Get new borrow rate
-        uint256 newBorrowRate = LendefiInstance.getBorrowRate(ILendefiAssets.CollateralTier.CROSS_A);
+        uint256 newBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
 
         // The new rate should be higher with meaningful utilization
         assertGt(newBorrowRate, initialBorrowRate, "New borrow rate should be higher after parameter update");
@@ -269,7 +266,7 @@ contract UpdateTierParametersTest is BasicDeploy {
 
         // Update only CROSS_A tier (index 1)
         vm.prank(address(timelockInstance));
-        assetsInstance.updateTierParameters(ILendefiAssets.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
+        assetsInstance.updateTierConfig(IASSETS.CollateralTier.CROSS_A, NEW_BORROW_RATE, NEW_LIQUIDATION_FEE);
 
         // Get updated rates
         (uint256[4] memory updatedJumpRates, uint256[4] memory updatedLiquidationFees) = assetsInstance.getTierRates();
