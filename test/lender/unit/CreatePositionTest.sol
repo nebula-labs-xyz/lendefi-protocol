@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {MockRWA} from "../../../contracts/mock/MockRWA.sol";
@@ -16,8 +16,8 @@ contract CreatePositionTest is BasicDeploy {
 
     MockRWA internal rwaToken;
 
-    RWAPriceConsumerV3 internal rwaOracleInstance;
-    WETHPriceConsumerV3 internal wethOracleInstance;
+    RWAPriceConsumerV3 internal rwaassetsInstance;
+    WETHPriceConsumerV3 internal wethassetsInstance;
 
     // Test assets
     address internal isolatedAsset;
@@ -43,21 +43,12 @@ contract CreatePositionTest is BasicDeploy {
         notListedAsset = address(unlisted);
 
         // Deploy oracles
-        wethOracleInstance = new WETHPriceConsumerV3();
-        rwaOracleInstance = new RWAPriceConsumerV3();
+        wethassetsInstance = new WETHPriceConsumerV3();
+        rwaassetsInstance = new RWAPriceConsumerV3();
 
         // Set prices
-        wethOracleInstance.setPrice(2500e8); // $2500 per ETH
-        rwaOracleInstance.setPrice(1000e8); // $1000 per RWA token
-
-        // Register oracles with Oracle module
-        vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        oracleInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8);
-        oracleInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-        vm.stopPrank();
+        wethassetsInstance.setPrice(2500e8); // $2500 per ETH
+        rwaassetsInstance.setPrice(1000e8); // $1000 per RWA token
 
         // Setup roles
         vm.prank(guardian);
@@ -74,31 +65,37 @@ contract CreatePositionTest is BasicDeploy {
         // Configure RWA token as ISOLATED tier
         assetsInstance.updateAssetConfig(
             address(rwaToken),
-            address(rwaOracleInstance),
+            address(rwaassetsInstance),
             8, // Oracle decimals
             18, // Asset decimals
             1, // Active
             650, // 65% borrow threshold
             750, // 75% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.ISOLATED,
-            100_000e6 // Isolation debt cap
+            100_000e6, // Isolation debt cap
+            IASSETS.CollateralTier.ISOLATED,
+            IASSETS.OracleType.CHAINLINK
         );
 
         // Configure WETH as CROSS_A tier
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethOracleInstance),
+            address(wethassetsInstance),
             8, // Oracle decimals
             18, // Asset decimals
             1, // Active
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // No isolation debt cap
+            0, // No isolation debt cap
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
+        // Register oracles with Oracle module
+
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethassetsInstance));
+        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaassetsInstance));
         vm.stopPrank();
     }
 
@@ -110,8 +107,8 @@ contract CreatePositionTest is BasicDeploy {
         vm.stopPrank();
 
         // Set token prices for calculations
-        wethOracleInstance.setPrice(2500e8); // $2500 per ETH
-        rwaOracleInstance.setPrice(1000e8); // $1000 per RWA
+        wethassetsInstance.setPrice(2500e8); // $2500 per ETH
+        rwaassetsInstance.setPrice(1000e8); // $1000 per RWA
     }
 
     // Test 1: Create a non-isolated position with valid asset
