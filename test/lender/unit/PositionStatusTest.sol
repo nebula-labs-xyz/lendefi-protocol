@@ -5,7 +5,7 @@ import "../../BasicDeploy.sol";
 import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
-import {ILendefiAssets} from "../../../contracts/interfaces/ILendefiAssets.sol";
+import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {MockPriceOracle} from "../../../contracts/mock/MockPriceOracle.sol";
 
 contract PositionStatusTest is BasicDeploy {
@@ -38,8 +38,7 @@ contract PositionStatusTest is BasicDeploy {
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
         // Register the oracle with the Oracle module
         vm.startPrank(address(timelockInstance));
-        oracleInstance.addOracle(address(wethInstance), address(wethOracle), 8);
-        oracleInstance.setPrimaryOracle(address(wethInstance), address(wethOracle));
+
         // Update asset config for WETH
         assetsInstance.updateAssetConfig(
             address(wethInstance),
@@ -50,11 +49,13 @@ contract PositionStatusTest is BasicDeploy {
             800, // 80% borrow threshold
             850, // 85% liquidation threshold
             1_000_000 ether, // Supply limit
-            ILendefiAssets.CollateralTier.CROSS_A,
-            0 // No isolation debt cap
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
         );
 
-        assetsInstance.updateTierParameters(ILendefiAssets.CollateralTier.CROSS_A, 0.08e6, 0.02e6);
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracle));
+        assetsInstance.updateTierConfig(IASSETS.CollateralTier.CROSS_A, 0.08e6, 0.02e6);
         vm.stopPrank();
 
         // Log the updated parameters to verify
