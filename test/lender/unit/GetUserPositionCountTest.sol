@@ -42,7 +42,7 @@ contract GetUserPositionsCountTest is BasicDeploy {
         rwaOracle.setAnsweredInRound(1);
 
         // Setup roles
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
         _setupAssets();
