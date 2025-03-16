@@ -53,7 +53,7 @@ contract SupplyCollateralTest is BasicDeploy {
         // Register oracles with Oracle module
 
         // Setup roles
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
         _setupAssets();
