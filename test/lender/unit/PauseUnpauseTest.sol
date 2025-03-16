@@ -38,7 +38,8 @@ contract PauseUnpauseTest is BasicDeploy {
         // Deploy mock tokens (USDC already deployed by deployCompleteWithOracle)
         wethInstance = new WETH9();
         rwaToken = new MockRWA("Ondo Finance", "ONDO");
-
+        // Deploy flash loan receiver
+        flashLoanReceiver = new MockFlashLoanReceiver();
         // Deploy oracles
         wethOracleInstance = new WETHPriceConsumerV3();
         rwaOracleInstance = new RWAPriceConsumerV3();
@@ -48,11 +49,8 @@ contract PauseUnpauseTest is BasicDeploy {
         rwaOracleInstance.setPrice(1000e8); // $1000 per RWA token
 
         // Setup roles
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
-
-        // Deploy flash loan receiver
-        flashLoanReceiver = new MockFlashLoanReceiver();
 
         _setupAssets();
         _setupLiquidity();
