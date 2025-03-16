@@ -46,7 +46,7 @@ contract getPositionCollateralAssetsTest is BasicDeploy {
         linkOracleInstance.setPrice(int256(LINK_PRICE)); // $15 per LINK
 
         // Setup roles
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
         // Configure assets
