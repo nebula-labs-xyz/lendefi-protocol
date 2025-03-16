@@ -52,7 +52,7 @@ contract WithdrawCollateralTest is BasicDeploy {
         crossBOracleInstance.setPrice(500e8); // $500 per CROSSB token
 
         // Setup roles
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
         // No need to manually deploy Lendefi as it's already deployed by deployCompleteWithOracle()
