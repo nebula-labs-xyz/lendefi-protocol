@@ -33,11 +33,9 @@ contract PositionStatusTest is BasicDeploy {
         wethOracle.setRoundId(1);
         wethOracle.setAnsweredInRound(1);
 
-        // Setup roles
-        vm.prank(guardian);
-        ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
         // Register the oracle with the Oracle module
         vm.startPrank(address(timelockInstance));
+        ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
         // Update asset config for WETH
         assetsInstance.updateAssetConfig(
