@@ -49,7 +49,7 @@ contract GetLPInfoTest is BasicDeploy {
         wethOracleInstance.setPrice(2500e8); // $2500 per ETH
 
         // Setup roles
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
         // Setup target reward and interval in Lendefi using the new config approach
