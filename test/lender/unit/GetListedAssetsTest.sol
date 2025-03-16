@@ -49,7 +49,7 @@ contract GetListedAssetsTest is BasicDeploy {
         linkOracleInstance.setPrice(14e8); // $14 Link
 
         // Setup roles
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
     }
 
