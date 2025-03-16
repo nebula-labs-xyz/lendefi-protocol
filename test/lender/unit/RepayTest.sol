@@ -53,7 +53,7 @@ contract RepayTest is BasicDeploy {
         rwaOracleInstance.setPrice(1000e8); // $1000 per RWA token
 
         // Setup roles
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
         _setupAssets();
