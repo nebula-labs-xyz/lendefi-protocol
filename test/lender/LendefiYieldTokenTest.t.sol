@@ -17,17 +17,30 @@ contract LendefiYieldTokenTest is Test {
     address public user1 = address(0x3);
     address public user2 = address(0x4);
     address public unauthorized = address(0x5);
+    address public timelock = address(0x6);
+    address public multisig = address(0x7);
 
     bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00;
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant PROTOCOL_ROLE = keccak256("PROTOCOL_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
+    // Custom errors from the contract - importing directly to avoid shadowing
+    error ZeroAddressNotAllowed();
+    error UpgradeTimelockActive(uint256 timeRemaining);
+    error UpgradeNotScheduled();
+    error ImplementationMismatch(address scheduledImpl, address attemptedImpl);
+
+    // Events
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Paused(address account);
     event Unpaused(address account);
     event Initialized(address indexed admin);
     event Upgrade(address indexed upgrader, address indexed implementation);
+    event UpgradeScheduled(
+        address indexed scheduler, address indexed implementation, uint64 scheduledTime, uint64 effectiveTime
+    );
+    event UpgradeCancelled(address indexed canceller, address indexed implementation);
 
     function setUp() public {
         vm.label(guardian, "Guardian");
@@ -35,12 +48,15 @@ contract LendefiYieldTokenTest is Test {
         vm.label(user1, "User1");
         vm.label(user2, "User2");
         vm.label(unauthorized, "Unauthorized");
+        vm.label(timelock, "Timelock");
+        vm.label(multisig, "Multisig");
 
         // Deploy implementation
         implementation = new LendefiYieldToken();
 
-        // Deploy proxy and initialize
-        bytes memory initData = abi.encodeWithSelector(LendefiYieldToken.initialize.selector, protocol, guardian);
+        // Deploy proxy and initialize with all required parameters
+        bytes memory initData =
+            abi.encodeWithSelector(LendefiYieldToken.initialize.selector, protocol, timelock, guardian, multisig);
 
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         yieldToken = LendefiYieldToken(address(proxy));
@@ -55,10 +71,11 @@ contract LendefiYieldTokenTest is Test {
         assertEq(yieldToken.version(), 1);
         assertEq(yieldToken.totalSupply(), 0);
 
-        assertTrue(yieldToken.hasRole(DEFAULT_ADMIN_ROLE, guardian));
+        // Check roles are assigned correctly
+        assertTrue(yieldToken.hasRole(DEFAULT_ADMIN_ROLE, timelock));
         assertTrue(yieldToken.hasRole(PROTOCOL_ROLE, protocol));
         assertTrue(yieldToken.hasRole(PAUSER_ROLE, guardian));
-        assertTrue(yieldToken.hasRole(UPGRADER_ROLE, guardian));
+        assertTrue(yieldToken.hasRole(UPGRADER_ROLE, multisig));
     }
 
     function testRevert_InitializeWithZeroAddress() public {
@@ -70,19 +87,19 @@ contract LendefiYieldTokenTest is Test {
         LendefiYieldToken newToken = LendefiYieldToken(address(proxy));
 
         // Now try to initialize with zero address - should revert with ZeroAddressNotAllowed()
-        vm.expectRevert(abi.encodeWithSignature("ZeroAddressNotAllowed()"));
-        newToken.initialize(address(0), guardian);
+        vm.expectRevert(ZeroAddressNotAllowed.selector);
+        newToken.initialize(address(0), timelock, guardian, multisig);
     }
 
     function testRevert_DoubleInitialization() public {
         vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
-        yieldToken.initialize(protocol, guardian);
+        yieldToken.initialize(protocol, timelock, guardian, multisig);
     }
 
     // ------ Role Management Tests ------
 
     function test_RoleAssignment() public {
-        vm.startPrank(guardian);
+        vm.startPrank(timelock);
 
         // Grant PROTOCOL_ROLE to user1
         yieldToken.grantRole(PROTOCOL_ROLE, user1);
@@ -346,33 +363,6 @@ contract LendefiYieldTokenTest is Test {
         yieldToken.unpause();
     }
 
-    // ------ Upgradability Tests ------
-
-    function test_UpgradeToAndCall() public {
-        // Deploy a new implementation
-        LendefiYieldToken newImplementation = new LendefiYieldToken();
-
-        vm.prank(guardian);
-        vm.expectEmit(true, true, false, false);
-        emit Upgrade(guardian, address(newImplementation));
-        yieldToken.upgradeToAndCall(address(newImplementation), "");
-
-        assertEq(yieldToken.version(), 2);
-    }
-
-    function testRevert_UnauthorizedUpgrade() public {
-        // Deploy a new implementation
-        LendefiYieldToken newImplementation = new LendefiYieldToken();
-
-        vm.prank(unauthorized);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, unauthorized, UPGRADER_ROLE
-            )
-        );
-        yieldToken.upgradeToAndCall(address(newImplementation), "");
-    }
-
     // ------ Edge Cases and Validation Tests ------
 
     function test_ZeroAmountTransfer() public {
@@ -454,7 +444,7 @@ contract LendefiYieldTokenTest is Test {
         yieldToken.mint(user1, 1000 * 10 ** 6);
 
         // Admin revokes protocol role
-        vm.prank(guardian);
+        vm.prank(timelock);
         yieldToken.revokeRole(PROTOCOL_ROLE, protocol);
 
         // Protocol should no longer be able to mint
@@ -479,5 +469,239 @@ contract LendefiYieldTokenTest is Test {
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, protocol, PROTOCOL_ROLE)
         );
         yieldToken.mint(user1, 1000 * 10 ** 6);
+    }
+
+    // ------ Timelocked Upgrade Tests ------
+
+    function testRevert_UpgradeNotScheduled() public {
+        // Deploy a new implementation
+        LendefiYieldToken newImplementation = new LendefiYieldToken();
+
+        vm.expectRevert(UpgradeNotScheduled.selector);
+        vm.prank(multisig);
+        yieldToken.upgradeToAndCall(address(newImplementation), "");
+
+        assertEq(yieldToken.version(), 1);
+    }
+
+    function testRevert_UnauthorizedUpgrade() public {
+        // Deploy a new implementation
+        LendefiYieldToken newImplementation = new LendefiYieldToken();
+
+        vm.prank(unauthorized);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, unauthorized, UPGRADER_ROLE
+            )
+        );
+        yieldToken.upgradeToAndCall(address(newImplementation), "");
+    }
+
+    function test_ScheduleUpgrade() public {
+        address newImplementation = address(new LendefiYieldToken());
+
+        // Get current time for event verification
+        uint64 currentTime = uint64(block.timestamp);
+        uint64 effectiveTime = currentTime + uint64(yieldToken.UPGRADE_TIMELOCK_DURATION());
+
+        vm.prank(multisig); // Use multisig instead of guardian
+        vm.expectEmit(true, true, true, true);
+        emit UpgradeScheduled(multisig, newImplementation, currentTime, effectiveTime);
+        yieldToken.scheduleUpgrade(newImplementation);
+
+        // Verify upgrade request was stored correctly
+        (address impl, uint64 scheduledTime, bool exists) = yieldToken.pendingUpgrade();
+        assertEq(impl, newImplementation);
+        assertEq(scheduledTime, currentTime);
+        assertTrue(exists);
+    }
+
+    function testRevert_ScheduleUpgradeZeroAddress() public {
+        vm.prank(multisig); // Use multisig instead of guardian
+        vm.expectRevert(ZeroAddressNotAllowed.selector);
+        yieldToken.scheduleUpgrade(address(0));
+    }
+
+    function testRevert_ScheduleUpgradeUnauthorized() public {
+        address newImplementation = address(new LendefiYieldToken());
+
+        vm.prank(unauthorized);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, unauthorized, UPGRADER_ROLE
+            )
+        );
+        yieldToken.scheduleUpgrade(newImplementation);
+    }
+
+    function test_CancelUpgrade() public {
+        address newImplementation = address(new LendefiYieldToken());
+
+        // Schedule an upgrade first
+        vm.prank(multisig);
+        yieldToken.scheduleUpgrade(newImplementation);
+
+        // Then cancel it
+        vm.prank(multisig);
+        vm.expectEmit(true, true, false, false);
+        emit UpgradeCancelled(multisig, newImplementation);
+        yieldToken.cancelUpgrade();
+
+        // Verify upgrade request was cleared
+        (address impl, uint64 scheduledTime, bool exists) = yieldToken.pendingUpgrade();
+        assertEq(impl, address(0));
+        assertEq(scheduledTime, 0);
+        assertFalse(exists);
+    }
+
+    function testRevert_CancelUpgradeUnauthorized() public {
+        address newImplementation = address(new LendefiYieldToken());
+
+        // Schedule an upgrade first
+        vm.prank(multisig);
+        yieldToken.scheduleUpgrade(newImplementation);
+
+        // Attempt unauthorized cancellation
+        vm.prank(unauthorized);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, unauthorized, UPGRADER_ROLE
+            )
+        );
+        yieldToken.cancelUpgrade();
+    }
+
+    function testRevert_CancelNonExistentUpgrade() public {
+        vm.prank(multisig);
+        vm.expectRevert(UpgradeNotScheduled.selector);
+        yieldToken.cancelUpgrade();
+    }
+
+    function test_UpgradeTimelockRemaining() public {
+        address newImplementation = address(new LendefiYieldToken());
+
+        // Before scheduling, should return 0
+        assertEq(yieldToken.upgradeTimelockRemaining(), 0);
+
+        // Schedule an upgrade
+        vm.prank(multisig);
+        yieldToken.scheduleUpgrade(newImplementation);
+
+        // Should now return the full timelock duration
+        assertEq(yieldToken.upgradeTimelockRemaining(), yieldToken.UPGRADE_TIMELOCK_DURATION());
+
+        // Fast forward 1 day
+        vm.warp(block.timestamp + 1 days);
+
+        // Should now return 2 days left
+        assertEq(yieldToken.upgradeTimelockRemaining(), 2 days);
+
+        // Fast forward past the timelock
+        vm.warp(block.timestamp + 2 days + 1);
+
+        // Should return 0 again as timelock has expired
+        assertEq(yieldToken.upgradeTimelockRemaining(), 0);
+    }
+
+    function test_CompleteTimelockUpgradeProcess() public {
+        // Deploy a new implementation
+        LendefiYieldToken newImplementation = new LendefiYieldToken();
+
+        // Schedule the upgrade
+        vm.prank(multisig);
+        yieldToken.scheduleUpgrade(address(newImplementation));
+
+        // Verify we can't upgrade yet due to timelock
+        vm.prank(multisig);
+        vm.expectRevert(abi.encodeWithSelector(UpgradeTimelockActive.selector, 3 days));
+        yieldToken.upgradeToAndCall(address(newImplementation), "");
+
+        // Fast forward past the timelock period
+        vm.warp(block.timestamp + 3 days + 1);
+
+        // Now the upgrade should succeed
+        vm.prank(multisig);
+        vm.expectEmit(true, true, false, false);
+        emit Upgrade(multisig, address(newImplementation));
+        yieldToken.upgradeToAndCall(address(newImplementation), "");
+
+        // Verify version was incremented
+        assertEq(yieldToken.version(), 2);
+
+        // Verify the pending upgrade was cleared
+        (,, bool exists) = yieldToken.pendingUpgrade();
+        assertFalse(exists);
+    }
+
+    function testRevert_UpgradeWithoutScheduling() public {
+        // Deploy a new implementation
+        LendefiYieldToken newImplementation = new LendefiYieldToken();
+
+        // Try to upgrade without scheduling first
+        vm.prank(multisig);
+        vm.expectRevert(UpgradeNotScheduled.selector);
+        yieldToken.upgradeToAndCall(address(newImplementation), "");
+    }
+
+    function testRevert_UpgradeWithWrongImplementation() public {
+        // Deploy two different implementations
+        LendefiYieldToken scheduledImpl = new LendefiYieldToken();
+        LendefiYieldToken attemptedImpl = new LendefiYieldToken();
+
+        // Schedule the first implementation
+        vm.prank(multisig);
+        yieldToken.scheduleUpgrade(address(scheduledImpl));
+
+        // Fast forward past the timelock period
+        vm.warp(block.timestamp + 3 days + 1);
+
+        // Try to upgrade with the wrong implementation
+        vm.prank(multisig);
+        vm.expectRevert(
+            abi.encodeWithSelector(ImplementationMismatch.selector, address(scheduledImpl), address(attemptedImpl))
+        );
+        yieldToken.upgradeToAndCall(address(attemptedImpl), "");
+    }
+
+    function test_ScheduleNewUpgradeAfterCancellation() public {
+        // Deploy implementations
+        LendefiYieldToken firstImpl = new LendefiYieldToken();
+        LendefiYieldToken secondImpl = new LendefiYieldToken();
+
+        // Schedule first upgrade
+        vm.prank(multisig);
+        yieldToken.scheduleUpgrade(address(firstImpl));
+
+        // Cancel it
+        vm.prank(multisig);
+        yieldToken.cancelUpgrade();
+
+        // Schedule a different upgrade
+        vm.prank(multisig);
+        yieldToken.scheduleUpgrade(address(secondImpl));
+
+        // Verify the new upgrade was scheduled
+        (address impl,, bool exists) = yieldToken.pendingUpgrade();
+        assertEq(impl, address(secondImpl));
+        assertTrue(exists);
+    }
+
+    function test_RescheduleUpgrade() public {
+        // Deploy implementations
+        LendefiYieldToken firstImpl = new LendefiYieldToken();
+        LendefiYieldToken secondImpl = new LendefiYieldToken();
+
+        // Schedule first upgrade
+        vm.prank(multisig);
+        yieldToken.scheduleUpgrade(address(firstImpl));
+
+        // Schedule a new upgrade (implicitly cancels the first one)
+        vm.prank(multisig);
+        yieldToken.scheduleUpgrade(address(secondImpl));
+
+        // Verify the second upgrade was scheduled
+        (address impl,, bool exists) = yieldToken.pendingUpgrade();
+        assertEq(impl, address(secondImpl));
+        assertTrue(exists);
     }
 }
