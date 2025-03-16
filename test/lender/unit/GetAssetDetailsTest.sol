@@ -56,7 +56,7 @@ contract GetAssetDetailsTest is BasicDeploy {
         uniOracleInstance.setPrice(int256(UNI_PRICE)); // $8 per UNI
 
         // Setup roles
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
         _setupAssets(linkOracleInstance, uniOracleInstance);
