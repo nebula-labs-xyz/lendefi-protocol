@@ -50,7 +50,7 @@ contract GetPositionTierTest is BasicDeploy {
         rwaOracleInstance.setPrice(100e8); // $100 per RWA token
 
         // Setup roles
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
         _setupAssets();
