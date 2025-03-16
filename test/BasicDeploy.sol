@@ -2,13 +2,14 @@
 pragma solidity ^0.8.23;
 
 import "forge-std/Test.sol"; // solhint-disable-line
-import {IPROTOCOL} from "../contracts/interfaces/IProtocol.sol";
 import {USDC} from "../contracts/mock/USDC.sol";
-import {WETHPriceConsumerV3} from "../contracts/mock/WETHOracle.sol";
+import {IASSETS} from "../contracts/interfaces/IASSETS.sol";
+import {IPROTOCOL} from "../contracts/interfaces/IProtocol.sol";
 import {WETH9} from "../contracts/vendor/canonical-weth/contracts/WETH9.sol";
 import {ITREASURY} from "../contracts/interfaces/ITreasury.sol";
 import {IECOSYSTEM} from "../contracts/interfaces/IEcosystem.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {WETHPriceConsumerV3} from "../contracts/mock/WETHOracle.sol";
 import {Treasury} from "../contracts/ecosystem/Treasury.sol";
 import {TreasuryV2} from "../contracts/upgrades/TreasuryV2.sol";
 import {Ecosystem} from "../contracts/ecosystem/Ecosystem.sol";
@@ -19,9 +20,8 @@ import {LendefiGovernor} from "../contracts/ecosystem/LendefiGovernor.sol";
 import {LendefiGovernorV2} from "../contracts/upgrades/LendefiGovernorV2.sol";
 import {InvestmentManager} from "../contracts/ecosystem/InvestmentManager.sol";
 import {InvestmentManagerV2} from "../contracts/upgrades/InvestmentManagerV2.sol";
-import {TimelockControllerUpgradeable} from
-    "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import {Upgrades, Options} from "openzeppelin-foundry-upgrades/Upgrades.sol";
+import {DefenderOptions} from "openzeppelin-foundry-upgrades/Options.sol";
 import {IGovernor} from "@openzeppelin/contracts/governance/IGovernor.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {TimelockV2} from "../contracts/upgrades/TimelockV2.sol";
@@ -33,7 +33,10 @@ import {LendefiYieldToken} from "../contracts/lender/LendefiYieldToken.sol";
 import {LendefiYieldTokenV2} from "../contracts/upgrades/LendefiYieldTokenV2.sol";
 import {LendefiAssets} from "../contracts/lender/LendefiAssets.sol";
 import {LendefiAssetsV2} from "../contracts/upgrades/LendefiAssetsV2.sol";
-import {IASSETS} from "../contracts/interfaces/IASSETS.sol";
+
+import {TimelockControllerUpgradeable} from
+    "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
+import {ITransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 contract BasicDeploy is Test {
     event Upgrade(address indexed src, address indexed implementation);
@@ -58,6 +61,7 @@ contract BasicDeploy is Test {
     uint256 constant INITIAL_SUPPLY = 50_000_000 ether;
     address constant ethereum = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     address constant usdcWhale = 0x0A59649758aa4d66E25f08Dd01271e891fe52199;
+    address constant gnosisSafe = address(0x9999987);
     address constant bridge = address(0x9999988);
     address constant partner = address(0x9999989);
     address constant guardian = address(0x9999990);
@@ -88,99 +92,168 @@ contract BasicDeploy is Test {
     IERC20 usdc = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
 
     function deployTokenUpgrade() internal {
+        if (address(timelockInstance) == address(0)) {
+            _deployTimelock();
+        }
+
         // token deploy
-        bytes memory data = abi.encodeCall(GovernanceToken.initializeUUPS, (guardian));
+        bytes memory data =
+            abi.encodeCall(GovernanceToken.initializeUUPS, (guardian, address(timelockInstance), gnosisSafe));
         address payable proxy = payable(Upgrades.deployUUPSProxy("GovernanceToken.sol", data));
         tokenInstance = GovernanceToken(proxy);
         address tokenImplementation = Upgrades.getImplementationAddress(proxy);
         assertFalse(address(tokenInstance) == tokenImplementation);
+        assertTrue(tokenInstance.hasRole(UPGRADER_ROLE, gnosisSafe) == true);
 
-        // upgrade token
-        vm.prank(guardian);
-        tokenInstance.grantRole(UPGRADER_ROLE, managerAdmin);
+        // Create options struct for the implementation
+        Options memory opts = Options({
+            referenceContract: "GovernanceToken.sol",
+            constructorData: "",
+            unsafeAllow: "",
+            unsafeAllowRenames: false,
+            unsafeSkipStorageCheck: false,
+            unsafeSkipAllChecks: false,
+            defender: DefenderOptions({
+                useDefenderDeploy: false,
+                skipVerifySourceCode: false,
+                relayerId: "",
+                salt: bytes32(0),
+                upgradeApprovalProcessId: ""
+            })
+        });
 
-        vm.startPrank(managerAdmin);
-        Upgrades.upgradeProxy(proxy, "GovernanceTokenV2.sol", "", guardian);
+        // Deploy the implementation without upgrading
+        address newImpl = Upgrades.prepareUpgrade("GovernanceTokenV2.sol", opts);
+
+        // Schedule the upgrade with that exact address
+        vm.startPrank(gnosisSafe);
+        tokenInstance.scheduleUpgrade(newImpl);
+
+        // Fast forward past the timelock period
+        vm.warp(block.timestamp + 3 days + 1);
+
+        ITransparentUpgradeableProxy(proxy).upgradeToAndCall(newImpl, "");
         vm.stopPrank();
 
+        // Verification
         address implAddressV2 = Upgrades.getImplementationAddress(proxy);
         GovernanceTokenV2 instanceV2 = GovernanceTokenV2(proxy);
-        assertEq(instanceV2.version(), 2);
-        assertFalse(implAddressV2 == tokenImplementation);
-
-        bool isUpgrader = instanceV2.hasRole(UPGRADER_ROLE, managerAdmin);
-        assertTrue(isUpgrader == true);
-
-        vm.prank(guardian);
-        instanceV2.revokeRole(UPGRADER_ROLE, managerAdmin);
-        assertFalse(instanceV2.hasRole(UPGRADER_ROLE, managerAdmin) == true);
+        assertEq(instanceV2.version(), 2, "Version not incremented to 2");
+        assertFalse(implAddressV2 == tokenImplementation, "Implementation address didn't change");
+        assertTrue(instanceV2.hasRole(UPGRADER_ROLE, gnosisSafe) == true, "Lost UPGRADER_ROLE");
     }
 
     function deployEcosystemUpgrade() internal {
+        vm.warp(365 days);
         _deployToken();
         _deployTimelock();
 
         // ecosystem deploy
-        bytes memory data1 =
-            abi.encodeCall(Ecosystem.initialize, (address(tokenInstance), address(timelockInstance), guardian, pauser));
-        address payable proxy1 = payable(Upgrades.deployUUPSProxy("Ecosystem.sol", data1));
-        ecoInstance = Ecosystem(proxy1);
-        address ecoImplementation = Upgrades.getImplementationAddress(proxy1);
-        assertFalse(address(ecoInstance) == ecoImplementation);
+        bytes memory data = abi.encodeCall(
+            Ecosystem.initialize, (address(tokenInstance), address(timelockInstance), guardian, gnosisSafe)
+        );
+        address payable proxy = payable(Upgrades.deployUUPSProxy("Ecosystem.sol", data));
+        ecoInstance = Ecosystem(proxy);
+        address implAddressV1 = Upgrades.getImplementationAddress(proxy);
+        assertFalse(address(ecoInstance) == implAddressV1);
 
-        // upgrade Ecosystem
-        vm.prank(guardian);
-        ecoInstance.grantRole(UPGRADER_ROLE, managerAdmin);
+        // Verify gnosis multisig has the required role
+        assertTrue(ecoInstance.hasRole(UPGRADER_ROLE, gnosisSafe), "Multisig should have UPGRADER_ROLE");
 
-        vm.startPrank(managerAdmin);
-        Upgrades.upgradeProxy(proxy1, "EcosystemV2.sol", "", guardian);
+        // Create options struct for the implementation
+        Options memory opts = Options({
+            referenceContract: "Ecosystem.sol",
+            constructorData: "",
+            unsafeAllow: "",
+            unsafeAllowRenames: false,
+            unsafeSkipStorageCheck: false,
+            unsafeSkipAllChecks: false,
+            defender: DefenderOptions({
+                useDefenderDeploy: false,
+                skipVerifySourceCode: false,
+                relayerId: "",
+                salt: bytes32(0),
+                upgradeApprovalProcessId: ""
+            })
+        });
+
+        // Deploy the implementation without upgrading
+        address newImpl = Upgrades.prepareUpgrade("EcosystemV2.sol", opts);
+
+        // Schedule the upgrade with that exact address
+        vm.startPrank(gnosisSafe);
+        ecoInstance.scheduleUpgrade(newImpl);
+
+        // Fast forward past the timelock period (3 days for Ecosystem)
+        vm.warp(block.timestamp + 3 days + 1);
+
+        ITransparentUpgradeableProxy(proxy).upgradeToAndCall(newImpl, "");
         vm.stopPrank();
 
-        address implAddressV2 = Upgrades.getImplementationAddress(proxy1);
-        EcosystemV2 ecoInstanceV2 = EcosystemV2(proxy1);
-        assertEq(ecoInstanceV2.version(), 2);
-        assertFalse(implAddressV2 == ecoImplementation);
-
-        bool isUpgrader = ecoInstanceV2.hasRole(UPGRADER_ROLE, managerAdmin);
-        assertTrue(isUpgrader == true);
-
-        vm.prank(guardian);
-        ecoInstanceV2.revokeRole(UPGRADER_ROLE, managerAdmin);
-        assertFalse(ecoInstanceV2.hasRole(UPGRADER_ROLE, managerAdmin) == true);
+        // Verification
+        address implAddressV2 = Upgrades.getImplementationAddress(proxy);
+        EcosystemV2 ecoInstanceV2 = EcosystemV2(proxy);
+        assertEq(ecoInstanceV2.version(), 2, "Version not incremented to 2");
+        assertFalse(implAddressV2 == implAddressV1, "Implementation address didn't change");
+        assertTrue(ecoInstanceV2.hasRole(UPGRADER_ROLE, gnosisSafe), "Lost UPGRADER_ROLE");
     }
 
     function deployTreasuryUpgrade() internal {
         vm.warp(365 days);
-
-        _deployToken();
         _deployTimelock();
+        _deployToken();
 
-        //deploy Treasury
-        bytes memory data1 = abi.encodeCall(Treasury.initialize, (guardian, address(timelockInstance)));
-        address payable proxy1 = payable(Upgrades.deployUUPSProxy("Treasury.sol", data1));
-        treasuryInstance = Treasury(proxy1);
-        address implAddressV1 = Upgrades.getImplementationAddress(proxy1);
+        // deploy Treasury
+        uint256 startOffset = 180 days;
+        uint256 vestingDuration = 3 * 365 days;
+
+        bytes memory data = abi.encodeCall(
+            Treasury.initialize, (guardian, address(timelockInstance), gnosisSafe, startOffset, vestingDuration)
+        );
+        address payable proxy = payable(Upgrades.deployUUPSProxy("Treasury.sol", data));
+        treasuryInstance = Treasury(proxy);
+        address implAddressV1 = Upgrades.getImplementationAddress(proxy);
         assertFalse(address(treasuryInstance) == implAddressV1);
 
-        // upgrade Treasury
-        vm.prank(guardian);
-        treasuryInstance.grantRole(UPGRADER_ROLE, managerAdmin);
+        // Verify gnosis multisig has the required role
+        assertTrue(treasuryInstance.hasRole(treasuryInstance.UPGRADER_ROLE(), gnosisSafe));
 
-        vm.startPrank(managerAdmin);
-        Upgrades.upgradeProxy(proxy1, "TreasuryV2.sol", "", guardian);
+        // Create options struct for the implementation
+        Options memory opts = Options({
+            referenceContract: "Treasury.sol",
+            constructorData: "",
+            unsafeAllow: "",
+            unsafeAllowRenames: false,
+            unsafeSkipStorageCheck: false,
+            unsafeSkipAllChecks: false,
+            defender: DefenderOptions({
+                useDefenderDeploy: false,
+                skipVerifySourceCode: false,
+                relayerId: "",
+                salt: bytes32(0),
+                upgradeApprovalProcessId: ""
+            })
+        });
+
+        // Deploy the implementation without upgrading
+        address newImpl = Upgrades.prepareUpgrade("TreasuryV2.sol", opts);
+
+        // Schedule the upgrade with that exact address
+        vm.startPrank(gnosisSafe);
+        treasuryInstance.scheduleUpgrade(newImpl);
+
+        // Fast forward past the timelock period (3 days for Treasury)
+        vm.warp(block.timestamp + 3 days + 1);
+
+        ITransparentUpgradeableProxy(proxy).upgradeToAndCall(newImpl, "");
         vm.stopPrank();
 
-        address implAddressV2 = Upgrades.getImplementationAddress(proxy1);
-        TreasuryV2 treasuryInstanceV2 = TreasuryV2(proxy1);
-        assertEq(treasuryInstanceV2.version(), 2);
-        assertFalse(implAddressV2 == implAddressV1);
-
-        bool isUpgrader = treasuryInstanceV2.hasRole(UPGRADER_ROLE, managerAdmin);
-        assertTrue(isUpgrader == true);
-
-        vm.prank(guardian);
-        treasuryInstanceV2.revokeRole(UPGRADER_ROLE, managerAdmin);
-        assertFalse(treasuryInstanceV2.hasRole(UPGRADER_ROLE, managerAdmin) == true);
+        // Verification
+        address implAddressV2 = Upgrades.getImplementationAddress(proxy);
+        TreasuryV2 treasuryInstanceV2 = TreasuryV2(proxy);
+        assertEq(treasuryInstanceV2.version(), 2, "Version not incremented to 2");
+        assertFalse(implAddressV2 == implAddressV1, "Implementation address didn't change");
+        assertTrue(treasuryInstanceV2.hasRole(treasuryInstanceV2.UPGRADER_ROLE(), gnosisSafe), "Lost UPGRADER_ROLE");
     }
 
     function deployTimelockUpgrade() internal {
@@ -207,103 +280,169 @@ contract BasicDeploy is Test {
     }
 
     function deployGovernorUpgrade() internal {
-        _deployToken();
+        vm.warp(365 days);
         _deployTimelock();
+        _deployToken();
 
         // deploy Governor
-        bytes memory data2 = abi.encodeCall(LendefiGovernor.initialize, (tokenInstance, timelockInstance, guardian));
-        address payable proxy2 = payable(Upgrades.deployUUPSProxy("LendefiGovernor.sol", data2));
-        LendefiGovernor govInstanceV1 = LendefiGovernor(proxy2);
-        address govImplAddressV1 = Upgrades.getImplementationAddress(proxy2);
-        assertFalse(address(govInstanceV1) == govImplAddressV1);
-        assertEq(govInstanceV1.uupsVersion(), 1);
+        bytes memory data = abi.encodeCall(LendefiGovernor.initialize, (tokenInstance, timelockInstance, gnosisSafe));
+        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiGovernor.sol", data));
+        govInstance = LendefiGovernor(proxy);
+        address govImplAddressV1 = Upgrades.getImplementationAddress(proxy);
+        assertFalse(address(govInstance) == govImplAddressV1);
+        assertEq(govInstance.uupsVersion(), 1);
 
-        // upgrade Governor
-        Upgrades.upgradeProxy(proxy2, "LendefiGovernorV2.sol", "", guardian);
-        address govImplAddressV2 = Upgrades.getImplementationAddress(proxy2);
+        // Create options struct for the implementation
+        Options memory opts = Options({
+            referenceContract: "LendefiGovernor.sol",
+            constructorData: "",
+            unsafeAllow: "",
+            unsafeAllowRenames: false,
+            unsafeSkipStorageCheck: false,
+            unsafeSkipAllChecks: false,
+            defender: DefenderOptions({
+                useDefenderDeploy: false,
+                skipVerifySourceCode: false,
+                relayerId: "",
+                salt: bytes32(0),
+                upgradeApprovalProcessId: ""
+            })
+        });
 
-        LendefiGovernorV2 govInstanceV2 = LendefiGovernorV2(proxy2);
-        assertEq(govInstanceV2.uupsVersion(), 2);
-        assertFalse(govImplAddressV2 == govImplAddressV1);
+        // Deploy the implementation without upgrading
+        address newImpl = Upgrades.prepareUpgrade("LendefiGovernorV2.sol", opts);
+
+        // Schedule the upgrade with that exact address
+        vm.startPrank(gnosisSafe);
+        govInstance.scheduleUpgrade(newImpl);
+
+        // Fast forward past the timelock period (3 days for Governor)
+        vm.warp(block.timestamp + 3 days + 1);
+
+        ITransparentUpgradeableProxy(proxy).upgradeToAndCall(newImpl, "");
+        vm.stopPrank();
+
+        // Verification
+        address govImplAddressV2 = Upgrades.getImplementationAddress(proxy);
+        LendefiGovernorV2 govInstanceV2 = LendefiGovernorV2(proxy);
+        assertEq(govInstanceV2.uupsVersion(), 2, "Version not incremented to 2");
+        assertFalse(govImplAddressV2 == govImplAddressV1, "Implementation address didn't change");
     }
 
     function deployIMUpgrade() internal {
         vm.warp(365 days);
-
-        _deployToken();
         _deployTimelock();
+        _deployToken();
         _deployTreasury();
 
         // deploy Investment Manager
-        bytes memory data4 = abi.encodeCall(
+        bytes memory data = abi.encodeCall(
             InvestmentManager.initialize,
-            (address(tokenInstance), address(timelockInstance), address(treasuryInstance), guardian)
+            (address(tokenInstance), address(timelockInstance), address(treasuryInstance), guardian, gnosisSafe)
         );
-        address payable proxy4 = payable(Upgrades.deployUUPSProxy("InvestmentManager.sol", data4));
-        managerInstance = InvestmentManager(proxy4);
-        address implAddressV1 = Upgrades.getImplementationAddress(proxy4);
+        address payable proxy = payable(Upgrades.deployUUPSProxy("InvestmentManager.sol", data));
+        managerInstance = InvestmentManager(proxy);
+        address implAddressV1 = Upgrades.getImplementationAddress(proxy);
         assertFalse(address(managerInstance) == implAddressV1);
 
-        // upgrade InvestmentManager
-        vm.prank(guardian);
-        managerInstance.grantRole(UPGRADER_ROLE, managerAdmin);
+        // Verify gnosis multisig has the required role
+        assertTrue(managerInstance.hasRole(UPGRADER_ROLE, gnosisSafe), "Multisig should have UPGRADER_ROLE");
 
-        vm.startPrank(managerAdmin);
-        Upgrades.upgradeProxy(proxy4, "InvestmentManagerV2.sol:InvestmentManagerV2", "", guardian);
+        // Create options struct for the implementation
+        Options memory opts = Options({
+            referenceContract: "InvestmentManager.sol",
+            constructorData: "",
+            unsafeAllow: "",
+            unsafeAllowRenames: false,
+            unsafeSkipStorageCheck: false,
+            unsafeSkipAllChecks: false,
+            defender: DefenderOptions({
+                useDefenderDeploy: false,
+                skipVerifySourceCode: false,
+                relayerId: "",
+                salt: bytes32(0),
+                upgradeApprovalProcessId: ""
+            })
+        });
+
+        // Deploy the implementation without upgrading
+        address newImpl = Upgrades.prepareUpgrade("InvestmentManagerV2.sol", opts);
+
+        // Schedule the upgrade with that exact address
+        vm.startPrank(gnosisSafe);
+        managerInstance.scheduleUpgrade(newImpl);
+
+        // Fast forward past the timelock period (3 days for InvestmentManager)
+        vm.warp(block.timestamp + 3 days + 1);
+
+        ITransparentUpgradeableProxy(proxy).upgradeToAndCall(newImpl, "");
         vm.stopPrank();
 
-        address implAddressV2 = Upgrades.getImplementationAddress(proxy4);
-        InvestmentManagerV2 imInstanceV2 = InvestmentManagerV2(proxy4);
-        assertEq(imInstanceV2.version(), 2);
-        assertFalse(implAddressV2 == implAddressV1);
-
-        bool isUpgrader = imInstanceV2.hasRole(UPGRADER_ROLE, managerAdmin);
-        assertTrue(isUpgrader == true);
-
-        vm.prank(guardian);
-        imInstanceV2.revokeRole(UPGRADER_ROLE, managerAdmin);
-        assertFalse(imInstanceV2.hasRole(UPGRADER_ROLE, managerAdmin) == true);
+        // Verification
+        address implAddressV2 = Upgrades.getImplementationAddress(proxy);
+        InvestmentManagerV2 imInstanceV2 = InvestmentManagerV2(proxy);
+        assertEq(imInstanceV2.version(), 2, "Version not incremented to 2");
+        assertFalse(implAddressV2 == implAddressV1, "Implementation address didn't change");
+        assertTrue(imInstanceV2.hasRole(UPGRADER_ROLE, gnosisSafe), "Lost UPGRADER_ROLE");
     }
 
     function deployTeamManagerUpgrade() internal {
         vm.warp(365 days);
+        _deployTimelock();
+        _deployToken();
 
-        deployComplete();
-
-        // deploy Team Manager
-        bytes memory data =
-            abi.encodeCall(TeamManager.initialize, (address(tokenInstance), address(timelockInstance), guardian));
+        // deploy Team Manager with gnosisSafe as the upgrader role
+        bytes memory data = abi.encodeCall(
+            TeamManager.initialize, (address(tokenInstance), address(timelockInstance), guardian, gnosisSafe)
+        );
         address payable proxy = payable(Upgrades.deployUUPSProxy("TeamManager.sol", data));
         tmInstance = TeamManager(proxy);
         address implAddressV1 = Upgrades.getImplementationAddress(proxy);
         assertFalse(address(tmInstance) == implAddressV1);
+        assertTrue(tmInstance.hasRole(UPGRADER_ROLE, gnosisSafe) == true);
 
-        // upgrade Team Manager
-        vm.prank(guardian);
-        tmInstance.grantRole(UPGRADER_ROLE, managerAdmin);
+        // Create options struct for the implementation
+        Options memory opts = Options({
+            referenceContract: "TeamManager.sol",
+            constructorData: "",
+            unsafeAllow: "",
+            unsafeAllowRenames: false,
+            unsafeSkipStorageCheck: false,
+            unsafeSkipAllChecks: false,
+            defender: DefenderOptions({
+                useDefenderDeploy: false,
+                skipVerifySourceCode: false,
+                relayerId: "",
+                salt: bytes32(0),
+                upgradeApprovalProcessId: ""
+            })
+        });
 
-        vm.startPrank(managerAdmin);
-        Upgrades.upgradeProxy(proxy, "TeamManagerV2.sol:TeamManagerV2", "", guardian);
+        // Deploy the implementation without upgrading
+        address newImpl = Upgrades.prepareUpgrade("TeamManagerV2.sol", opts);
+
+        // Schedule the upgrade with that exact address
+        vm.startPrank(gnosisSafe);
+        tmInstance.scheduleUpgrade(newImpl);
+
+        // Fast forward past the timelock period (3 days for TeamManager)
+        vm.warp(block.timestamp + 3 days + 1);
+
+        ITransparentUpgradeableProxy(proxy).upgradeToAndCall(newImpl, "");
         vm.stopPrank();
 
+        // Verification
         address implAddressV2 = Upgrades.getImplementationAddress(proxy);
         TeamManagerV2 tmInstanceV2 = TeamManagerV2(proxy);
-        assertEq(tmInstanceV2.version(), 2);
-        assertFalse(implAddressV2 == implAddressV1);
-
-        bool isUpgrader = tmInstanceV2.hasRole(UPGRADER_ROLE, managerAdmin);
-        assertTrue(isUpgrader == true);
-
-        vm.prank(guardian);
-        tmInstanceV2.revokeRole(UPGRADER_ROLE, managerAdmin);
-        assertFalse(tmInstanceV2.hasRole(UPGRADER_ROLE, managerAdmin) == true);
+        assertEq(tmInstanceV2.version(), 2, "Version not incremented to 2");
+        assertFalse(implAddressV2 == implAddressV1, "Implementation address didn't change");
+        assertTrue(tmInstanceV2.hasRole(UPGRADER_ROLE, gnosisSafe) == true, "Lost UPGRADER_ROLE");
     }
 
     function deployComplete() internal {
         vm.warp(365 days);
-        usdcInstance = new USDC();
-        _deployToken();
         _deployTimelock();
+        _deployToken();
         _deployEcosystem();
         _deployGovernor();
 
@@ -322,8 +461,12 @@ contract BasicDeploy is Test {
     }
 
     function _deployToken() internal {
+        if (address(timelockInstance) == address(0)) {
+            _deployTimelock();
+        }
         // token deploy
-        bytes memory data = abi.encodeCall(GovernanceToken.initializeUUPS, (guardian));
+        bytes memory data =
+            abi.encodeCall(GovernanceToken.initializeUUPS, (guardian, address(timelockInstance), gnosisSafe));
         address payable proxy = payable(Upgrades.deployUUPSProxy("GovernanceToken.sol", data));
         tokenInstance = GovernanceToken(proxy);
         address tokenImplementation = Upgrades.getImplementationAddress(proxy);
@@ -332,8 +475,9 @@ contract BasicDeploy is Test {
 
     function _deployEcosystem() internal {
         // ecosystem deploy
-        bytes memory data =
-            abi.encodeCall(Ecosystem.initialize, (address(tokenInstance), address(timelockInstance), guardian, pauser));
+        bytes memory data = abi.encodeCall(
+            Ecosystem.initialize, (address(tokenInstance), address(timelockInstance), guardian, gnosisSafe)
+        );
         address payable proxy = payable(Upgrades.deployUUPSProxy("Ecosystem.sol", data));
         ecoInstance = Ecosystem(proxy);
         address ecoImplementation = Upgrades.getImplementationAddress(proxy);
@@ -357,7 +501,7 @@ contract BasicDeploy is Test {
 
     function _deployGovernor() internal {
         // deploy Governor
-        bytes memory data = abi.encodeCall(LendefiGovernor.initialize, (tokenInstance, timelockInstance, guardian));
+        bytes memory data = abi.encodeCall(LendefiGovernor.initialize, (tokenInstance, timelockInstance, gnosisSafe));
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiGovernor.sol", data));
         govInstance = LendefiGovernor(proxy);
         address govImplementation = Upgrades.getImplementationAddress(proxy);
@@ -367,7 +511,11 @@ contract BasicDeploy is Test {
 
     function _deployTreasury() internal {
         // deploy Treasury
-        bytes memory data = abi.encodeCall(Treasury.initialize, (guardian, address(timelockInstance)));
+        uint256 startOffset = 180 days;
+        uint256 vestingDuration = 3 * 365 days;
+        bytes memory data = abi.encodeCall(
+            Treasury.initialize, (guardian, address(timelockInstance), gnosisSafe, startOffset, vestingDuration)
+        );
         address payable proxy = payable(Upgrades.deployUUPSProxy("Treasury.sol", data));
         treasuryInstance = Treasury(proxy);
         address implAddress = Upgrades.getImplementationAddress(proxy);
@@ -378,7 +526,7 @@ contract BasicDeploy is Test {
         // deploy Investment Manager
         bytes memory data = abi.encodeCall(
             InvestmentManager.initialize,
-            (address(tokenInstance), address(timelockInstance), address(treasuryInstance), guardian)
+            (address(tokenInstance), address(timelockInstance), address(treasuryInstance), guardian, gnosisSafe)
         );
         address payable proxy = payable(Upgrades.deployUUPSProxy("InvestmentManager.sol", data));
         managerInstance = InvestmentManager(proxy);
@@ -388,8 +536,9 @@ contract BasicDeploy is Test {
 
     function _deployTeamManager() internal {
         // deploy Team Manager
-        bytes memory data =
-            abi.encodeCall(TeamManager.initialize, (address(tokenInstance), address(timelockInstance), guardian));
+        bytes memory data = abi.encodeCall(
+            TeamManager.initialize, (address(tokenInstance), address(timelockInstance), guardian, gnosisSafe)
+        );
         address payable proxy = payable(Upgrades.deployUUPSProxy("TeamManager.sol", data));
         tmInstance = TeamManager(proxy);
         address implementation = Upgrades.getImplementationAddress(proxy);
