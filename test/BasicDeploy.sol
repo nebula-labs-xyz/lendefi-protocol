@@ -575,22 +575,33 @@ contract BasicDeploy is Test {
 
     /**
      * @notice Deploys the LendefiYieldToken contract
-     * @dev Follows the same pattern as other internal deploy functions
+     * @dev Initializes with proper role assignment for protocol, timelock, guardian, and multisig
      */
     function _deployYieldToken() internal {
         // Deploy LendefiYieldToken
-        bytes memory data = abi.encodeCall(LendefiYieldToken.initialize, (address(ethereum), guardian));
+        if (address(timelockInstance) == address(0)) {
+            _deployTimelock();
+        }
+        bytes memory data = abi.encodeCall(
+            LendefiYieldToken.initialize, (address(ethereum), address(timelockInstance), guardian, gnosisSafe)
+        );
 
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiYieldToken.sol", data));
         yieldTokenInstance = LendefiYieldToken(proxy);
 
         address implementation = Upgrades.getImplementationAddress(proxy);
         assertFalse(address(yieldTokenInstance) == implementation);
+
+        // Verify roles are properly assigned
+        assertTrue(yieldTokenInstance.hasRole(yieldTokenInstance.PROTOCOL_ROLE(), address(ethereum)));
+        assertTrue(yieldTokenInstance.hasRole(DEFAULT_ADMIN_ROLE, address(timelockInstance)));
+        assertTrue(yieldTokenInstance.hasRole(yieldTokenInstance.PAUSER_ROLE(), guardian));
+        assertTrue(yieldTokenInstance.hasRole(yieldTokenInstance.UPGRADER_ROLE(), gnosisSafe));
     }
 
     /**
-     * @notice Upgrades the LendefiYieldToken implementation
-     * @dev For future use when yield token needs to be upgraded
+     * @notice Upgrades the LendefiYieldToken implementation using timelocked pattern
+     * @dev Uses the two-phase upgrade process: schedule → wait → execute
      */
     function deployYieldTokenUpgrade() internal {
         // First make sure the token is deployed
@@ -604,22 +615,45 @@ contract BasicDeploy is Test {
         // Get the current implementation address for assertion later
         address implAddressV1 = Upgrades.getImplementationAddress(proxy);
 
-        // Grant upgrader role to manager admin
-        vm.prank(guardian);
-        yieldTokenInstance.grantRole(UPGRADER_ROLE, managerAdmin);
+        // Create options struct for the implementation
+        Options memory opts = Options({
+            referenceContract: "LendefiYieldToken.sol",
+            constructorData: "",
+            unsafeAllow: "",
+            unsafeAllowRenames: false,
+            unsafeSkipStorageCheck: false,
+            unsafeSkipAllChecks: false,
+            defender: DefenderOptions({
+                useDefenderDeploy: false,
+                skipVerifySourceCode: false,
+                relayerId: "",
+                salt: bytes32(0),
+                upgradeApprovalProcessId: ""
+            })
+        });
 
-        // Perform the upgrade
-        vm.startPrank(managerAdmin);
-        // Note: You'll need to create a V2 version when needed
-        Upgrades.upgradeProxy(proxy, "LendefiYieldTokenV2.sol", "", guardian);
+        // Deploy the implementation without upgrading
+        address newImpl = Upgrades.prepareUpgrade("LendefiYieldTokenV2.sol", opts);
+
+        // Schedule the upgrade with that exact address
+        vm.startPrank(gnosisSafe);
+        yieldTokenInstance.scheduleUpgrade(newImpl);
+
+        // Fast forward past the timelock period (3 days for YieldToken)
+        vm.warp(block.timestamp + 3 days + 1);
+
+        // Execute the upgrade
+        ITransparentUpgradeableProxy(proxy).upgradeToAndCall(newImpl, "");
         vm.stopPrank();
 
-        // Verify the upgrade
+        // Verification
         address implAddressV2 = Upgrades.getImplementationAddress(proxy);
-        assertFalse(implAddressV2 == implAddressV1);
+        LendefiYieldTokenV2 yieldTokenInstanceV2 = LendefiYieldTokenV2(proxy);
 
-        // Check version
-        assertEq(yieldTokenInstance.version(), 2);
+        // Assert that upgrade was successful
+        assertEq(yieldTokenInstanceV2.version(), 2, "Version not incremented to 2");
+        assertFalse(implAddressV2 == implAddressV1, "Implementation address didn't change");
+        assertTrue(yieldTokenInstanceV2.hasRole(UPGRADER_ROLE, gnosisSafe), "Lost UPGRADER_ROLE");
     }
 
     /**
@@ -700,8 +734,10 @@ contract BasicDeploy is Test {
             _deployAssetsModule();
         }
 
-        // Then deploy the yield token with address(1) as a placeholder for Lendefi
-        bytes memory tokenData = abi.encodeCall(LendefiYieldToken.initialize, (address(ethereum), guardian));
+        // Then deploy the yield token with proper initialization parameters
+        bytes memory tokenData = abi.encodeCall(
+            LendefiYieldToken.initialize, (address(ethereum), address(timelockInstance), guardian, gnosisSafe)
+        );
 
         address payable tokenProxy = payable(Upgrades.deployUUPSProxy("LendefiYieldToken.sol", tokenData));
         yieldTokenInstance = LendefiYieldToken(tokenProxy);
@@ -725,18 +761,15 @@ contract BasicDeploy is Test {
         LendefiInstance = Lendefi(lendingProxy);
 
         // Update the protocol role in the yield token to point to the real Lendefi address
-        vm.startPrank(address(guardian));
+        vm.startPrank(address(timelockInstance));
         yieldTokenInstance.revokeRole(PROTOCOL_ROLE, address(ethereum));
         yieldTokenInstance.grantRole(PROTOCOL_ROLE, address(LendefiInstance));
-        yieldTokenInstance.grantRole(DEFAULT_ADMIN_ROLE, address(timelockInstance));
-        yieldTokenInstance.renounceRole(DEFAULT_ADMIN_ROLE, address(guardian));
+        vm.stopPrank();
 
         // Update the core address in the protocol oracle to point to the real Lendefi address
+        vm.startPrank(guardian);
         assetsInstance.setCoreAddress(address(LendefiInstance));
         assetsInstance.grantRole(CORE_ROLE, address(LendefiInstance));
-        assetsInstance.grantRole(DEFAULT_ADMIN_ROLE, address(timelockInstance));
-        assetsInstance.renounceRole(DEFAULT_ADMIN_ROLE, address(guardian));
-
         vm.stopPrank();
     }
 
