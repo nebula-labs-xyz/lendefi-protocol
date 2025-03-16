@@ -4,18 +4,27 @@ pragma solidity ^0.8.23;
 import "../BasicDeploy.sol"; // solhint-disable-line
 // import {console2} from "forge-std/console2.sol";
 import {LendefiGovernor} from "../../contracts/ecosystem/LendefiGovernor.sol"; // Path to your contract
+import {LendefiGovernorV2} from "../../contracts/upgrades/LendefiGovernorV2.sol"; // Path to your contract
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {TimelockControllerUpgradeable} from
     "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 
 contract LendefiGovernorTest is BasicDeploy {
-    // TimelockControllerUpgradeable public timelock;
-    // Set up initial conditions before each test
+    event Initialized(address indexed src);
+
+    event GovernanceSettingsUpdated(
+        address indexed caller, uint256 votingDelay, uint256 votingPeriod, uint256 proposalThreshold
+    );
+    event GnosisSafeUpdated(address indexed oldGnosisSafe, address indexed newGnosisSafe);
+    event UpgradeScheduled(
+        address indexed scheduler, address indexed implementation, uint64 scheduledTime, uint64 effectiveTime
+    );
 
     function setUp() public {
         vm.warp(365 days);
-        deployToken();
         deployTimelock();
+        deployToken();
+
         deployEcosystem();
         deployGovernor();
         setupTimelockRoles();
@@ -27,14 +36,14 @@ contract LendefiGovernorTest is BasicDeploy {
     // Test: RevertInitialization
     function testRevertInitialization() public {
         bytes memory expError = abi.encodeWithSignature("InvalidInitialization()");
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectRevert(expError); // contract already initialized
         govInstance.initialize(tokenInstance, timelockInstance, guardian);
     }
 
     // Test: RightOwner
-    function testRightOwner() public {
-        assertTrue(govInstance.owner() == guardian);
+    function test_RightOwner() public {
+        assertTrue(govInstance.hasRole(DEFAULT_ADMIN_ROLE, address(timelockInstance)) == true);
     }
 
     // Test: CreateProposal
@@ -254,7 +263,7 @@ contract LendefiGovernorTest is BasicDeploy {
 
         assertTrue(state7 == IGovernor.ProposalState.Executed); //proposal executed
         assertEq(tokenInstance.balanceOf(managerAdmin), 1 ether);
-        assertEq(tokenInstance.balanceOf(address(treasuryInstance)), 28_000_000 ether - 1 ether);
+        assertEq(tokenInstance.balanceOf(address(treasuryInstance)), 27_400_000 ether - 1 ether);
     }
 
     // Test: ProposeQuorumDefeat
@@ -454,109 +463,6 @@ contract LendefiGovernorTest is BasicDeploy {
         assertEq(threshold, 20000e18);
     }
 
-    //Test: InitialOwner
-    function testInitialOwner() public {
-        assertEq(govInstance.owner(), guardian);
-        assertEq(govInstance.pendingOwner(), address(0));
-    }
-
-    //Test: TransferOwnership
-    function testTransferOwnership() public {
-        vm.prank(guardian);
-        govInstance.transferOwnership(alice);
-
-        // Check pending owner is set
-        assertEq(govInstance.pendingOwner(), alice);
-        // Check current owner hasn't changed
-        assertEq(govInstance.owner(), guardian);
-    }
-
-    //Test: TransferOwnershipUnauthorized
-    function testTransferOwnershipUnauthorized() public {
-        // Try to transfer ownership from non-owner account
-        vm.prank(address(0x9999));
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", address(0x9999)));
-        govInstance.transferOwnership(alice);
-    }
-
-    // Test: AcceptOwnership
-    function testAcceptOwnership() public {
-        // Set up pending ownership transfer
-        vm.prank(guardian);
-        govInstance.transferOwnership(alice);
-
-        // Accept ownership as new owner
-        vm.prank(alice);
-        govInstance.acceptOwnership();
-
-        // Verify ownership changed
-        assertEq(govInstance.owner(), alice);
-        assertEq(govInstance.pendingOwner(), address(0));
-    }
-
-    //Test: AcceptOwnershipUnauthorized
-    function testAcceptOwnershipUnauthorized() public {
-        // Set up pending ownership transfer
-        vm.prank(guardian);
-        govInstance.transferOwnership(alice);
-
-        // Try to accept ownership from unauthorized account
-        address unauthorized = address(0x9999);
-        vm.prank(unauthorized);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", unauthorized));
-        govInstance.acceptOwnership();
-    }
-
-    // Test: CancelTransferOwnership
-    function testCancelTransferOwnership() public {
-        // Set up pending ownership transfer
-        vm.prank(guardian);
-        govInstance.transferOwnership(alice);
-
-        // Cancel transfer by setting pending owner to zero address
-        vm.prank(guardian);
-        govInstance.transferOwnership(address(0));
-
-        // Verify pending owner is cleared
-        assertEq(govInstance.pendingOwner(), address(0));
-        // Verify current owner hasn't changed
-        assertEq(govInstance.owner(), guardian);
-    }
-
-    // Test: Ownership Transfer
-    function testOwnershipTransfer() public {
-        // Transfer ownership to a new address
-        address newOwner = address(0x123);
-        vm.prank(guardian);
-        govInstance.transferOwnership(newOwner);
-
-        // Verify the new owner
-        vm.prank(newOwner);
-        govInstance.acceptOwnership();
-        assertEq(govInstance.owner(), newOwner);
-
-        // Attempt unauthorized ownership transfer and expect a revert
-        vm.startPrank(address(0x9999991));
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", address(0x9999991)));
-        govInstance.transferOwnership(alice);
-        vm.stopPrank();
-    }
-
-    // Test: Ownership Renouncement
-    function testOwnershipRenouncement() public {
-        // Renounce ownership
-        vm.prank(guardian);
-        govInstance.renounceOwnership();
-
-        // Verify that the owner is set to the zero address
-        assertEq(govInstance.owner(), address(0));
-
-        // Attempt unauthorized ownership renouncement and expect a revert
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", alice));
-        govInstance.renounceOwnership();
-    }
-
     // Test: RevertDeployGovernor
     function testRevertDeployGovernorERC1967Proxy() public {
         TimelockControllerUpgradeable timelockContract;
@@ -568,28 +474,247 @@ contract LendefiGovernorTest is BasicDeploy {
         bytes memory data = abi.encodeCall(LendefiGovernor.initialize, (tokenInstance, timelockContract, guardian));
 
         // Expect revert with zero address error
-        vm.expectRevert(abi.encodeWithSignature("CustomError(string)", "ZERO_ADDRESS_DETECTED"));
+        vm.expectRevert(abi.encodeWithSignature("ZeroAddress()"));
 
         // Try to deploy proxy with zero address timelock
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), data);
         assertFalse(address(proxy) == address(implementation));
     }
 
-    function deployToken() internal {
-        bytes memory data = abi.encodeCall(GovernanceToken.initializeUUPS, (guardian));
-        address payable proxy = payable(Upgrades.deployUUPSProxy("GovernanceToken.sol", data));
-        tokenInstance = GovernanceToken(proxy);
-        address tokenImplementation = Upgrades.getImplementationAddress(proxy);
-        assertFalse(address(tokenInstance) == tokenImplementation);
+    // Test: _authorizeUpgrade with gnosisSafe permission
+    function test_AuthorizeUpgrade() public {
+        // upgrade Governor
+        address proxy = address(govInstance);
+
+        // First prepare the upgrade but don't apply it yet
+        Options memory opts = Options({
+            referenceContract: "LendefiGovernor.sol",
+            constructorData: "",
+            unsafeAllow: "",
+            unsafeAllowRenames: false,
+            unsafeSkipStorageCheck: false,
+            unsafeSkipAllChecks: false,
+            defender: DefenderOptions({
+                useDefenderDeploy: false,
+                skipVerifySourceCode: false,
+                relayerId: "",
+                salt: bytes32(0),
+                upgradeApprovalProcessId: ""
+            })
+        });
+
+        // Get the implementation address without upgrading
+        address newImpl = Upgrades.prepareUpgrade("LendefiGovernorV2.sol", opts);
+
+        vm.startPrank(gnosisSafe);
+
+        // Schedule the upgrade with our timelock mechanism
+        govInstance.scheduleUpgrade(newImpl);
+
+        // Wait for the timelock period to expire
+        vm.warp(block.timestamp + 3 days + 1);
+
+        // Now perform the actual upgrade
+        govInstance.upgradeToAndCall(newImpl, "");
+
+        // Verify the upgrade was successful
+        LendefiGovernorV2 govInstanceV2 = LendefiGovernorV2(payable(proxy));
+        assertEq(govInstanceV2.uupsVersion(), 2);
+        vm.stopPrank();
     }
 
-    function deployEcosystem() internal {
-        bytes memory data =
-            abi.encodeCall(Ecosystem.initialize, (address(tokenInstance), address(timelockInstance), guardian, pauser));
-        address payable proxy = payable(Upgrades.deployUUPSProxy("Ecosystem.sol", data));
-        ecoInstance = Ecosystem(proxy);
-        address ecoImplementation = Upgrades.getImplementationAddress(proxy);
-        assertFalse(address(ecoInstance) == ecoImplementation);
+    // Test: _authorizeUpgrade unauthorized
+    // Test: _authorizeUpgrade unauthorized
+    function testRevert_UpgradeUnauthorized() public {
+        // Create a new implementation contract directly
+        LendefiGovernor newImplementation = new LendefiGovernor();
+
+        // Update to use standard AccessControlUnauthorizedAccount error
+        bytes memory expError =
+            abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", alice, UPGRADER_ROLE);
+        vm.expectRevert(expError);
+        vm.prank(alice);
+        // Use a low-level call with the correct function selector
+        (bool success,) = address(govInstance).call(
+            abi.encodeWithSelector(0x3659cfe6, address(newImplementation)) // upgradeTo(address)
+        );
+        assertFalse(success);
+    }
+
+    // Test: Default constants match expected values
+    function testDefaultConstants() public {
+        assertEq(govInstance.DEFAULT_VOTING_DELAY(), 7200);
+        assertEq(govInstance.DEFAULT_VOTING_PERIOD(), 50400);
+        assertEq(govInstance.DEFAULT_PROPOSAL_THRESHOLD(), 20_000 ether);
+    }
+
+    // Test: Schedule upgrade with zero address
+    function testRevert_ScheduleUpgradeZeroAddress() public {
+        vm.prank(gnosisSafe);
+        vm.expectRevert(abi.encodeWithSignature("ZeroAddress()"));
+        govInstance.scheduleUpgrade(address(0));
+    }
+
+    // Test: Schedule upgrade unauthorized
+    function testRevert_ScheduleUpgradeUnauthorized() public {
+        bytes memory expError =
+            abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", alice, UPGRADER_ROLE);
+        vm.prank(alice);
+        vm.expectRevert(expError);
+        govInstance.scheduleUpgrade(address(0x1234));
+    }
+
+    // Test: Upgrade timelock remaining with no upgrade scheduled
+    function testUpgradeTimelockRemainingNoUpgrade() public {
+        assertEq(govInstance.upgradeTimelockRemaining(), 0, "Should be 0 with no scheduled upgrade");
+    }
+
+    // Test: Upgrade timelock remaining after scheduling
+    function testUpgradeTimelockRemaining() public {
+        address newImplementation = address(0x1234);
+
+        // Schedule upgrade
+        vm.prank(gnosisSafe);
+        govInstance.scheduleUpgrade(newImplementation);
+
+        // Check remaining time right after scheduling
+        uint256 timelock = govInstance.UPGRADE_TIMELOCK_DURATION();
+        assertEq(govInstance.upgradeTimelockRemaining(), timelock, "Full timelock should remain");
+
+        // Warp forward 1 day and check again
+        vm.warp(block.timestamp + 1 days);
+        assertEq(govInstance.upgradeTimelockRemaining(), timelock - 1 days, "Should have 2 days remaining");
+
+        // Warp past timelock
+        vm.warp(block.timestamp + 2 days);
+        assertEq(govInstance.upgradeTimelockRemaining(), 0, "Should be 0 after timelock expires");
+    }
+
+    // Test: Attempt upgrade when timelock is active
+    function testRevert_UpgradeTimelockActive() public {
+        address newImplementation = address(0x1234);
+
+        // Schedule upgrade
+        vm.prank(gnosisSafe);
+        govInstance.scheduleUpgrade(newImplementation);
+
+        // Try to upgrade immediately
+        vm.prank(gnosisSafe);
+        uint256 remaining = govInstance.upgradeTimelockRemaining();
+        vm.expectRevert(abi.encodeWithSelector(LendefiGovernor.UpgradeTimelockActive.selector, remaining));
+
+        // Use low-level call to attempt upgrade
+        (bool success,) = address(govInstance).call(
+            abi.encodeWithSelector(0x3659cfe6, newImplementation) // upgradeTo(address)
+        );
+        assertFalse(success);
+    }
+
+    // Test: Attempt upgrade without scheduling
+    function testRevert_UpgradeNotScheduled() public {
+        address newImplementation = address(0x1234);
+
+        // Try to upgrade without scheduling
+        vm.prank(gnosisSafe);
+        vm.expectRevert(abi.encodeWithSelector(LendefiGovernor.UpgradeNotScheduled.selector));
+
+        // Use low-level call to attempt upgrade
+        (bool success,) = address(govInstance).call(
+            abi.encodeWithSelector(0x3659cfe6, newImplementation) // upgradeTo(address)
+        );
+        assertFalse(success);
+    }
+
+    // Test: Attempt upgrade with implementation mismatch
+    function testRevert_ImplementationMismatch() public {
+        address scheduledImpl = address(0x1234);
+        address wrongImpl = address(0x5678);
+
+        // Schedule upgrade
+        vm.prank(gnosisSafe);
+        govInstance.scheduleUpgrade(scheduledImpl);
+
+        // Wait for timelock to expire
+        vm.warp(block.timestamp + govInstance.UPGRADE_TIMELOCK_DURATION() + 1);
+
+        // Try to upgrade with different implementation
+        vm.prank(gnosisSafe);
+        vm.expectRevert(
+            abi.encodeWithSelector(LendefiGovernor.ImplementationMismatch.selector, scheduledImpl, wrongImpl)
+        );
+
+        // Use low-level call to attempt upgrade
+        (bool success,) = address(govInstance).call(
+            abi.encodeWithSelector(0x3659cfe6, wrongImpl) // upgradeTo(address)
+        );
+        assertFalse(success);
+    }
+
+    function test_UpgradeTimelockPeriod() public {
+        address newImplementation = address(0x1234);
+
+        vm.prank(gnosisSafe);
+        govInstance.scheduleUpgrade(newImplementation);
+
+        assertEq(govInstance.upgradeTimelockRemaining(), 3 days);
+
+        // Move forward one day
+        vm.warp(block.timestamp + 1 days);
+        assertEq(govInstance.upgradeTimelockRemaining(), 2 days);
+
+        // Move past timelock
+        vm.warp(block.timestamp + 2 days);
+        assertEq(govInstance.upgradeTimelockRemaining(), 0);
+    }
+    // Test: Complete successful timelock upgrade process
+
+    function testSuccessfulTimelockUpgrade() public {
+        deployGovernorUpgrade();
+    }
+
+    // Test: Reschedule an upgrade
+    function testRescheduleUpgrade() public {
+        address firstImpl = address(0x1234);
+        address secondImpl = address(0x5678);
+
+        // Schedule first upgrade
+        vm.prank(gnosisSafe);
+        govInstance.scheduleUpgrade(firstImpl);
+
+        // Verify first implementation is scheduled
+        (address scheduledImpl,, bool exists) = govInstance.pendingUpgrade();
+        assertTrue(exists);
+        assertEq(scheduledImpl, firstImpl);
+
+        // Schedule second upgrade (should replace the first one)
+        vm.prank(gnosisSafe);
+        govInstance.scheduleUpgrade(secondImpl);
+
+        // Verify second implementation replaced the first
+        (scheduledImpl,, exists) = govInstance.pendingUpgrade();
+        assertTrue(exists);
+        assertEq(scheduledImpl, secondImpl, "Second implementation should replace first");
+    }
+
+    // Test: Schedule upgrade with proper permissions
+    function test_ScheduleUpgrade() public {
+        address newImplementation = address(0x1234);
+
+        vm.expectEmit(true, true, true, true);
+        emit UpgradeScheduled(
+            gnosisSafe,
+            newImplementation,
+            uint64(block.timestamp),
+            uint64(block.timestamp + govInstance.UPGRADE_TIMELOCK_DURATION())
+        );
+        vm.prank(gnosisSafe);
+        govInstance.scheduleUpgrade(newImplementation);
+
+        // Check the pending upgrade is properly set
+        (address impl, uint64 scheduledTime, bool exists) = govInstance.pendingUpgrade();
+        assertTrue(exists, "Upgrade should be scheduled");
+        assertEq(impl, newImplementation, "Implementation address should match");
+        assertEq(scheduledTime, block.timestamp, "Scheduled time should match current time");
     }
 
     function deployTimelock() internal {
@@ -607,10 +732,28 @@ contract LendefiGovernorTest is BasicDeploy {
         timelockInstance = TimelockControllerUpgradeable(payable(address(proxy1)));
     }
 
+    function deployToken() internal {
+        bytes memory data =
+            abi.encodeCall(GovernanceToken.initializeUUPS, (guardian, address(timelockInstance), gnosisSafe));
+        address payable proxy = payable(Upgrades.deployUUPSProxy("GovernanceToken.sol", data));
+        tokenInstance = GovernanceToken(proxy);
+        address tokenImplementation = Upgrades.getImplementationAddress(proxy);
+        assertFalse(address(tokenInstance) == tokenImplementation);
+    }
+
+    function deployEcosystem() internal {
+        bytes memory data =
+            abi.encodeCall(Ecosystem.initialize, (address(tokenInstance), address(timelockInstance), guardian, pauser));
+        address payable proxy = payable(Upgrades.deployUUPSProxy("Ecosystem.sol", data));
+        ecoInstance = Ecosystem(proxy);
+        address ecoImplementation = Upgrades.getImplementationAddress(proxy);
+        assertFalse(address(ecoInstance) == ecoImplementation);
+    }
+
     function deployGovernor() internal {
         bytes memory data = abi.encodeCall(
             LendefiGovernor.initialize,
-            (tokenInstance, TimelockControllerUpgradeable(payable(address(timelockInstance))), guardian)
+            (tokenInstance, TimelockControllerUpgradeable(payable(address(timelockInstance))), gnosisSafe)
         );
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiGovernor.sol", data));
         govInstance = LendefiGovernor(proxy);
@@ -630,7 +773,8 @@ contract LendefiGovernorTest is BasicDeploy {
     }
 
     function deployTreasury() internal {
-        bytes memory data = abi.encodeCall(Treasury.initialize, (guardian, address(timelockInstance)));
+        bytes memory data =
+            abi.encodeCall(Treasury.initialize, (guardian, address(timelockInstance), gnosisSafe, 180 days, 1095 days));
         address payable proxy = payable(Upgrades.deployUUPSProxy("Treasury.sol", data));
         treasuryInstance = Treasury(proxy);
         address tImplementation = Upgrades.getImplementationAddress(proxy);
@@ -643,14 +787,16 @@ contract LendefiGovernorTest is BasicDeploy {
         tokenInstance.initializeTGE(address(ecoInstance), address(treasuryInstance));
         uint256 ecoBal = tokenInstance.balanceOf(address(ecoInstance));
         uint256 treasuryBal = tokenInstance.balanceOf(address(treasuryInstance));
+        uint256 guardianBal = tokenInstance.balanceOf(guardian);
 
         assertEq(ecoBal, 22_000_000 ether);
-        assertEq(treasuryBal, 28_000_000 ether);
-        assertEq(tokenInstance.totalSupply(), ecoBal + treasuryBal);
+        assertEq(treasuryBal, 27_400_000 ether);
+        assertEq(guardianBal, 600_000 ether);
+        assertEq(tokenInstance.totalSupply(), ecoBal + treasuryBal + guardianBal);
     }
 
     function setupEcosystemRoles() internal {
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(MANAGER_ROLE, managerAdmin);
         assertEq(govInstance.uupsVersion(), 1);
     }
