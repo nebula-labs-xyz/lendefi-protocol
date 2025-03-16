@@ -55,10 +55,12 @@ contract BasicDeployTest is BasicDeploy {
         tokenInstance.initializeTGE(address(ecoInstance), address(treasuryInstance));
         uint256 ecoBal = tokenInstance.balanceOf(address(ecoInstance));
         uint256 treasuryBal = tokenInstance.balanceOf(address(treasuryInstance));
+        uint256 guardianBal = tokenInstance.balanceOf(guardian);
 
         assertEq(ecoBal, 22_000_000 ether);
-        assertEq(treasuryBal, 28_000_000 ether);
-        assertEq(tokenInstance.totalSupply(), ecoBal + treasuryBal);
+        assertEq(treasuryBal, 27_400_000 ether);
+        assertEq(guardianBal, 600_000 ether);
+        assertEq(tokenInstance.totalSupply(), ecoBal + treasuryBal + guardianBal);
     }
 
     function test_010_deployTeamManager() public {
