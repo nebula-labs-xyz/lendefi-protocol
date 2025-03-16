@@ -30,13 +30,10 @@ contract IsRewardableTest is BasicDeploy {
         user2 = makeAddr("user2");
         user3 = makeAddr("user3");
 
-        // Grant the REWARDER_ROLE to Lendefi contract for ecosystem rewards
-        vm.prank(guardian);
-        ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
-
-        // Initialize reward parameters via timelock using the config approach
         vm.startPrank(address(timelockInstance));
-
+        // Grant the REWARDER_ROLE to Lendefi contract for ecosystem rewards
+        ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
+        // Initialize reward parameters via timelock using the config approach
         // Get current config
         IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
 
