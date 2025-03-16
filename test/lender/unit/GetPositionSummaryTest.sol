@@ -40,7 +40,7 @@ contract GetPositionSummaryTest is BasicDeploy {
         stableOracleInstance.setPrice(1e8); // $1 per stable
 
         // Setup roles
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
 
         _setupAssets();
