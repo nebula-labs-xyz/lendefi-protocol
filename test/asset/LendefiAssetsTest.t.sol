@@ -745,7 +745,7 @@ contract LendefiAssetsTest is BasicDeploy {
 
     // For testRevert_SetCoreAddress_ZeroAddress()
     function testRevert_SetCoreAddress_ZeroAddress() public {
-        vm.prank(address(timelockInstance));
+        vm.prank(guardian);
         vm.expectRevert(abi.encodeWithSignature("ZeroAddressNotAllowed()"));
         assetsInstance.setCoreAddress(address(0));
     }
@@ -816,7 +816,7 @@ contract LendefiAssetsTest is BasicDeploy {
         // The CoreAddressUpdated event has only one indexed parameter and no non-indexed parameters
         // So we should use vm.expectEmit(true, false, false, false)
 
-        vm.prank(address(timelockInstance));
+        vm.prank(guardian);
         assetsInstance.setCoreAddress(newCore);
 
         assertEq(assetsInstance.coreAddress(), newCore);
