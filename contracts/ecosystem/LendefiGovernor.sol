@@ -2,13 +2,13 @@
 pragma solidity 0.8.23;
 /**
  * @title Lendefi DAO Governor
- * @notice Standard OZUpgradeable governor, small modification with UUPS
- * @dev Implements a secure and upgradeable DAO governor
+ * @notice Standard OZUpgradeable governor with UUPS and AccessControl
+ * @dev Implements a secure and upgradeable DAO governor with consistent role patterns
  * @custom:security-contact security@nebula-labs.xyz
  */
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {GovernorUpgradeable} from "@openzeppelin/contracts-upgradeable/governance/GovernorUpgradeable.sol";
 import {GovernorSettingsUpgradeable} from
     "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorSettingsUpgradeable.sol";
@@ -33,31 +33,116 @@ contract LendefiGovernor is
     GovernorVotesUpgradeable,
     GovernorVotesQuorumFractionUpgradeable,
     GovernorTimelockControlUpgradeable,
-    Ownable2StepUpgradeable,
+    AccessControlUpgradeable,
     UUPSUpgradeable
 {
-    /// @dev UUPS version tracker
-    uint32 public uupsVersion;
-    uint256[50] private __gap;
+    /**
+     * @dev Role identifier for addresses that can upgrade the contract
+     * @custom:security Should be granted carefully as this is a critical permission
+     */
+    bytes32 internal constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
     /**
-     * @dev Initialized Event.
-     * @param src sender address
+     * @notice Default voting delay in blocks (approximately 1 day)
+     * @dev The period after a proposal is created during which voting cannot start
+     */
+    uint48 public constant DEFAULT_VOTING_DELAY = 7200; // ~1 day
+
+    /**
+     * @notice Default voting period in blocks (approximately 1 week)
+     * @dev The period during which voting can occur
+     */
+    uint32 public constant DEFAULT_VOTING_PERIOD = 50400; // ~1 week
+
+    /**
+     * @notice Default proposal threshold (20,000 tokens)
+     * @dev The minimum number of votes needed to submit a proposal
+     */
+    uint256 public constant DEFAULT_PROPOSAL_THRESHOLD = 20_000 ether; // 20,000 tokens
+
+    /**
+     * @notice Duration of the timelock for upgrade operations (3 days)
+     * @dev Time that must elapse between scheduling and executing an upgrade
+     * @custom:security Provides time for users to respond to potentially malicious upgrades
+     */
+    uint256 public constant UPGRADE_TIMELOCK_DURATION = 3 days;
+
+    /**
+     * @notice UUPS upgrade version tracker
+     * @dev Incremented with each upgrade to track contract versions
+     */
+    uint32 public uupsVersion;
+
+    /**
+     * @notice Structure to store pending upgrade details
+     * @param implementation Address of the new implementation contract
+     * @param scheduledTime Timestamp when the upgrade was scheduled
+     * @param exists Boolean flag indicating if an upgrade is currently scheduled
+     */
+    struct UpgradeRequest {
+        address implementation;
+        uint64 scheduledTime;
+        bool exists;
+    }
+
+    /**
+     * @notice Information about the currently pending upgrade
+     * @dev Will have exists=false if no upgrade is pending
+     */
+    UpgradeRequest public pendingUpgrade;
+
+    /**
+     * @dev Reserved storage space for future upgrades
+     * @custom:oz-upgrades-unsafe-allow state-variable-immutable
+     */
+    uint256[21] private __gap;
+
+    /**
+     * @notice Emitted when the contract is initialized
+     * @param src The address that initialized the contract
      */
     event Initialized(address indexed src);
 
     /**
-     * @dev event emitted on UUPS upgrade
-     * @param src upgrade sender address
-     * @param implementation new implementation address
+     * @notice Emitted when the contract is upgraded
+     * @param src The address that executed the upgrade
+     * @param implementation The address of the new implementation
      */
     event Upgrade(address indexed src, address indexed implementation);
 
     /**
-     * @dev Custom Error.
-     * @param msg error desription
+     * @notice Emitted when an upgrade is scheduled
+     * @param scheduler The address scheduling the upgrade
+     * @param implementation The new implementation contract address
+     * @param scheduledTime The timestamp when the upgrade was scheduled
+     * @param effectiveTime The timestamp when the upgrade can be executed
      */
-    error CustomError(string msg);
+    event UpgradeScheduled(
+        address indexed scheduler, address indexed implementation, uint64 scheduledTime, uint64 effectiveTime
+    );
+
+    /**
+     * @notice Error thrown when a zero address is provided
+     */
+    error ZeroAddress();
+
+    /**
+     * @notice Error thrown when attempting to execute an upgrade before timelock expires
+     * @param timeRemaining The time remaining until the upgrade can be executed
+     */
+    error UpgradeTimelockActive(uint256 timeRemaining);
+
+    /**
+     * @notice Error thrown when attempting to execute an upgrade that wasn't scheduled
+     */
+    error UpgradeNotScheduled();
+
+    /**
+     * @notice Error thrown when implementation address doesn't match scheduled upgrade
+     * @param scheduledImpl The address that was scheduled for upgrade
+     * @param attemptedImpl The address that was attempted to be used
+     */
+    error ImplementationMismatch(address scheduledImpl, address attemptedImpl);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -68,26 +153,57 @@ contract LendefiGovernor is
      * @dev Initializes the UUPS contract
      * @param _token IVotes token instance
      * @param _timelock timelock instance
-     * @param guardian owner address
+     * @param _gnosisSafe multisig address for emergency functions and upgrades
      */
-    function initialize(IVotes _token, TimelockControllerUpgradeable _timelock, address guardian)
+    function initialize(IVotes _token, TimelockControllerUpgradeable _timelock, address _gnosisSafe)
         external
         initializer
     {
-        if (guardian == address(0x0) || address(_timelock) == address(0x0) || address(_token) == address(0x0)) {
-            revert CustomError("ZERO_ADDRESS_DETECTED");
+        if (_gnosisSafe == address(0) || address(_timelock) == address(0) || address(_token) == address(0)) {
+            revert ZeroAddress();
         }
+
         __Governor_init("Lendefi Governor");
-        __GovernorSettings_init(7200, /* 1 day */ 50400, /* 1 week */ 20000e18);
+        __GovernorSettings_init(DEFAULT_VOTING_DELAY, DEFAULT_VOTING_PERIOD, DEFAULT_PROPOSAL_THRESHOLD);
         __GovernorCountingSimple_init();
         __GovernorVotes_init(_token);
         __GovernorVotesQuorumFraction_init(1);
         __GovernorTimelockControl_init(_timelock);
-        __Ownable_init(guardian);
+        __AccessControl_init();
         __UUPSUpgradeable_init();
+
+        // Role setup consistent with other contracts
+        _grantRole(DEFAULT_ADMIN_ROLE, address(_timelock));
+        _grantRole(UPGRADER_ROLE, _gnosisSafe);
 
         ++uupsVersion;
         emit Initialized(msg.sender);
+    }
+
+    /**
+     * @notice Schedules an upgrade to a new implementation with timelock
+     * @dev Can only be called by addresses with UPGRADER_ROLE
+     * @param newImplementation Address of the new implementation contract
+     */
+    function scheduleUpgrade(address newImplementation) external onlyRole(UPGRADER_ROLE) {
+        if (newImplementation == address(0)) revert ZeroAddress();
+
+        uint64 currentTime = uint64(block.timestamp);
+        uint64 effectiveTime = currentTime + uint64(UPGRADE_TIMELOCK_DURATION);
+
+        pendingUpgrade = UpgradeRequest({implementation: newImplementation, scheduledTime: currentTime, exists: true});
+
+        emit UpgradeScheduled(msg.sender, newImplementation, currentTime, effectiveTime);
+    }
+
+    /**
+     * @notice Returns the remaining time before a scheduled upgrade can be executed
+     * @return timeRemaining The time remaining in seconds, or 0 if no upgrade is scheduled or timelock has passed
+     */
+    function upgradeTimelockRemaining() external view returns (uint256) {
+        return pendingUpgrade.exists && block.timestamp < pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION
+            ? pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION - block.timestamp
+            : 0;
     }
 
     // The following functions are overrides required by Solidity.
@@ -141,12 +257,6 @@ contract LendefiGovernor is
         return super.proposalThreshold();
     }
 
-    /// @inheritdoc UUPSUpgradeable
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
-        ++uupsVersion;
-        emit Upgrade(msg.sender, newImplementation);
-    }
-
     /// @inheritdoc GovernorUpgradeable
     function _queueOperations(
         uint256 proposalId,
@@ -187,5 +297,37 @@ contract LendefiGovernor is
         returns (address)
     {
         return super._executor();
+    }
+
+    /// @inheritdoc GovernorUpgradeable
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(GovernorUpgradeable, AccessControlUpgradeable)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+
+    /// @inheritdoc UUPSUpgradeable
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {
+        if (!pendingUpgrade.exists) {
+            revert UpgradeNotScheduled();
+        }
+
+        if (pendingUpgrade.implementation != newImplementation) {
+            revert ImplementationMismatch(pendingUpgrade.implementation, newImplementation);
+        }
+
+        uint256 timeElapsed = block.timestamp - pendingUpgrade.scheduledTime;
+        if (timeElapsed < UPGRADE_TIMELOCK_DURATION) {
+            revert UpgradeTimelockActive(UPGRADE_TIMELOCK_DURATION - timeElapsed);
+        }
+
+        // Clear the scheduled upgrade
+        delete pendingUpgrade;
+
+        ++uupsVersion;
+        emit Upgrade(msg.sender, newImplementation);
     }
 }
