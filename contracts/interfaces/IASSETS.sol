@@ -51,6 +51,18 @@ interface IASSETS {
         uint32 twapPeriod;
     }
 
+    /**
+     * @notice Structure to store pending upgrade details
+     * @param implementation Address of the new implementation contract
+     * @param scheduledTime Timestamp when the upgrade was scheduled
+     * @param exists Boolean flag indicating if an upgrade is currently scheduled
+     */
+    struct UpgradeRequest {
+        address implementation;
+        uint64 scheduledTime;
+        bool exists;
+    }
+
     // Events
     event OracleAdded(address indexed asset, address indexed oracle);
     event OracleRemoved(address indexed asset, address indexed oracle);
@@ -72,6 +84,20 @@ interface IASSETS {
     event OracleTypeSet(address indexed asset, address indexed oracle, uint8 oracleType);
     event UniswapOracleAdded(address indexed asset, address indexed virtualOracle, address pool, uint32 twapPeriod);
     event OracleReplaced(address indexed asset, address indexed oldOracle, address indexed newOracle, uint8 oracleType);
+    /// @notice Emitted when an upgrade is scheduled
+    /// @param scheduler The address scheduling the upgrade
+    /// @param implementation The new implementation contract address
+    /// @param scheduledTime The timestamp when the upgrade was scheduled
+    /// @param effectiveTime The timestamp when the upgrade can be executed
+    event UpgradeScheduled(
+        address indexed scheduler, address indexed implementation, uint64 scheduledTime, uint64 effectiveTime
+    );
+
+    /// @notice Emitted when a scheduled upgrade is cancelled
+    /// @param canceller The address that cancelled the upgrade
+    /// @param implementation The implementation address that was cancelled
+    event UpgradeCancelled(address indexed canceller, address indexed implementation);
+
     // Errors
 
     error AssetNotListed(address asset);
@@ -94,6 +120,17 @@ interface IASSETS {
     error InvalidUniswapConfig(address virtualOracle);
     error CircuitBreakerActive(address asset);
     error OracleTypeAlreadyAdded(address asset, OracleType oracleType);
+    /// @notice Thrown when attempting to execute an upgrade before timelock expires
+    /// @param timeRemaining The time remaining until the upgrade can be executed
+    error UpgradeTimelockActive(uint256 timeRemaining);
+
+    /// @notice Thrown when attempting to execute an upgrade that wasn't scheduled
+    error UpgradeNotScheduled();
+
+    /// @notice Thrown when implementation address doesn't match scheduled upgrade
+    /// @param scheduledImpl The address that was scheduled for upgrade
+    /// @param attemptedImpl The address that was attempted to be used
+    error ImplementationMismatch(address scheduledImpl, address attemptedImpl);
 
     function initialize(address timelock, address guardian) external;
 
@@ -116,8 +153,6 @@ interface IASSETS {
     ) external;
 
     function updateTierConfig(CollateralTier tier, uint256 jumpRate, uint256 liquidationFee) external;
-
-    function updateAllTierConfigs(uint256[4] calldata jumpRates, uint256[4] calldata liquidationFees) external;
 
     function setCoreAddress(address newCore) external;
 
@@ -153,16 +188,12 @@ interface IASSETS {
 
     function getAssetPrice(address asset) external view returns (uint256);
 
-    function getAssetPriceOracle(address oracle) external view returns (uint256);
-
     function getAssetDetails(address asset)
         external
         view
         returns (uint256 price, uint256 totalSupplied, uint256 maxSupply, CollateralTier tier);
 
     function getTierRates() external view returns (uint256[4] memory jumpRates, uint256[4] memory liquidationFees);
-
-    function getTierLiquidationFee(CollateralTier tier) external view returns (uint256);
 
     function getTierJumpRate(CollateralTier tier) external view returns (uint256);
 
@@ -188,22 +219,10 @@ interface IASSETS {
 
     function getSingleOraclePrice(address oracle) external view returns (uint256);
 
-    function getOracleConfig()
-        external
-        view
-        returns (
-            uint256 freshness,
-            uint256 volatility,
-            uint256 volatilityPct,
-            uint256 circuitBreakerPct,
-            uint256 minOracles
-        );
-
     function version() external view returns (uint8);
 
     function coreAddress() external view returns (address);
-    // function tierConfig(CollateralTier) external view returns (TierRates memory);
-    // function uniswapConfigs(address) external view returns (UniswapOracleConfig memory);
+
     function primaryOracle(address) external view returns (address);
 
     function oracleDecimals(address) external view returns (uint8);
@@ -213,4 +232,51 @@ interface IASSETS {
     function circuitBroken(address) external view returns (bool);
 
     function oracleTypes(address) external view returns (OracleType);
+
+    /**
+     * @notice Returns the timelock duration for upgrades
+     * @return The duration in seconds (3 days)
+     * @dev Constant value defined in the contract
+     * @custom:state-changes None, view-only function
+     */
+    function UPGRADE_TIMELOCK_DURATION() external view returns (uint256);
+
+    /**
+     * @notice Schedules an upgrade to a new implementation with timelock
+     * @param newImplementation Address of the new implementation contract
+     * @dev Schedules an upgrade that can be executed after the timelock period
+     * @custom:access Restricted to UPGRADER_ROLE
+     * @custom:state-changes
+     *      - Sets pendingUpgrade with implementation and schedule details
+     *      - Emits an UpgradeScheduled event
+     */
+    function scheduleUpgrade(address newImplementation) external;
+
+    /**
+     * @notice Cancels a previously scheduled upgrade
+     * @dev Removes a pending upgrade from the schedule
+     * @custom:access Restricted to UPGRADER_ROLE
+     * @custom:state-changes
+     *      - Clears the pendingUpgrade data
+     *      - Emits an UpgradeCancelled event
+     */
+    function cancelUpgrade() external;
+
+    /**
+     * @notice Returns the remaining time before a scheduled upgrade can be executed
+     * @return timeRemaining The time remaining in seconds
+     * @dev Returns 0 if no upgrade is scheduled or if the timelock has expired
+     * @custom:state-changes None, view-only function
+     */
+    function upgradeTimelockRemaining() external view returns (uint256);
+
+    /**
+     * @notice Returns information about the currently pending upgrade
+     * @return implementation Address of the pending implementation
+     * @return scheduledTime Timestamp when the upgrade was scheduled
+     * @return exists Boolean indicating if an upgrade is currently scheduled
+     * @dev Use this to get detailed information about the pending upgrade
+     * @custom:state-changes None, view-only function
+     */
+    function pendingUpgrade() external view returns (address implementation, uint64 scheduledTime, bool exists);
 }
