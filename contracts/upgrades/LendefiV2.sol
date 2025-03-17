@@ -1204,7 +1204,7 @@ contract LendefiV2 is
         returns (uint256)
     {
         IASSETS.CollateralTier tier = getPositionTier(user, positionId);
-        return assetsModule.getTierLiquidationFee(tier);
+        return assetsModule.getLiquidationFee(tier);
     }
 
     /**
@@ -1232,7 +1232,7 @@ contract LendefiV2 is
 
             if (amount > 0) {
                 IASSETS.Asset memory item = assetsModule.getAssetInfo(asset);
-                credit += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * item.borrowThreshold * WAD)
+                credit += (amount * assetsModule.getAssetPrice(asset) * item.borrowThreshold * WAD)
                     / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
             }
         }
@@ -1262,7 +1262,7 @@ contract LendefiV2 is
 
             if (amount > 0) {
                 IASSETS.Asset memory item = assetsModule.getAssetInfo(asset);
-                value += (amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * WAD)
+                value += (amount * assetsModule.getAssetPrice(asset) * WAD)
                     / (10 ** item.decimals * 10 ** item.oracleDecimals);
             }
         }
@@ -1319,9 +1319,8 @@ contract LendefiV2 is
 
             if (amount != 0) {
                 IASSETS.Asset memory item = assetsModule.getAssetInfo(asset);
-                liqLevel += (
-                    amount * assetsModule.getAssetPriceOracle(item.oracleUSD) * item.liquidationThreshold * WAD
-                ) / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
+                liqLevel += (amount * assetsModule.getAssetPrice(asset) * item.liquidationThreshold * WAD)
+                    / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
             }
         }
 
