@@ -198,10 +198,10 @@ contract LendefiAssetsTest is BasicDeploy {
 
         // Rest of the function remains the same
         uint256 expectedBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
-        uint256 expectedLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_A);
+        uint256 expectedLiquidationFee = assetsInstance.getLiquidationFee(IASSETS.CollateralTier.CROSS_A);
 
         uint256 borrowRate = LendefiInstance.getBorrowRate(tier);
-        uint256 liquidationFee = assetsInstance.getTierLiquidationFee(tier);
+        uint256 liquidationFee = assetsInstance.getLiquidationFee(tier);
 
         assertEq(borrowRate, expectedBorrowRate, "WETH borrow rate should match expected rate");
         assertEq(liquidationFee, expectedLiquidationFee, "WETH liquidation fee should match expected fee");
@@ -453,7 +453,7 @@ contract LendefiAssetsTest is BasicDeploy {
         // Verify parameters for each tier
         for (uint256 i = 0; i < tiers.length; i++) {
             assertEq(assetsInstance.getTierJumpRate(tiers[i]), expectedJumpRates[i], "Jump rate mismatch");
-            assertEq(assetsInstance.getTierLiquidationFee(tiers[i]), expectedLiqFees[i], "Liquidation fee mismatch");
+            assertEq(assetsInstance.getLiquidationFee(tiers[i]), expectedLiqFees[i], "Liquidation fee mismatch");
         }
     }
 
@@ -648,11 +648,18 @@ contract LendefiAssetsTest is BasicDeploy {
     }
 
     // ------ Upgrade Tests ------
-
     function test_UpgradeToAndCall() public {
         // Deploy a new implementation
         LendefiAssets newImplementation = new LendefiAssets();
 
+        // Step 1: Schedule the upgrade first (new requirement)
+        vm.prank(guardian);
+        assetsInstance.scheduleUpgrade(address(newImplementation));
+
+        // Step 2: Fast forward time to pass the timelock period (3 days)
+        vm.warp(block.timestamp + 3 days + 1);
+
+        // Step 3: Now perform the upgrade
         vm.prank(guardian);
         vm.expectEmit(true, true, false, false);
         emit Upgrade(guardian, address(newImplementation));
