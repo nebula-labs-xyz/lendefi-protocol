@@ -661,6 +661,9 @@ contract BasicDeploy is Test {
      * @dev Replaces the separate Oracle and Assets modules with the combined contract
      */
     function _deployAssetsModule() internal {
+        if (address(timelockInstance) == address(0)) {
+            _deployTimelock();
+        }
         // Protocol Oracle deploy (combined Oracle + Assets)
         bytes memory data = abi.encodeCall(LendefiAssets.initialize, (address(timelockInstance), guardian));
 
@@ -684,42 +687,68 @@ contract BasicDeploy is Test {
      * @dev Follows the same pattern as other module upgrades
      */
 
+    /**
+     * @notice Upgrades the LendefiAssets implementation using timelocked pattern
+     * @dev Uses the two-phase upgrade process: schedule → wait → execute
+     */
     function deployAssetsModuleUpgrade() internal {
         // First make sure the assets module is deployed
-        _deployTimelock();
-        bytes memory data = abi.encodeCall(LendefiAssets.initialize, (address(timelockInstance), guardian));
+        if (address(assetsInstance) == address(0)) {
+            _deployAssetsModule();
+        }
 
-        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", data));
-
-        // Store the instance in both variables to maintain compatibility with existing tests
-        assetsInstance = LendefiAssets(proxy);
+        // Get the proxy address
+        address payable proxy = payable(address(assetsInstance));
 
         // Get the current implementation address for assertion later
         address implAddressV1 = Upgrades.getImplementationAddress(proxy);
-        assertFalse(address(assetsInstance) == implAddressV1);
 
         // Grant upgrader role to manager admin
         vm.startPrank(guardian);
         assetsInstance.grantRole(UPGRADER_ROLE, managerAdmin);
         vm.stopPrank();
 
-        // Perform the upgrade
+        // Create options struct for the implementation
+        Options memory opts = Options({
+            referenceContract: "LendefiAssets.sol",
+            constructorData: "",
+            unsafeAllow: "",
+            unsafeAllowRenames: false,
+            unsafeSkipStorageCheck: false,
+            unsafeSkipAllChecks: false,
+            defender: DefenderOptions({
+                useDefenderDeploy: false,
+                skipVerifySourceCode: false,
+                relayerId: "",
+                salt: bytes32(0),
+                upgradeApprovalProcessId: ""
+            })
+        });
+
+        // Deploy the implementation without upgrading
+        address newImpl = Upgrades.prepareUpgrade("LendefiAssetsV2.sol", opts);
+
+        // Schedule the upgrade with that exact address
         vm.startPrank(managerAdmin);
-        // Assuming LendefiAssetsV2 exists in the upgrades folder
-        Upgrades.upgradeProxy(proxy, "LendefiAssetsV2.sol", "", guardian);
+        assetsInstance.scheduleUpgrade(newImpl);
+
+        // Fast forward past the timelock period (3 days for Assets)
+        vm.warp(block.timestamp + 3 days + 1);
+
+        // Execute the upgrade
+        ITransparentUpgradeableProxy(proxy).upgradeToAndCall(newImpl, "");
         vm.stopPrank();
 
-        // Verify the upgrade
+        // Verification
         address implAddressV2 = Upgrades.getImplementationAddress(proxy);
-        assertFalse(implAddressV2 == implAddressV1, "Implementation should change after upgrade");
+        LendefiAssetsV2 assetsInstanceV2 = LendefiAssetsV2(proxy);
 
-        // Check version - assuming V2 has a version() function that returns 2
-        assertEq(LendefiAssetsV2(address(assetsInstance)).version(), 2, "Version should be updated to 2");
+        // Assert that upgrade was successful
+        assertEq(assetsInstanceV2.version(), 2, "Version not incremented to 2");
+        assertFalse(implAddressV2 == implAddressV1, "Implementation address didn't change");
+        assertTrue(assetsInstanceV2.hasRole(UPGRADER_ROLE, managerAdmin), "Lost UPGRADER_ROLE");
 
-        // Verify role management works
-        bool isUpgrader = assetsInstance.hasRole(UPGRADER_ROLE, managerAdmin);
-        assertTrue(isUpgrader, "Manager admin should have upgrader role");
-
+        // Test role management still works
         vm.prank(guardian);
         assetsInstance.revokeRole(UPGRADER_ROLE, managerAdmin);
         assertFalse(assetsInstance.hasRole(UPGRADER_ROLE, managerAdmin), "Role should be revoked successfully");
