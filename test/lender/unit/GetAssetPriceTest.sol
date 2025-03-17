@@ -161,7 +161,7 @@ contract GetAssetPriceTest is BasicDeploy {
     // Additional test: Use direct oracle price access
     function test_GetAssetPriceOracle_Direct() public {
         // UPDATED: Use getAssetPriceOracle which now exists on assetsInstance
-        uint256 wethPrice = assetsInstance.getAssetPriceOracle(address(wethOracleInstance));
+        uint256 wethPrice = assetsInstance.getSingleOraclePrice(address(wethOracleInstance));
         assertEq(wethPrice, 2500e8, "Direct Oracle WETH price should be $2500");
     }
 }
