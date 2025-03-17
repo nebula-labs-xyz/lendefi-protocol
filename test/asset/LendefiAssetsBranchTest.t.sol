@@ -15,12 +15,14 @@ import {IUniswapV3Pool} from "../../contracts/interfaces/IUniswapV3Pool.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {MockUniswapV3Pool} from "../../contracts/mock/MockUniswapV3Pool.sol";
 import {MockPriceOracle} from "../../contracts/mock/MockPriceOracle.sol";
+import {MockWBTC} from "../../contracts/mock/MockWBTC.sol";
 
 contract LendefiAssetsBranchTest is BasicDeploy {
     // Mock contracts
     MockUniswapV3Pool mockUniswapPool;
     MockUniswapV3Pool invalidPool;
     MockPriceOracle mockChainlinkOracle;
+    MockWBTC mockWBTC; // Use MockWBTC
 
     // Error definitions from LendefiAssets
     error ZeroAddressNotAllowed();
@@ -57,6 +59,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
         mockUniswapPool = new MockUniswapV3Pool(address(wethInstance), address(usdcInstance), 3000);
         invalidPool = new MockUniswapV3Pool(address(0xBBB), address(0xCCC), 3000);
         mockChainlinkOracle = new MockPriceOracle();
+        mockWBTC = new MockWBTC(); // Initialize MockWBTC
 
         // Set up initial asset
         vm.startPrank(address(timelockInstance));
@@ -470,5 +473,186 @@ contract LendefiAssetsBranchTest is BasicDeploy {
         // Should revert with NotEnoughValidOracles
         vm.expectRevert(abi.encodeWithSelector(NotEnoughValidOracles.selector, address(wethInstance), 2, 0));
         assetsInstance.getAssetPrice(address(wethInstance));
+    }
+
+    function test_UniswapOracleDecimalHandling() public {
+        vm.startPrank(address(timelockInstance));
+
+        // 1. Test with decimals < 18
+        // Create Uniswap oracle with 6 decimals (like USDC)
+        mockUniswapPool = new MockUniswapV3Pool(address(wethInstance), address(usdcInstance), 3000);
+        assetsInstance.addUniswapOracle(
+            address(wethInstance),
+            address(mockUniswapPool),
+            address(usdcInstance),
+            1800,
+            6 // 6 decimals (< 18)
+        );
+
+        // 2. Test with decimals > 18
+        MockUniswapV3Pool mockPool2 = new MockUniswapV3Pool(address(usdcInstance), address(wethInstance), 3000);
+
+        // Add USDC asset first
+        assetsInstance.updateAssetConfig(
+            address(usdcInstance),
+            address(0),
+            8,
+            6,
+            1,
+            800,
+            850,
+            1_000_000e6,
+            0,
+            IASSETS.CollateralTier.STABLE,
+            IASSETS.OracleType.CHAINLINK
+        );
+
+        // Add Uniswap oracle with 24 decimals
+        assetsInstance.addUniswapOracle(
+            address(usdcInstance),
+            address(mockPool2),
+            address(wethInstance),
+            1800,
+            24 // 24 decimals (> 18)
+        );
+
+        // 3. Test with exactly 18 decimals
+        MockUniswapV3Pool mockPool3 = new MockUniswapV3Pool(address(mockWBTC), address(wethInstance), 3000);
+
+        // Add WBTC asset
+        assetsInstance.updateAssetConfig(
+            address(mockWBTC), // Use mockWBTC instead of wbtcInstance
+            address(0),
+            8,
+            8,
+            1,
+            800,
+            850,
+            1_000e8,
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
+        );
+
+        // Add Uniswap oracle with exactly 18 decimals
+        assetsInstance.addUniswapOracle(
+            address(mockWBTC), // Use mockWBTC instead of wbtcInstance
+            address(mockPool3),
+            address(wethInstance),
+            1800,
+            18 // 18 decimals (= 18)
+        );
+        vm.stopPrank();
+    }
+
+    function test_IsAssetAtCapacity() public {
+        // Use LendefiInstance from BasicDeploy instead of creating a new mock
+        vm.startPrank(guardian);
+        assetsInstance.setCoreAddress(address(LendefiInstance));
+        vm.stopPrank();
+
+        vm.startPrank(address(timelockInstance));
+
+        // Configure asset with max capacity of 1,000,000e18
+        assetsInstance.updateAssetConfig(
+            address(wethInstance),
+            address(mockChainlinkOracle),
+            8,
+            18,
+            1,
+            800,
+            850,
+            1_000_000e18, // Max supply
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
+        );
+
+        // Use a mock method to simulate TVL in LendefiInstance
+        // We need to configure how to mock this in BasicDeploy or directly access internals
+        vm.mockCall(
+            address(LendefiInstance),
+            abi.encodeWithSelector(LendefiInstance.assetTVL.selector, address(wethInstance)),
+            abi.encode(500_000e18) // Half capacity
+        );
+
+        vm.stopPrank();
+
+        // Test not at capacity
+        bool atCapacity1 = assetsInstance.isAssetAtCapacity(address(wethInstance), 400_000e18);
+        assertFalse(atCapacity1, "Should not be at capacity with 900,000e18 total");
+
+        // Test at capacity
+        bool atCapacity2 = assetsInstance.isAssetAtCapacity(address(wethInstance), 600_000e18);
+        assertTrue(atCapacity2, "Should be at capacity with 1,100,000e18 total");
+    }
+
+    function test_AssetActivationDeactivation() public {
+        vm.startPrank(address(timelockInstance));
+
+        // First activate an asset (active = 1)
+        assetsInstance.updateAssetConfig(
+            address(wethInstance),
+            address(mockChainlinkOracle),
+            8,
+            18,
+            1, // Active
+            800,
+            850,
+            1_000_000e18,
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
+        );
+
+        // Verify asset is active
+        assertTrue(assetsInstance.isAssetValid(address(wethInstance)), "Asset should be active");
+
+        // Now deactivate the asset (active = 0)
+        assetsInstance.updateAssetConfig(
+            address(wethInstance),
+            address(mockChainlinkOracle),
+            8,
+            18,
+            0, // Inactive
+            800,
+            850,
+            1_000_000e18,
+            0,
+            IASSETS.CollateralTier.CROSS_A,
+            IASSETS.OracleType.CHAINLINK
+        );
+
+        // Verify asset is inactive
+        assertFalse(assetsInstance.isAssetValid(address(wethInstance)), "Asset should be inactive");
+
+        vm.stopPrank();
+    }
+
+    function test_RemoveLastOracle() public {
+        vm.startPrank(address(timelockInstance));
+
+        // Make sure we only have one oracle
+        address[] memory oracles = assetsInstance.getAssetOracles(address(wethInstance));
+        assertEq(oracles.length, 1, "Should start with exactly one oracle");
+
+        // Verify it's the primary oracle
+        assertEq(
+            assetsInstance.primaryOracle(address(wethInstance)),
+            address(mockChainlinkOracle),
+            "Should be primary oracle"
+        );
+
+        // Now remove the only oracle
+        assetsInstance.removeOracle(address(wethInstance), address(mockChainlinkOracle));
+
+        // Verify there are no more oracles
+        oracles = assetsInstance.getAssetOracles(address(wethInstance));
+        assertEq(oracles.length, 0, "Should have no oracles after removal");
+
+        // Verify primary oracle was cleared
+        assertEq(assetsInstance.primaryOracle(address(wethInstance)), address(0), "Primary oracle should be cleared");
+
+        vm.stopPrank();
     }
 }
