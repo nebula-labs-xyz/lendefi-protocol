@@ -1204,7 +1204,7 @@ contract Lendefi is
         returns (uint256)
     {
         IASSETS.CollateralTier tier = getPositionTier(user, positionId);
-        return assetsModule.getTierLiquidationFee(tier);
+        return assetsModule.getLiquidationFee(tier);
     }
 
     /**
