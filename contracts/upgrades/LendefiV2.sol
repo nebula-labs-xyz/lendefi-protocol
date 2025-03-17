@@ -85,7 +85,6 @@ contract LendefiV2 is
     /**
      * @dev Utility for set operations on address collections
      */
-    // using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableMap for EnumerableMap.AddressToUintMap;
 
     // Constants
@@ -108,6 +107,12 @@ contract LendefiV2 is
      * @dev Role identifier for users authorized to upgrade the contract
      */
     bytes32 internal constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+
+    /**
+     * @notice Duration of the timelock for upgrade operations (3 days)
+     * @dev Provides time for users to review and react to scheduled upgrades
+     */
+    uint256 public constant UPGRADE_TIMELOCK_DURATION = 3 days;
 
     // State variables
     /**
@@ -174,7 +179,8 @@ contract LendefiV2 is
      * @notice Protocol configuration parameters
      */
     ProtocolConfig public mainConfig;
-
+    /// @notice Information about the currently pending upgrade
+    UpgradeRequest public pendingUpgrade;
     // Mappings
     /// @notice Total value locked per asset
     mapping(address => uint256) public assetTVL;
@@ -1074,6 +1080,46 @@ contract LendefiV2 is
     }
 
     /**
+     * @notice Schedules an upgrade to a new implementation with timelock
+     * @dev Only callable by addresses with UPGRADER_ROLE
+     * @param newImplementation Address of the new implementation contract
+     */
+    function scheduleUpgrade(address newImplementation) external onlyRole(UPGRADER_ROLE) {
+        if (newImplementation == address(0)) revert ZeroAddressNotAllowed();
+
+        uint64 currentTime = uint64(block.timestamp);
+        uint64 effectiveTime = currentTime + uint64(UPGRADE_TIMELOCK_DURATION);
+
+        pendingUpgrade = UpgradeRequest({implementation: newImplementation, scheduledTime: currentTime, exists: true});
+
+        emit UpgradeScheduled(msg.sender, newImplementation, currentTime, effectiveTime);
+    }
+
+    /**
+     * @notice Cancels a previously scheduled upgrade
+     * @dev Only callable by addresses with UPGRADER_ROLE
+     */
+    function cancelUpgrade() external onlyRole(UPGRADER_ROLE) {
+        if (!pendingUpgrade.exists) {
+            revert UpgradeNotScheduled();
+        }
+        address implementation = pendingUpgrade.implementation;
+        delete pendingUpgrade;
+        emit UpgradeCancelled(msg.sender, implementation);
+    }
+
+    /**
+     * @notice Returns the remaining time before a scheduled upgrade can be executed
+     * @dev Returns 0 if no upgrade is scheduled or if the timelock has expired
+     * @return timeRemaining The time remaining in seconds
+     */
+    function upgradeTimelockRemaining() external view returns (uint256) {
+        return pendingUpgrade.exists && block.timestamp < pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION
+            ? pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION - block.timestamp
+            : 0;
+    }
+
+    /**
      * @notice Retrieves a user's position data by ID
      * @dev Returns the full position struct including isolation status, debt, and status
      * @param user Address of the position owner
@@ -1659,14 +1705,27 @@ contract LendefiV2 is
     }
 
     /**
-     * @notice Authorizes an upgrade to a new implementation contract
-     * @dev Increments the contract version and emits an event
-     * @param newImplementation Address of the new implementation contract
-     * @custom:access-control Restricted to UPGRADER_ROLE
-     * @custom:events Emits an Upgrade event
+     * @notice Authorizes an upgrade to a new implementation
+     * @dev Implements the upgrade verification and authorization logic
+     * @param newImplementation Address of new implementation contract
      */
-    /// @inheritdoc UUPSUpgradeable
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {
+        if (!pendingUpgrade.exists) {
+            revert UpgradeNotScheduled();
+        }
+
+        if (pendingUpgrade.implementation != newImplementation) {
+            revert ImplementationMismatch(pendingUpgrade.implementation, newImplementation);
+        }
+
+        uint256 timeElapsed = block.timestamp - pendingUpgrade.scheduledTime;
+        if (timeElapsed < UPGRADE_TIMELOCK_DURATION) {
+            revert UpgradeTimelockActive(UPGRADE_TIMELOCK_DURATION - timeElapsed);
+        }
+
+        // Clear the scheduled upgrade
+        delete pendingUpgrade;
+
         ++version;
         emit Upgrade(msg.sender, newImplementation);
     }
