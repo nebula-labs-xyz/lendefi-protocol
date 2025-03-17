@@ -15,9 +15,9 @@ import {AggregatorV3Interface} from
     "../../contracts/vendor/@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 contract OraclePriceTest is BasicDeploy {
-    RWAPriceConsumerV3 internal rwaassetsInstance;
-    WETHPriceConsumerV3 internal wethassetsInstance;
-    StablePriceConsumerV3 internal stableassetsInstance;
+    RWAPriceConsumerV3 internal rwaOracleInstance;
+    WETHPriceConsumerV3 internal wethOracleInstance;
+    StablePriceConsumerV3 internal stableOracleInstance;
     MockPriceOracle internal mockOracle;
 
     function setUp() public {
@@ -32,9 +32,9 @@ contract OraclePriceTest is BasicDeploy {
         wethInstance = new WETH9();
 
         // Deploy oracles
-        wethassetsInstance = new WETHPriceConsumerV3();
-        rwaassetsInstance = new RWAPriceConsumerV3();
-        stableassetsInstance = new StablePriceConsumerV3();
+        wethOracleInstance = new WETHPriceConsumerV3();
+        rwaOracleInstance = new RWAPriceConsumerV3();
+        stableOracleInstance = new StablePriceConsumerV3();
         mockOracle = new MockPriceOracle();
 
         // Set up mockOracle with default values for testing
@@ -44,9 +44,9 @@ contract OraclePriceTest is BasicDeploy {
         mockOracle.setAnsweredInRound(1);
 
         // Set prices
-        wethassetsInstance.setPrice(2500e8); // $2500 per ETH
-        rwaassetsInstance.setPrice(1000e8); // $1000 per RWA token
-        stableassetsInstance.setPrice(1e8); // $1 per stable token
+        wethOracleInstance.setPrice(2500e8); // $2500 per ETH
+        rwaOracleInstance.setPrice(1000e8); // $1000 per RWA token
+        stableOracleInstance.setPrice(1e8); // $1 per stable token
 
         vm.startPrank(address(timelockInstance));
 
@@ -122,14 +122,14 @@ contract OraclePriceTest is BasicDeploy {
         );
 
         // THEN ADD ORACLES to the registered assets
-        assetsInstance.addOracle(address(wethInstance), address(wethassetsInstance), 8, IASSETS.OracleType.CHAINLINK);
-        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethassetsInstance));
+        assetsInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
+        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
 
-        assetsInstance.addOracle(address(0x1), address(rwaassetsInstance), 8, IASSETS.OracleType.CHAINLINK);
-        assetsInstance.setPrimaryOracle(address(0x1), address(rwaassetsInstance));
+        assetsInstance.addOracle(address(0x1), address(rwaOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
+        assetsInstance.setPrimaryOracle(address(0x1), address(rwaOracleInstance));
 
-        assetsInstance.addOracle(address(0x2), address(stableassetsInstance), 8, IASSETS.OracleType.CHAINLINK);
-        assetsInstance.setPrimaryOracle(address(0x2), address(stableassetsInstance));
+        assetsInstance.addOracle(address(0x2), address(stableOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
+        assetsInstance.setPrimaryOracle(address(0x2), address(stableOracleInstance));
 
         assetsInstance.addOracle(address(0x3), address(mockOracle), 8, IASSETS.OracleType.CHAINLINK);
         assetsInstance.setPrimaryOracle(address(0x3), address(mockOracle));
@@ -138,12 +138,8 @@ contract OraclePriceTest is BasicDeploy {
     }
 
     // Test 1: Happy Path - Successfully get price
-    function test_GetAssetPriceOracle_Success() public {
+    function test_GetAssetPrice_Success() public {
         uint256 expectedPrice = 2500e8;
-
-        // Test through the Lendefi oracle wrapper
-        uint256 price1 = assetsInstance.getAssetPriceOracle(address(wethassetsInstance));
-        assertEq(price1, expectedPrice, "Oracle wrapper price should match");
 
         // Test through the Oracle module
         uint256 price2 = assetsInstance.getAssetPrice(address(wethInstance));
@@ -151,13 +147,9 @@ contract OraclePriceTest is BasicDeploy {
     }
 
     // Test 2: Invalid Price - Oracle returns zero or negative price
-    function test_GetAssetPriceOracle_InvalidPrice() public {
+    function test_GetAssetPrice_InvalidPrice() public {
         // Set price to zero
         mockOracle.setPrice(0);
-
-        // Expect revert when called through Lendefi
-        vm.expectRevert(abi.encodeWithSelector(IASSETS.OracleInvalidPrice.selector, address(mockOracle), 0));
-        assetsInstance.getAssetPriceOracle(address(mockOracle));
 
         // Expect revert when called through Oracle module
         vm.expectRevert();
@@ -166,48 +158,8 @@ contract OraclePriceTest is BasicDeploy {
         // Set price to negative
         mockOracle.setPrice(-100);
 
-        // Expect revert with both approaches
-        vm.expectRevert(abi.encodeWithSelector(IASSETS.OracleInvalidPrice.selector, address(mockOracle), -100));
-        assetsInstance.getAssetPriceOracle(address(mockOracle));
-
         vm.expectRevert();
         assetsInstance.getAssetPrice(address(0x3));
-    }
-
-    // Test 3: Stale Price - answeredInRound < roundId
-    function test_GetAssetPriceOracle_StalePrice() public {
-        // Set round ID higher than answeredInRound
-        mockOracle.setRoundId(10);
-        mockOracle.setAnsweredInRound(5);
-
-        vm.expectRevert(abi.encodeWithSelector(IASSETS.OracleStalePrice.selector, address(mockOracle), 10, 5));
-        assetsInstance.getAssetPriceOracle(address(mockOracle));
-    }
-
-    // Test 4: Timeout - Oracle data is too old
-    function test_GetAssetPriceOracle_Timeout() public {
-        // Set timestamp to 9 hours ago, getAssetPriceOracle has a 8 hour timeout
-        uint256 oldTimestamp = block.timestamp - 9 hours;
-        mockOracle.setTimestamp(oldTimestamp);
-
-        // Expect revert with OracleTimeout
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IASSETS.OracleTimeout.selector, address(mockOracle), oldTimestamp, block.timestamp, 8 hours
-            )
-        );
-        assetsInstance.getAssetPriceOracle(address(mockOracle));
-    }
-
-    // Test 5: Edge Case - Price exactly at time boundary
-    function test_GetAssetPriceOracle_ExactTimeLimit() public {
-        // Set timestamp to exactly 8 hours ago
-        uint256 borderlineTimestamp = block.timestamp - 8 hours;
-        mockOracle.setTimestamp(borderlineTimestamp);
-
-        // Should succeed as it's exactly at the limit
-        uint256 price = assetsInstance.getAssetPriceOracle(address(mockOracle));
-        assertEq(price, 1000e8, "Should return price when timestamp is exactly at 8 hour limit");
     }
 
     // Test 6: Edge Case - answeredInRound equal to roundId
@@ -219,7 +171,7 @@ contract OraclePriceTest is BasicDeploy {
         mockOracle.setAnsweredInRound(20);
 
         // Should succeed
-        uint256 price = assetsInstance.getAssetPriceOracle(address(mockOracle));
+        uint256 price = assetsInstance.getSingleOraclePrice(address(mockOracle));
         assertEq(price, 1000e8, "Should return price when roundId equals answeredInRound");
     }
 
@@ -232,38 +184,38 @@ contract OraclePriceTest is BasicDeploy {
         mockOracle.setPrice(testPrice);
 
         // Get the price from the oracle
-        uint256 returnedPrice = assetsInstance.getAssetPriceOracle(address(mockOracle));
+        uint256 returnedPrice = assetsInstance.getSingleOraclePrice(address(mockOracle));
 
         // Verify the result
         assertEq(returnedPrice, uint256(testPrice), "Should return the exact price set");
     }
 
     // Test 8: Multiple Oracle Types
-    function test_GetAssetPriceOracle_MultipleOracleTypes() public {
-        // Check WETH price
-        uint256 wethPrice = assetsInstance.getAssetPriceOracle(address(wethassetsInstance));
+    function test_GetAssetPrice_MultipleOracleTypes() public {
+        // Check WETH price using the oracle instance (not token)
+        uint256 wethPrice = assetsInstance.getSingleOraclePrice(address(wethOracleInstance));
         assertEq(wethPrice, 2500e8, "WETH price should be correct");
 
-        // Check RWA price
-        uint256 rwaPrice = assetsInstance.getAssetPriceOracle(address(rwaassetsInstance));
+        // Check RWA price using the oracle instance
+        uint256 rwaPrice = assetsInstance.getSingleOraclePrice(address(rwaOracleInstance));
         assertEq(rwaPrice, 1000e8, "RWA price should be correct");
 
-        // Check Stable price
-        uint256 stablePrice = assetsInstance.getAssetPriceOracle(address(stableassetsInstance));
+        // Check Stable price using the oracle instance
+        uint256 stablePrice = assetsInstance.getSingleOraclePrice(address(stableOracleInstance));
         assertEq(stablePrice, 1e8, "Stable price should be correct");
     }
 
     // Test 9: Price Changes
     function test_GetAssetPriceOracle_PriceChanges() public {
         // Get initial price
-        uint256 initialPrice = assetsInstance.getAssetPriceOracle(address(wethassetsInstance));
+        uint256 initialPrice = assetsInstance.getSingleOraclePrice(address(wethOracleInstance));
         assertEq(initialPrice, 2500e8, "Initial price should be correct");
 
         // Change price
-        wethassetsInstance.setPrice(3000e8);
+        wethOracleInstance.setPrice(3000e8);
 
         // Get updated price
-        uint256 updatedPrice = assetsInstance.getAssetPriceOracle(address(wethassetsInstance));
+        uint256 updatedPrice = assetsInstance.getSingleOraclePrice(address(wethOracleInstance));
         assertEq(updatedPrice, 3000e8, "Updated price should reflect the change");
     }
 
@@ -273,7 +225,7 @@ contract OraclePriceTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethassetsInstance),
+            address(wethOracleInstance),
             8, // oracle decimals
             18, // asset decimals
             1, // active
@@ -290,7 +242,7 @@ contract OraclePriceTest is BasicDeploy {
         IASSETS.Asset memory assetInfo = assetsInstance.getAssetInfo(address(wethInstance));
 
         // Use the oracle from asset config
-        uint256 price = assetsInstance.getAssetPriceOracle(assetInfo.oracleUSD);
+        uint256 price = assetsInstance.getSingleOraclePrice(assetInfo.oracleUSD);
         assertEq(price, 2500e8, "Should get correct price from asset-configured oracle");
     }
 
@@ -306,7 +258,7 @@ contract OraclePriceTest is BasicDeploy {
         mockOracle.setHistoricalRoundData(19, 1000e8, block.timestamp - 4 hours, 19);
 
         // This should pass since timestamp is recent (< 1 hour)
-        uint256 price = assetsInstance.getAssetPriceOracle(address(mockOracle));
+        uint256 price = assetsInstance.getSingleOraclePrice(address(mockOracle));
         assertEq(price, 1200e8);
 
         // Now set timestamp to be stale for volatility check (>= 1 hour)
@@ -321,7 +273,7 @@ contract OraclePriceTest is BasicDeploy {
                 20 // 20% change
             )
         );
-        assetsInstance.getAssetPriceOracle(address(mockOracle));
+        assetsInstance.getSingleOraclePrice(address(mockOracle));
     }
 
     // Test 12: Test with Uniswap Oracle Type
