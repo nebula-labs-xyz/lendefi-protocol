@@ -42,6 +42,17 @@ interface IPROTOCOL {
         PositionStatus status; // Current lifecycle status of the position
     }
 
+    /**
+     * @notice Structure to store pending upgrade details
+     * @param implementation Address of the new implementation contract
+     * @param scheduledTime Timestamp when the upgrade was scheduled
+     * @param exists Boolean flag indicating if an upgrade is currently scheduled
+     */
+    struct UpgradeRequest {
+        address implementation;
+        uint64 scheduledTime;
+        bool exists;
+    }
     // Events
 
     /**
@@ -196,9 +207,38 @@ interface IPROTOCOL {
      */
     event TVLUpdated(address indexed asset, uint256 amount);
 
+    /// @notice Emitted when an upgrade is scheduled
+    /// @param scheduler The address scheduling the upgrade
+    /// @param implementation The new implementation contract address
+    /// @param scheduledTime The timestamp when the upgrade was scheduled
+    /// @param effectiveTime The timestamp when the upgrade can be executed
+    event UpgradeScheduled(
+        address indexed scheduler, address indexed implementation, uint64 scheduledTime, uint64 effectiveTime
+    );
+
+    /// @notice Emitted when a scheduled upgrade is cancelled
+    /// @param canceller The address that cancelled the upgrade
+    /// @param implementation The implementation address that was cancelled
+    event UpgradeCancelled(address indexed canceller, address indexed implementation);
+
     //////////////////////////////////////////////////
     // -------------------Errors-------------------//
     /////////////////////////////////////////////////
+
+    /// @notice Thrown when attempting to set a critical address to the zero address
+    error ZeroAddressNotAllowed();
+
+    /// @notice Thrown when attempting to execute an upgrade before timelock expires
+    /// @param timeRemaining The time remaining until the upgrade can be executed
+    error UpgradeTimelockActive(uint256 timeRemaining);
+
+    /// @notice Thrown when attempting to execute an upgrade that wasn't scheduled
+    error UpgradeNotScheduled();
+
+    /// @notice Thrown when implementation address doesn't match scheduled upgrade
+    /// @param scheduledImpl The address that was scheduled for upgrade
+    /// @param attemptedImpl The address that was attempted to be used
+    error ImplementationMismatch(address scheduledImpl, address attemptedImpl);
 
     /**
      * @notice Thrown when attempting to create more positions than the protocol limit
