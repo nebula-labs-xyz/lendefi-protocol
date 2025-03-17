@@ -154,14 +154,15 @@ contract AssetModuleOracleTest is BasicDeploy {
     function test_UpdateMinimumOracles() public {
         vm.startPrank(address(timelockInstance));
 
-        // Get current config values to preserve
+        // Extract current config values from the oracleConfig struct
+        // Store entire struct in a local variable
         (
-            uint256 oldFreshness,
-            uint256 oldVolatility,
-            uint256 oldVolatilityPct,
-            uint256 oldCircuitBreakerPct,
-            uint256 oldMinOracles
-        ) = assetsInstance.getOracleConfig();
+            uint80 oldFreshness,
+            uint80 oldVolatility,
+            uint40 oldVolatilityPct,
+            uint40 oldCircuitBreakerPct,
+            uint16 oldMinOracles
+        ) = assetsInstance.oracleConfig();
 
         // Update minimum oracles through updateOracleConfig
         vm.expectEmit(true, true, true, true);
@@ -176,8 +177,9 @@ contract AssetModuleOracleTest is BasicDeploy {
             3 // New minimum oracles value
         );
 
-        // Verify the update worked
-        (,,,, uint256 newMinOracles) = assetsInstance.getOracleConfig();
+        // Verify the update worked by accessing the struct again
+        (,,,, uint256 newMinOracles) = assetsInstance.oracleConfig();
+
         assertEq(newMinOracles, 3, "Minimum oracles should be updated to 3");
 
         // Try to set invalid value (should revert)
@@ -225,7 +227,7 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         // Get current config values to preserve
         (, uint256 oldVolatility, uint256 oldVolatilityPct, uint256 oldCircuitBreakerPct, uint256 oldMinOracles) =
-            assetsInstance.getOracleConfig();
+            assetsInstance.oracleConfig();
 
         // Update freshness threshold
         vm.expectEmit(true, true, true, true);
@@ -266,7 +268,7 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         // Get current config values to preserve
         (uint256 oldFreshness,, uint256 oldVolatilityPct, uint256 oldCircuitBreakerPct, uint256 oldMinOracles) =
-            assetsInstance.getOracleConfig();
+            assetsInstance.oracleConfig();
 
         // Update volatility threshold
         vm.expectEmit(true, true, true, true);
@@ -307,7 +309,7 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         // Get current config values to preserve
         (uint256 oldFreshness, uint256 oldVolatility,, uint256 oldCircuitBreakerPct, uint256 oldMinOracles) =
-            assetsInstance.getOracleConfig();
+            assetsInstance.oracleConfig();
 
         // Update volatility percentage
         vm.expectEmit(true, true, true, true);
@@ -348,7 +350,7 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         // Get current config values to preserve
         (uint256 oldFreshness, uint256 oldVolatility, uint256 oldVolatilityPct,, uint256 oldMinOracles) =
-            assetsInstance.getOracleConfig();
+            assetsInstance.oracleConfig();
 
         // Update circuit breaker threshold
         vm.expectEmit(true, true, true, true);
@@ -479,7 +481,7 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         // Get current config values to preserve
         (uint256 oldFreshness, uint256 oldVolatility, uint256 oldVolatilityPct, uint256 oldCircuitBreakerPct,) =
-            assetsInstance.getOracleConfig();
+            assetsInstance.oracleConfig();
 
         // Set minimum required oracles to 1
         assetsInstance.updateOracleConfig(
