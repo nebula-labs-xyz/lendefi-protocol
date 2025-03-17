@@ -193,11 +193,11 @@ contract GetAssetDetailsTest is BasicDeploy {
 
         // Get rates directly for the tier
         uint256 expectedBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
-        uint256 expectedLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_A);
+        uint256 expectedLiquidationFee = assetsInstance.getLiquidationFee(IASSETS.CollateralTier.CROSS_A);
 
         // Get the values from the contract for comparison
         uint256 borrowRate = LendefiInstance.getBorrowRate(tier);
-        uint256 liquidationFee = assetsInstance.getTierLiquidationFee(tier);
+        uint256 liquidationFee = assetsInstance.getLiquidationFee(tier);
 
         assertEq(borrowRate, expectedBorrowRate, "WETH borrow rate should match expected rate");
         assertEq(liquidationFee, expectedLiquidationFee, "WETH liquidation fee should match expected fee");
@@ -212,16 +212,16 @@ contract GetAssetDetailsTest is BasicDeploy {
         (,,, IASSETS.CollateralTier uniTier) = assetsInstance.getAssetDetails(address(uniInstance));
 
         // Get liquidation fees directly from assetsInstance
-        uint256 wethLiquidationFee = assetsInstance.getTierLiquidationFee(wethTier);
-        uint256 usdcLiquidationFee = assetsInstance.getTierLiquidationFee(usdcTier);
-        uint256 linkLiquidationFee = assetsInstance.getTierLiquidationFee(linkTier);
-        uint256 uniLiquidationFee = assetsInstance.getTierLiquidationFee(uniTier);
+        uint256 wethLiquidationFee = assetsInstance.getLiquidationFee(wethTier);
+        uint256 usdcLiquidationFee = assetsInstance.getLiquidationFee(usdcTier);
+        uint256 linkLiquidationFee = assetsInstance.getLiquidationFee(linkTier);
+        uint256 uniLiquidationFee = assetsInstance.getLiquidationFee(uniTier);
 
         // Expected liquidation fees
-        uint256 expectedWethLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_A);
-        uint256 expectedUsdcLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.STABLE);
-        uint256 expectedLinkLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.ISOLATED);
-        uint256 expectedUniLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_B);
+        uint256 expectedWethLiquidationFee = assetsInstance.getLiquidationFee(IASSETS.CollateralTier.CROSS_A);
+        uint256 expectedUsdcLiquidationFee = assetsInstance.getLiquidationFee(IASSETS.CollateralTier.STABLE);
+        uint256 expectedLinkLiquidationFee = assetsInstance.getLiquidationFee(IASSETS.CollateralTier.ISOLATED);
+        uint256 expectedUniLiquidationFee = assetsInstance.getLiquidationFee(IASSETS.CollateralTier.CROSS_B);
 
         // Verify tiers
         assertEq(uint256(wethTier), uint256(IASSETS.CollateralTier.CROSS_A), "WETH tier should be CROSS_A");
@@ -286,7 +286,7 @@ contract GetAssetDetailsTest is BasicDeploy {
         // Get expected rates based on what's in the contract
         // uint256 expectedInitialBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
         // uint256 expectedInitialLiquidationFee =
-        //     assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_A);
+        //     assetsInstance.getLiquidationFee(IASSETS.CollateralTier.CROSS_A);
 
         // UPDATED: Update WETH to CROSS_B tier using assetsInstance
         vm.prank(address(timelockInstance));
@@ -298,11 +298,11 @@ contract GetAssetDetailsTest is BasicDeploy {
 
         // Get expected new rates
         uint256 expectedNewBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_B);
-        uint256 expectedNewLiquidationFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_B);
+        uint256 expectedNewLiquidationFee = assetsInstance.getLiquidationFee(IASSETS.CollateralTier.CROSS_B);
 
         // Get actual rates after tier update
         uint256 newBorrowRate = LendefiInstance.getBorrowRate(newTier);
-        uint256 newLiquidationFee = assetsInstance.getTierLiquidationFee(newTier);
+        uint256 newLiquidationFee = assetsInstance.getLiquidationFee(newTier);
 
         // Verify tier changed but max supply didn't
         assertEq(uint256(initialTier), uint256(IASSETS.CollateralTier.CROSS_A), "Initial tier should be CROSS_A");
