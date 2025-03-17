@@ -178,4 +178,71 @@ interface ILendefiYieldToken {
      * @custom:state-changes None, view-only function
      */
     function UPGRADER_ROLE() external view returns (bytes32);
+
+    /**
+     * @notice Emitted when an upgrade is scheduled
+     * @param scheduler The address scheduling the upgrade
+     * @param implementation The new implementation contract address
+     * @param scheduledTime The timestamp when the upgrade was scheduled
+     * @param effectiveTime The timestamp when the upgrade can be executed
+     * @custom:access-control This event is emitted when an authorized address schedules an upgrade
+     */
+    event UpgradeScheduled(
+        address indexed scheduler, address indexed implementation, uint64 scheduledTime, uint64 effectiveTime
+    );
+
+    /**
+     * @notice Emitted when a scheduled upgrade is cancelled
+     * @param canceller The address that cancelled the upgrade
+     * @param implementation The implementation address that was cancelled
+     * @custom:access-control This event is emitted when an authorized address cancels an upgrade
+     */
+    event UpgradeCancelled(address indexed canceller, address indexed implementation);
+
+    /**
+     * @notice Returns the timelock duration for upgrades
+     * @return The duration in seconds (3 days)
+     * @dev Constant value defined in the contract
+     * @custom:state-changes None, view-only function
+     */
+    function UPGRADE_TIMELOCK_DURATION() external view returns (uint256);
+
+    /**
+     * @notice Schedules an upgrade to a new implementation with timelock
+     * @param newImplementation Address of the new implementation contract
+     * @dev Schedules an upgrade that can be executed after the timelock period
+     * @custom:access Restricted to UPGRADER_ROLE
+     * @custom:state-changes
+     *      - Sets pendingUpgrade with implementation and schedule details
+     *      - Emits an UpgradeScheduled event
+     */
+    function scheduleUpgrade(address newImplementation) external;
+
+    /**
+     * @notice Cancels a previously scheduled upgrade
+     * @dev Removes a pending upgrade from the schedule
+     * @custom:access Restricted to UPGRADER_ROLE
+     * @custom:state-changes
+     *      - Clears the pendingUpgrade data
+     *      - Emits an UpgradeCancelled event
+     */
+    function cancelUpgrade() external;
+
+    /**
+     * @notice Returns the remaining time before a scheduled upgrade can be executed
+     * @return timeRemaining The time remaining in seconds
+     * @dev Returns 0 if no upgrade is scheduled or if the timelock has expired
+     * @custom:state-changes None, view-only function
+     */
+    function upgradeTimelockRemaining() external view returns (uint256);
+
+    /**
+     * @notice Returns information about the currently pending upgrade
+     * @return implementation Address of the pending implementation
+     * @return scheduledTime Timestamp when the upgrade was scheduled
+     * @return exists Boolean indicating if an upgrade is currently scheduled
+     * @dev Use this to get detailed information about the pending upgrade
+     * @custom:state-changes None, view-only function
+     */
+    function pendingUpgrade() external view returns (address implementation, uint64 scheduledTime, bool exists);
 }
