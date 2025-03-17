@@ -288,7 +288,7 @@ contract GetBorrowRateTest is BasicDeploy {
 
         // Get current liquidation bonus
         // UPDATED: Use assetsInstance for tier liquidation fee
-        uint256 liquidationBonus = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.STABLE);
+        uint256 liquidationBonus = assetsInstance.getLiquidationFee(IASSETS.CollateralTier.STABLE);
         console2.log("Current liquidation bonus:", liquidationBonus);
 
         // Try a smaller increase (10% instead of 50%)
