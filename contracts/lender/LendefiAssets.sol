@@ -19,6 +19,7 @@ import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/ut
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {AggregatorV3Interface} from "../vendor/@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import {IUniswapV3Pool} from "../interfaces/IUniswapV3Pool.sol";
+import {UniswapTickMath} from "./lib/UniswapTickMath.sol";
 
 /// @custom:oz-upgrades
 contract LendefiAssets is
@@ -29,6 +30,7 @@ contract LendefiAssets is
     PausableUpgradeable,
     UUPSUpgradeable
 {
+    using UniswapTickMath for int24;
     using EnumerableSet for EnumerableSet.AddressSet;
 
     // ==================== ROLES ====================
@@ -37,11 +39,14 @@ contract LendefiAssets is
     bytes32 internal constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 internal constant CIRCUIT_BREAKER_ROLE = keccak256("CIRCUIT_BREAKER_ROLE");
-
+    /// @notice Duration of the timelock for upgrade operations (3 days)
+    uint256 public constant UPGRADE_TIMELOCK_DURATION = 3 days;
     // ==================== STATE VARIABLES ====================
     // Core info
     uint8 public version;
     address public coreAddress;
+    /// @notice Information about the currently pending upgrade
+    UpgradeRequest public pendingUpgrade;
     IPROTOCOL internal lendefiInstance;
 
     // Asset management
@@ -238,23 +243,6 @@ contract LendefiAssets is
         tierConfig[tier].liquidationFee = liquidationFee;
 
         emit TierParametersUpdated(tier, jumpRate, liquidationFee);
-    }
-
-    function updateAllTierConfigs(uint256[4] calldata jumpRates, uint256[4] calldata liquidationFees)
-        external
-        onlyRole(MANAGER_ROLE)
-        whenNotPaused
-    {
-        for (uint8 i = 0; i < 4; i++) {
-            if (jumpRates[i] > 0.25e6) revert RateTooHigh(jumpRates[i], 0.25e6);
-            if (liquidationFees[i] > 0.1e6) revert FeeTooHigh(liquidationFees[i], 0.1e6);
-
-            CollateralTier tier = CollateralTier(i);
-            tierConfig[tier].jumpRate = jumpRates[i];
-            tierConfig[tier].liquidationFee = liquidationFees[i];
-
-            emit TierParametersUpdated(tier, jumpRates[i], liquidationFees[i]);
-        }
     }
 
     // ==================== CORE FUNCTIONS ====================
@@ -495,13 +483,47 @@ contract LendefiAssets is
     }
 
     /**
-     * @notice DEPRECATED: Direct oracle price access
-     * @dev This function is maintained for backward compatibility
-     * @param oracle The address of the Chainlink price feed oracle
-     * @return Price from the oracle (use getAssetPrice instead)
+     * @notice Schedules an upgrade to a new implementation with timelock
+     * @dev Only callable by addresses with UPGRADER_ROLE
+     * @param newImplementation Address of the new implementation contract
      */
-    function getAssetPriceOracle(address oracle) external view returns (uint256) {
-        return getSingleOraclePrice(oracle);
+    function scheduleUpgrade(address newImplementation)
+        external
+        nonZeroAddress(newImplementation)
+        onlyRole(UPGRADER_ROLE)
+    {
+        uint64 currentTime = uint64(block.timestamp);
+        uint64 effectiveTime = currentTime + uint64(UPGRADE_TIMELOCK_DURATION);
+
+        pendingUpgrade = UpgradeRequest({implementation: newImplementation, scheduledTime: currentTime, exists: true});
+
+        emit UpgradeScheduled(msg.sender, newImplementation, currentTime, effectiveTime);
+    }
+
+    /**
+     * @notice Cancels a previously scheduled upgrade
+     * @dev Only callable by addresses with UPGRADER_ROLE
+     */
+    function cancelUpgrade() external onlyRole(UPGRADER_ROLE) {
+        if (!pendingUpgrade.exists) {
+            revert UpgradeNotScheduled();
+        }
+
+        address implementation = pendingUpgrade.implementation;
+        delete pendingUpgrade;
+
+        emit UpgradeCancelled(msg.sender, implementation);
+    }
+
+    /**
+     * @notice Returns the remaining time before a scheduled upgrade can be executed
+     * @dev Returns 0 if no upgrade is scheduled or if the timelock has expired
+     * @return timeRemaining The time remaining in seconds
+     */
+    function upgradeTimelockRemaining() external view returns (uint256) {
+        return pendingUpgrade.exists && block.timestamp < pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION
+            ? pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION - block.timestamp
+            : 0;
     }
 
     function getAssetDetails(address asset)
@@ -527,10 +549,6 @@ contract LendefiAssets is
         liquidationFees[1] = tierConfig[CollateralTier.CROSS_A].liquidationFee;
         liquidationFees[2] = tierConfig[CollateralTier.CROSS_B].liquidationFee;
         liquidationFees[3] = tierConfig[CollateralTier.ISOLATED].liquidationFee;
-    }
-
-    function getTierLiquidationFee(CollateralTier tier) external view returns (uint256) {
-        return tierConfig[tier].liquidationFee;
     }
 
     function getTierJumpRate(CollateralTier tier) external view returns (uint256) {
@@ -602,26 +620,6 @@ contract LendefiAssets is
 
     function getSingleOraclePrice(address oracle) public view returns (uint256) {
         return _getSingleOraclePrice(oracle);
-    }
-
-    function getOracleConfig()
-        external
-        view
-        returns (
-            uint256 freshness,
-            uint256 volatility,
-            uint256 volatilityPct,
-            uint256 circuitBreakerPct,
-            uint256 minOracles
-        )
-    {
-        return (
-            oracleConfig.freshnessThreshold,
-            oracleConfig.volatilityThreshold,
-            oracleConfig.volatilityPercentage,
-            oracleConfig.circuitBreakerThreshold,
-            oracleConfig.minimumOraclesRequired
-        );
     }
 
     // ==================== INTERNAL FUNCTIONS ====================
@@ -909,17 +907,9 @@ contract LendefiAssets is
         int24 timeWeightedAverageTick = int24(tickCumulativesDelta / int56(uint56(config.twapPeriod)));
 
         // Convert tick to price based on whether asset is token0 or token1
-        uint256 price;
-
-        if (config.isToken0) {
-            // Asset is token0, so we need the price of token0 in terms of token1
-            // For token0: price = 1.0001^(-tick)
-            price = _getQuoteAtTick(-timeWeightedAverageTick);
-        } else {
-            // Asset is token1, so we need the price of token1 in terms of token0
-            // For token1: price = 1.0001^tick
-            price = _getQuoteAtTick(timeWeightedAverageTick);
-        }
+        uint256 price = config.isToken0
+            ? UniswapTickMath.getQuoteAtTick(-timeWeightedAverageTick)
+            : UniswapTickMath.getQuoteAtTick(timeWeightedAverageTick);
 
         // Convert to expected decimals
         uint8 decimals = oracleDecimals[virtualOracle];
@@ -932,62 +922,17 @@ contract LendefiAssets is
         return price;
     }
 
-    /**
-     * @notice Convert tick to price
-     * @param tick The tick value
-     * @return The price in 18 decimals
-     */
-    function _getQuoteAtTick(int24 tick) internal pure returns (uint256) {
-        // 1.0001^tick
-        uint160 sqrtRatioX96 = _getSqrtRatioAtTick(tick);
-
-        // Calculate price with proper decimal scaling
-        // price = (sqrtRatio/2^96)^2
-        uint256 price = (uint256(sqrtRatioX96) * uint256(sqrtRatioX96)) / (1 << 192);
-
-        return price * 10 ** 18; // Convert to 18 decimals
-    }
-
-    /**
-     * @notice Convert tick to sqrtPriceX96
-     * @dev Uniswap V3 TickMath implementation
-     * @param tick The tick value
-     * @return The sqrtPriceX96 value
-     */
-    function _getSqrtRatioAtTick(int24 tick) internal pure returns (uint160) {
-        uint256 absTick = tick < 0 ? uint256(-int256(tick)) : uint256(int256(tick));
-        require(absTick <= uint256(int256(887272)), "Tick out of range");
-
-        uint256 ratio = absTick & 0x1 != 0 ? 0xfffcb933bd6fad37aa2d162d1a594001 : 0x100000000000000000000000000000000;
-
-        if (absTick & 0x2 != 0) ratio = (ratio * 0xfff97272373d413259a46990580e213a) >> 128;
-        if (absTick & 0x4 != 0) ratio = (ratio * 0xfff2e50f5f656932ef12357cf3c7fdcc) >> 128;
-        if (absTick & 0x8 != 0) ratio = (ratio * 0xffe5caca7e10e4e61c3624eaa0941cd0) >> 128;
-        if (absTick & 0x10 != 0) ratio = (ratio * 0xffcb9843d60f6159c9db58835c926644) >> 128;
-        if (absTick & 0x20 != 0) ratio = (ratio * 0xff973b41fa98c081472e6896dfb254c0) >> 128;
-        if (absTick & 0x40 != 0) ratio = (ratio * 0xff2ea16466c96a3843ec78b326b52861) >> 128;
-        if (absTick & 0x80 != 0) ratio = (ratio * 0xfe5dee046a99a2a811c461f1969c3053) >> 128;
-        if (absTick & 0x100 != 0) ratio = (ratio * 0xfcbe86c7900a88aedcffc83b479aa3a4) >> 128;
-        if (absTick & 0x200 != 0) ratio = (ratio * 0xf987a7253ac413176f2b074cf7815e54) >> 128;
-        if (absTick & 0x400 != 0) ratio = (ratio * 0xf3392b0822b70005940c7a398e4b70f3) >> 128;
-        if (absTick & 0x800 != 0) ratio = (ratio * 0xe7159475a2c29b7443b29c7fa6e889d9) >> 128;
-        if (absTick & 0x1000 != 0) ratio = (ratio * 0xd097f3bdfd2022b8845ad8f792aa5825) >> 128;
-        if (absTick & 0x2000 != 0) ratio = (ratio * 0xa9f746462d870fdf8a65dc1f90e061e5) >> 128;
-        if (absTick & 0x4000 != 0) ratio = (ratio * 0x70d869a156d2a1b890bb3df62baf32f7) >> 128;
-        if (absTick & 0x8000 != 0) ratio = (ratio * 0x31be135f97d08fd981231505542fcfa6) >> 128;
-        if (absTick & 0x10000 != 0) ratio = (ratio * 0x9aa508b5b7a84e1c677de54f3e99bc9) >> 128;
-        if (absTick & 0x20000 != 0) ratio = (ratio * 0x5d6af8dedb81196699c329225ee604) >> 128;
-        if (absTick & 0x40000 != 0) ratio = (ratio * 0x2216e584f5fa1ea926041bedfe98) >> 128;
-        if (absTick & 0x80000 != 0) ratio = (ratio * 0x48a170391f7dc42444e8fa2) >> 128;
-
-        if (tick > 0) ratio = type(uint256).max / ratio;
-
-        // This divides by 1<<32 rounding up to go from a Q128.128 to a Q128.96.
-        // We then downcast because we know the result always fits within 160 bits due to our tick input constraint.
-        return uint160((ratio >> 32) + (ratio % (1 << 32) == 0 ? 0 : 1));
-    }
-
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {
+        if (!pendingUpgrade.exists) revert UpgradeNotScheduled();
+        if (pendingUpgrade.implementation != newImplementation) {
+            revert ImplementationMismatch(pendingUpgrade.implementation, newImplementation);
+        }
+        if (block.timestamp - pendingUpgrade.scheduledTime < UPGRADE_TIMELOCK_DURATION) {
+            revert UpgradeTimelockActive(UPGRADE_TIMELOCK_DURATION - (block.timestamp - pendingUpgrade.scheduledTime));
+        }
+
+        delete pendingUpgrade;
+
         ++version;
         emit Upgrade(msg.sender, newImplementation);
     }
