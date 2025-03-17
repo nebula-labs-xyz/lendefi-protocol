@@ -278,8 +278,8 @@ contract getPositionLiquidationFeeTest is BasicDeploy {
         uint256 isolatedPosFee = LendefiInstance.getPositionLiquidationFee(alice, isolatedPositionId);
         uint256 crossBPosFee = LendefiInstance.getPositionLiquidationFee(alice, crossBPositionId);
 
-        uint256 isolatedAssetFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.ISOLATED);
-        uint256 crossBAssetFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.CROSS_B);
+        uint256 isolatedAssetFee = assetsInstance.getLiquidationFee(IASSETS.CollateralTier.ISOLATED);
+        uint256 crossBAssetFee = assetsInstance.getLiquidationFee(IASSETS.CollateralTier.CROSS_B);
 
         // Log values
         console2.log("ISOLATED position fee:", isolatedPosFee);
@@ -403,7 +403,7 @@ contract getPositionLiquidationFeeTest is BasicDeploy {
         console2.log("ISOLATED position liquidation fee:", fee);
 
         // Get tier fee directly for verification
-        uint256 isolatedTierFee = assetsInstance.getTierLiquidationFee(IASSETS.CollateralTier.ISOLATED);
+        uint256 isolatedTierFee = assetsInstance.getLiquidationFee(IASSETS.CollateralTier.ISOLATED);
         console2.log("Expected ISOLATED tier fee:", isolatedTierFee);
 
         // Verify isolated position uses ISOLATED tier fee
