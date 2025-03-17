@@ -135,7 +135,7 @@ contract AssetsInitializeTest is BasicDeploy {
 
         // Check individual tier parameters with direct getter functions
         assertEq(
-            assetsContract.getTierLiquidationFee(IASSETS.CollateralTier.ISOLATED),
+            assetsContract.getLiquidationFee(IASSETS.CollateralTier.ISOLATED),
             0.04e6,
             "ISOLATED liquidation fee should be precisely 0.04e6"
         );
