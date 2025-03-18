@@ -1163,24 +1163,22 @@ contract Lendefi is
      * @dev Returns an array of addresses that can be used to query amounts
      * @param user Address of the position owner
      * @param positionId ID of the position to query
-     * @return Array of addresses representing all collateral assets in the position
+     * @return assets Array of addresses representing all collateral assets in the position
      */
     function getPositionCollateralAssets(address user, uint256 positionId)
         external
         view
         validPosition(user, positionId)
-        returns (address[] memory)
+        returns (address[] memory assets)
     {
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
-        uint256 length = collaterals.length();
-        address[] memory assets = new address[](length);
+        uint256 len = collaterals.length();
+        assets = new address[](len);
 
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < len; i++) {
             (address asset,) = collaterals.at(i);
             assets[i] = asset;
         }
-
-        return assets;
     }
 
     /**
@@ -1265,13 +1263,11 @@ contract Lendefi is
         public
         view
         validPosition(user, positionId)
-        returns (uint256)
+        returns (uint256 credit)
     {
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
-        if (collaterals.length() == 0) return 0;
-
-        uint256 credit;
         uint256 len = collaterals.length();
+        if (len == 0) return 0;
 
         for (uint256 i; i < len; i++) {
             (address asset, uint256 amount) = collaterals.at(i);
@@ -1282,8 +1278,6 @@ contract Lendefi is
                     / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
             }
         }
-
-        return credit;
     }
 
     /**
@@ -1300,9 +1294,9 @@ contract Lendefi is
         returns (uint256 value)
     {
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
-        if (collaterals.length() == 0) return 0;
-
         uint256 len = collaterals.length();
+        if (len == 0) return 0;
+
         for (uint256 i; i < len; i++) {
             (address asset, uint256 amount) = collaterals.at(i);
 
@@ -1357,8 +1351,8 @@ contract Lendefi is
         if (debt == 0) return type(uint256).max;
 
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
-        uint256 liqLevel;
         uint256 len = collaterals.length();
+        uint256 liqLevel;
 
         for (uint256 i; i < len; i++) {
             (address asset, uint256 amount) = collaterals.at(i);
@@ -1432,17 +1426,17 @@ contract Lendefi is
      * @dev For cross-collateral positions, returns the highest risk tier among assets
      * @param user Address of the position owner
      * @param positionId ID of the position to check
-     * @return The position's collateral tier (STABLE, CROSS_A, CROSS_B, or ISOLATED)
+     * @return tier The position's collateral tier (STABLE, CROSS_A, CROSS_B, or ISOLATED)
      */
     function getPositionTier(address user, uint256 positionId)
         public
         view
         validPosition(user, positionId)
-        returns (IASSETS.CollateralTier)
+        returns (IASSETS.CollateralTier tier)
     {
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
         uint256 len = collaterals.length();
-        IASSETS.CollateralTier tier = IASSETS.CollateralTier.STABLE;
+        tier = IASSETS.CollateralTier.STABLE;
 
         for (uint256 i; i < len; i++) {
             (address asset, uint256 amount) = collaterals.at(i);
@@ -1454,8 +1448,6 @@ contract Lendefi is
                 }
             }
         }
-
-        return tier;
     }
 
     function getConfig() external view returns (ProtocolConfig memory) {
