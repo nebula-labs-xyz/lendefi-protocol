@@ -397,4 +397,59 @@ contract LendefiExtendedTest is BasicDeploy {
         LendefiInstance.supplyCollateral(address(wethInstance), 1 ether, 0);
         vm.stopPrank();
     }
+
+    function test_GetUserPositions() public {
+        // Create multiple positions with different configurations
+        vm.startPrank(bob);
+
+        // Create position 0 - cross-collateral with WETH
+        LendefiInstance.createPosition(address(wethInstance), false);
+        wethInstance.deposit{value: 2 ether}();
+        wethInstance.approve(address(LendefiInstance), 2 ether);
+        LendefiInstance.supplyCollateral(address(wethInstance), 2 ether, 0);
+
+        // Create position 1 - isolated with RWA
+        LendefiInstance.createPosition(address(rwaToken), true);
+        rwaToken.mint(bob, 5 ether);
+        rwaToken.approve(address(LendefiInstance), 5 ether);
+        LendefiInstance.supplyCollateral(address(rwaToken), 5 ether, 1);
+
+        // Create position 2 - cross-collateral with WETH + borrow
+        LendefiInstance.createPosition(address(wethInstance), false);
+        wethInstance.deposit{value: 3 ether}();
+        wethInstance.approve(address(LendefiInstance), 3 ether);
+        LendefiInstance.supplyCollateral(address(wethInstance), 3 ether, 2);
+        LendefiInstance.borrow(2, 1000e6);
+
+        // Get all positions
+        IPROTOCOL.UserPosition[] memory positions = LendefiInstance.getUserPositions(bob);
+
+        // Verify positions count
+        assertEq(positions.length, 3, "Should have 3 positions");
+
+        // Verify position 0 details (cross-collateral, no debt)
+        assertFalse(positions[0].isIsolated, "Position 0 should be cross-collateral");
+        assertEq(positions[0].debtAmount, 0, "Position 0 should have no debt");
+        assertEq(uint8(positions[0].status), uint8(IPROTOCOL.PositionStatus.ACTIVE), "Position 0 should be active");
+
+        // Verify position 1 details (isolated, no debt)
+        assertTrue(positions[1].isIsolated, "Position 1 should be isolated");
+        assertEq(positions[1].debtAmount, 0, "Position 1 should have no debt");
+        assertEq(uint8(positions[1].status), uint8(IPROTOCOL.PositionStatus.ACTIVE), "Position 1 should be active");
+
+        // Verify position 2 details (cross-collateral, with debt)
+        assertFalse(positions[2].isIsolated, "Position 2 should be cross-collateral");
+        assertEq(positions[2].debtAmount, 1000e6, "Position 2 should have 1000 USDC debt");
+        assertEq(uint8(positions[2].status), uint8(IPROTOCOL.PositionStatus.ACTIVE), "Position 2 should be active");
+
+        // Test that getUserPositionsCount returns the correct value
+        assertEq(LendefiInstance.getUserPositionsCount(bob), 3, "getUserPositionsCount should return 3");
+
+        // Close position 0 and verify status update
+        LendefiInstance.exitPosition(0);
+        positions = LendefiInstance.getUserPositions(bob);
+        assertEq(uint8(positions[0].status), uint8(IPROTOCOL.PositionStatus.CLOSED), "Position 0 should be closed");
+
+        vm.stopPrank();
+    }
 }
