@@ -64,69 +64,119 @@ contract LiquidateTest is BasicDeploy {
         // Configure WETH as CROSS_A tier
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethOracleInstance),
-            8,
-            18,
-            1,
-            800, // 80% borrow threshold
-            850, // 85% liquidation threshold
-            1_000_000 ether,
-            0,
-            IASSETS.CollateralTier.CROSS_A,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18, // Asset decimals
+                borrowThreshold: 800, // 80% borrow threshold
+                liquidationThreshold: 850, // 85% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Supply limit
+                isolationDebtCap: 0, // No isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(wethOracleInstance),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
         // Configure RWA token as ISOLATED tier
         assetsInstance.updateAssetConfig(
             address(rwaToken),
-            address(rwaOracleInstance),
-            8,
-            18,
-            1,
-            650, // 65% borrow threshold
-            750, // 75% liquidation threshold
-            1_000_000 ether,
-            100_000e6, // Isolation debt cap of 100,000 USDC
-            IASSETS.CollateralTier.ISOLATED,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18, // Asset decimals
+                borrowThreshold: 650, // 65% borrow threshold
+                liquidationThreshold: 750, // 75% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Supply limit
+                isolationDebtCap: 100_000e6, // Isolation debt cap of 100,000 USDC
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.ISOLATED,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(rwaOracleInstance),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
         // Configure USDT as STABLE tier
         assetsInstance.updateAssetConfig(
             address(stableToken),
-            address(stableOracleInstance),
-            8,
-            18,
-            1,
-            900, // 90% borrow threshold
-            950, // 95% liquidation threshold
-            1_000_000 ether,
-            0,
-            IASSETS.CollateralTier.STABLE,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18, // Asset decimals
+                borrowThreshold: 900, // 90% borrow threshold
+                liquidationThreshold: 950, // 95% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Supply limit
+                isolationDebtCap: 0, // No isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.STABLE,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(stableOracleInstance),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
         // Configure Cross B token
         assetsInstance.updateAssetConfig(
             address(crossBToken),
-            address(crossBOracleInstance),
-            8,
-            18,
-            1,
-            700, // 70% borrow threshold
-            800, // 80% liquidation threshold
-            1_000_000 ether,
-            0,
-            IASSETS.CollateralTier.CROSS_B,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18, // Asset decimals
+                borrowThreshold: 700, // 70% borrow threshold
+                liquidationThreshold: 800, // 80% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Supply limit
+                isolationDebtCap: 0, // No isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_B,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(crossBOracleInstance),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
-        // Register oracles with Oracle module
-
-        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
-        assetsInstance.setPrimaryOracle(address(stableToken), address(stableOracleInstance));
-        assetsInstance.setPrimaryOracle(address(crossBToken), address(crossBOracleInstance));
         vm.stopPrank();
     }
 
@@ -534,21 +584,33 @@ contract LiquidateTest is BasicDeploy {
             // Configure asset in protocol
             assetsInstance.updateAssetConfig(
                 address(mockAssets[i]),
-                address(oracle),
-                8,
-                18,
-                1,
-                800, // 80% borrow threshold
-                850, // 85% liquidation threshold
-                1_000_000 ether,
-                0,
-                IASSETS.CollateralTier.CROSS_A,
-                IASSETS.OracleType.CHAINLINK
+                IASSETS.Asset({
+                    active: 1,
+                    decimals: 18, // Asset decimals
+                    borrowThreshold: 800, // 80% borrow threshold
+                    liquidationThreshold: 850, // 85% liquidation threshold
+                    maxSupplyThreshold: 1_000_000 ether, // Supply limit
+                    isolationDebtCap: 0, // No isolation debt cap
+                    assetMinimumOracles: 1, // Need at least 1 oracle
+                    primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                    tier: IASSETS.CollateralTier.CROSS_A,
+                    chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                        oracleUSD: address(oracle),
+                        oracleDecimals: 8, // Standardized to 8 decimals
+                        active: 1
+                    }),
+                    poolConfig: IASSETS.UniswapPoolConfig({
+                        pool: address(0), // No Uniswap pool
+                        quoteToken: address(0),
+                        isToken0: false,
+                        decimalsUniswap: 0,
+                        twapPeriod: 0,
+                        active: 0
+                    })
+                })
             );
 
             // Register oracle
-
-            assetsInstance.setPrimaryOracle(address(mockAssets[i]), address(oracle));
         }
         vm.stopPrank();
 
@@ -586,7 +648,7 @@ contract LiquidateTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
         for (uint256 i = 0; i < 20; i++) {
             // Get the oracle for this asset
-            address oracle = assetInfo(assetAddresses[i]).oracleUSD;
+            address oracle = assetInfo(assetAddresses[i]).chainlinkConfig.oracleUSD;
             RWAPriceConsumerV3(oracle).setPrice(850e8); // Drop from $1000 to $850 (15% drop)
         }
         vm.stopPrank();
