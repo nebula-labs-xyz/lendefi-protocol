@@ -500,11 +500,6 @@ contract LendefiAssets is
         onlyListedAsset(asset)
         returns (AssetCalculationParams memory)
     {
-        // When circuit breaker is active, we can't retrieve prices
-        if (circuitBroken[asset]) {
-            revert CircuitBreakerActive(asset);
-        }
-
         return AssetCalculationParams({
             price: getAssetPrice(asset),
             borrowThreshold: assetInfo[asset].borrowThreshold,
