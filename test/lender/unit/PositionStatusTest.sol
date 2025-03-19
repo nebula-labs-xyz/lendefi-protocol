@@ -40,19 +40,32 @@ contract PositionStatusTest is BasicDeploy {
         // Update asset config for WETH
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethOracle),
-            8, // Oracle decimals
-            18, // Asset decimals
-            1, // Active
-            800, // 80% borrow threshold
-            850, // 85% liquidation threshold
-            1_000_000 ether, // Supply limit
-            0,
-            IASSETS.CollateralTier.CROSS_A,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18, // Asset decimals
+                borrowThreshold: 800, // 80% borrow threshold
+                liquidationThreshold: 850, // 85% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Supply limit
+                isolationDebtCap: 0, // No isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(wethOracle),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
-        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracle));
         assetsInstance.updateTierConfig(IASSETS.CollateralTier.CROSS_A, 0.08e6, 0.02e6);
         vm.stopPrank();
 
