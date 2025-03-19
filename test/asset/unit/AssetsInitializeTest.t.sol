@@ -21,6 +21,7 @@ contract AssetsInitializeTest is BasicDeploy {
 
     function setUp() public {
         // Deploy the oracle first
+        wethInstance = new WETH9();
         deployCompleteWithOracle();
 
         // Store addresses for initialization
@@ -167,48 +168,45 @@ contract AssetsInitializeTest is BasicDeploy {
         address mockPriceFeed = address(0x123456);
 
         // Add the mock price feed to the oracle first
-        vm.startPrank(timelockAddr); // Use the same guardian address
-        // assetsInstance.addOracle(address(wethInstance), mockPriceFeed, 8, IASSETS.OracleType.CHAINLINK);
+        vm.startPrank(timelockAddr);
 
-        assetsContract.updateAssetConfig(
-            address(wethInstance),
-            mockPriceFeed,
-            8,
-            18,
-            1,
-            800,
-            850,
-            1_000_000e18,
-            0,
-            IASSETS.CollateralTier.CROSS_A,
-            IASSETS.OracleType.CHAINLINK
-        );
+        // Configure asset with new Asset struct format
+        IASSETS.Asset memory item = IASSETS.Asset({
+            active: 1,
+            decimals: 18,
+            borrowThreshold: 900,
+            liquidationThreshold: 950,
+            maxSupplyThreshold: 1_000_000e18,
+            isolationDebtCap: 0,
+            assetMinimumOracles: 1,
+            primaryOracleType: IASSETS.OracleType.CHAINLINK,
+            tier: IASSETS.CollateralTier.CROSS_A,
+            chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockPriceFeed), oracleDecimals: 8, active: 1}),
+            poolConfig: IASSETS.UniswapPoolConfig({
+                pool: address(0),
+                quoteToken: address(0),
+                isToken0: false,
+                decimalsUniswap: 0,
+                twapPeriod: 0,
+                active: 0
+            })
+        });
 
-        assetsContract.setPrimaryOracle(address(wethInstance), mockPriceFeed);
+        // Update asset config on the newly deployed contract (not the global instance)
+        assetsContract.updateAssetConfig(address(wethInstance), item);
 
         // Verify the asset is properly registered
         assertTrue(assetsContract.isAssetValid(address(wethInstance)), "Asset should be valid");
         vm.stopPrank();
-        // Now pause the contract - use the same guardian address
+
+        // Now pause the contract - use the guardian address
         vm.prank(guardian);
         assetsContract.pause();
 
         // Try a function that's protected by whenNotPaused
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         vm.prank(timelockAddr);
-        assetsContract.updateAssetConfig(
-            address(wethInstance),
-            mockPriceFeed,
-            8,
-            18,
-            1,
-            800,
-            850,
-            1_000_000e18,
-            0,
-            IASSETS.CollateralTier.CROSS_A,
-            IASSETS.OracleType.CHAINLINK
-        );
+        assetsContract.updateAssetConfig(address(wethInstance), item);
     }
 
     function test_InitializeWithDifferentGuardian() public {
