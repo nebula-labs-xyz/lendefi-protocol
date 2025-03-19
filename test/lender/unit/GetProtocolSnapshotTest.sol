@@ -32,27 +32,39 @@ contract GetProtocolSnapshotTest is BasicDeploy {
         testOracle = new RWAPriceConsumerV3();
         testOracle.setPrice(1000e8); // $1000 per token
 
-        // Configure asset for testing - Changed from LendefiInstance to assetsInstance
+        // Configure asset for testing - Changed to use the new struct-based approach
         vm.prank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
             address(testToken),
-            address(testOracle),
-            8, // oracle decimals
-            18, // asset decimals
-            1, // active
-            800, // borrow threshold (80%)
-            850, // liquidation threshold (85%)
-            10_000_000 ether, // max supply
-            1_000_000e6, // isolation debt cap
-            IASSETS.CollateralTier.CROSS_A, // Changed from IPROTOCOL to IASSETS
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18, // Asset decimals
+                borrowThreshold: 800, // 80% borrow threshold
+                liquidationThreshold: 850, // 85% liquidation threshold
+                maxSupplyThreshold: 10_000_000 ether, // Max supply
+                isolationDebtCap: 1_000_000e6, // Isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(testOracle), // Oracle address
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
         // Setup flash loan fee using the new config approach
         vm.startPrank(address(timelockInstance));
         // Register the test token with Oracle module
-
-        assetsInstance.setPrimaryOracle(address(testToken), address(testOracle));
 
         IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
         config.flashLoanFee = 10; // 0.1% fee
