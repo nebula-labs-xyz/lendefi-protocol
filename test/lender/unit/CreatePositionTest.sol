@@ -61,41 +61,63 @@ contract CreatePositionTest is BasicDeploy {
     function _setupAssets() internal {
         vm.startPrank(address(timelockInstance));
 
-        // UPDATED: Use assetsInstance for asset configuration
         // Configure RWA token as ISOLATED tier
         assetsInstance.updateAssetConfig(
             address(rwaToken),
-            address(rwaassetsInstance),
-            8, // Oracle decimals
-            18, // Asset decimals
-            1, // Active
-            650, // 65% borrow threshold
-            750, // 75% liquidation threshold
-            1_000_000 ether, // Supply limit
-            100_000e6, // Isolation debt cap
-            IASSETS.CollateralTier.ISOLATED,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 650, // 65% borrow threshold
+                liquidationThreshold: 750, // 75% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Supply limit
+                isolationDebtCap: 100_000e6, // Isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.ISOLATED,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(rwaassetsInstance),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
         // Configure WETH as CROSS_A tier
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethassetsInstance),
-            8, // Oracle decimals
-            18, // Asset decimals
-            1, // Active
-            800, // 80% borrow threshold
-            850, // 85% liquidation threshold
-            1_000_000 ether, // Supply limit
-            0, // No isolation debt cap
-            IASSETS.CollateralTier.CROSS_A,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 800, // 80% borrow threshold
+                liquidationThreshold: 850, // 85% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Supply limit
+                isolationDebtCap: 0, // No isolation debt cap for cross assets
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(wethassetsInstance),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
-
-        // Register oracles with Oracle module
-
-        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethassetsInstance));
-        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaassetsInstance));
         vm.stopPrank();
     }
 
