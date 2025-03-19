@@ -12,8 +12,8 @@ contract LendefiExtendedTest is BasicDeploy {
     uint256 constant WAD = 1e6;
     MockRWA internal rwaToken;
 
-    RWAPriceConsumerV3 internal rwaassetsInstance;
-    WETHPriceConsumerV3 internal wethassetsInstance;
+    RWAPriceConsumerV3 internal rwaOracleInstance;
+    WETHPriceConsumerV3 internal wethOracleInstance;
 
     function setUp() public {
         // Use deployCompleteWithOracle() instead of deployComplete()
@@ -30,12 +30,12 @@ contract LendefiExtendedTest is BasicDeploy {
         rwaToken = new MockRWA("Ondo Finance", "ONDO");
 
         // Deploy oracles
-        wethassetsInstance = new WETHPriceConsumerV3();
-        rwaassetsInstance = new RWAPriceConsumerV3();
+        wethOracleInstance = new WETHPriceConsumerV3();
+        rwaOracleInstance = new RWAPriceConsumerV3();
 
         // Set prices
-        wethassetsInstance.setPrice(2500e8); // $2500 per ETH
-        rwaassetsInstance.setPrice(1000e8); // $1000 per RWA token
+        wethOracleInstance.setPrice(2500e8); // $2500 per ETH
+        rwaOracleInstance.setPrice(1000e8); // $1000 per RWA token
 
         // Setup roles
         vm.prank(address(timelockInstance));
@@ -49,44 +49,63 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Configure RWA token (isolated)
-        // Updated parameter order and added OracleType parameter
         assetsInstance.updateAssetConfig(
-            address(rwaToken), // asset
-            address(rwaassetsInstance), // oracle
-            8, // oracle decimals
-            18, // asset decimals
-            1, // active
-            650, // borrow threshold (65%)
-            750, // liquidation threshold (75%)
-            1_000_000 ether, // max supply
-            100_000e6, // isolation debt cap (moved before tier)
-            IASSETS.CollateralTier.ISOLATED, // tier
-            IASSETS.OracleType.CHAINLINK // new oracle type parameter
+            address(rwaToken),
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 650, // 65% LTV
+                liquidationThreshold: 750, // 75% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // max supply
+                isolationDebtCap: 100_000e6, // isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.ISOLATED,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(rwaOracleInstance),
+                    oracleDecimals: 8,
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
         // Configure WETH (cross-collateral)
-        // Updated parameter order and added OracleType parameter
         assetsInstance.updateAssetConfig(
-            address(wethInstance), // asset
-            address(wethassetsInstance), // oracle
-            8, // oracle decimals
-            18, // asset decimals
-            1, // active
-            800, // borrow threshold (80%)
-            850, // liquidation threshold (85%)
-            1_000_000 ether, // max supply
-            0, // no isolation debt cap (moved before tier)
-            IASSETS.CollateralTier.CROSS_A, // tier
-            IASSETS.OracleType.CHAINLINK // new oracle type parameter
+            address(wethInstance),
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 800, // 80% LTV
+                liquidationThreshold: 850, // 85% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // max supply
+                isolationDebtCap: 0, // no isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(wethOracleInstance),
+                    oracleDecimals: 8,
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
-        // Register oracles with Oracle module
-        // Updated addOracle calls with OracleType parameter
-        //assetsInstance.addOracle(address(wethInstance), address(wethassetsInstance), 8, IASSETS.OracleType.CHAINLINK);
-        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethassetsInstance));
-
-        //assetsInstance.addOracle(address(rwaToken), address(rwaassetsInstance), 8, IASSETS.OracleType.CHAINLINK);
-        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaassetsInstance));
         vm.stopPrank();
     }
 
@@ -108,7 +127,7 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.deal(bob, 100 ether);
 
         // Set initial prices
-        wethassetsInstance.setPrice(2500e8); // $2500 per ETH
+        wethOracleInstance.setPrice(2500e8); // $2500 per ETH
     }
 
     function test_FullPositionLifecycle() public {
@@ -233,10 +252,10 @@ contract LendefiExtendedTest is BasicDeploy {
         LendefiInstance.supplyCollateral(address(wethInstance), 10 ether, 0);
 
         // Mock oracle failure
-        wethassetsInstance.setPrice(0); // Set invalid price
+        wethOracleInstance.setPrice(0); // Set invalid price
 
         // Use custom error from IASSETS interface
-        vm.expectRevert(abi.encodeWithSelector(IASSETS.OracleInvalidPrice.selector, address(wethassetsInstance), 0));
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.OracleInvalidPrice.selector, address(wethOracleInstance), 0));
         LendefiInstance.borrow(0, 1000e6);
         vm.stopPrank();
     }
@@ -301,7 +320,7 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IASSETS.OracleTimeout.selector,
-                address(wethassetsInstance),
+                address(wethOracleInstance),
                 block.timestamp - 30 days, // Oracle timestamp
                 block.timestamp, // Current timestamp
                 8 hours // Max age
@@ -371,16 +390,30 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethassetsInstance),
-            8,
-            18,
-            1,
-            800,
-            850,
-            5 ether, // Low max supply of 5 ETH
-            0, // no isolation debt cap (moved before tier)
-            IASSETS.CollateralTier.CROSS_A, // tier
-            IASSETS.OracleType.CHAINLINK // new oracle type parameter
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 800,
+                liquidationThreshold: 850,
+                maxSupplyThreshold: 5 ether, // Low max supply of 5 ETH
+                isolationDebtCap: 0,
+                assetMinimumOracles: 1,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(wethOracleInstance),
+                    oracleDecimals: 8,
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0),
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
         vm.stopPrank();
 
