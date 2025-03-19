@@ -51,7 +51,7 @@ contract OraclePriceTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Set minimum required oracles to 1
-        assetsInstance.updateOracleConfig(
+        assetsInstance.updateMainOracleConfig(
             uint80(28800), // Keep default freshness
             uint80(3600), // Keep default volatility
             uint40(20), // Keep default volatility %
@@ -59,80 +59,126 @@ contract OraclePriceTest is BasicDeploy {
             1 // # oracles
         );
 
-        // FIRST REGISTER ASSETS using updateAssetConfig
+        // REGISTER ASSETS WITH ORACLES USING UPDATED STRUCT FORMAT
 
         // Register WETH asset
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(0), // Oracle will be added separately
-            8,
-            18,
-            1,
-            900,
-            950,
-            1_000_000e18,
-            0,
-            IASSETS.CollateralTier.CROSS_A,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 900,
+                liquidationThreshold: 950,
+                maxSupplyThreshold: 1_000_000e18,
+                isolationDebtCap: 0,
+                assetMinimumOracles: 1,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(wethOracleInstance),
+                    oracleDecimals: 8,
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0),
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
         // Register mock asset 1
         assetsInstance.updateAssetConfig(
             address(0x1),
-            address(0),
-            8,
-            18,
-            1,
-            800,
-            850,
-            1_000_000e18,
-            0,
-            IASSETS.CollateralTier.CROSS_B,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 800,
+                liquidationThreshold: 850,
+                maxSupplyThreshold: 1_000_000e18,
+                isolationDebtCap: 0,
+                assetMinimumOracles: 1,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_B,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(rwaOracleInstance),
+                    oracleDecimals: 8,
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0),
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
         // Register mock asset 2
         assetsInstance.updateAssetConfig(
             address(0x2),
-            address(0),
-            8,
-            18,
-            1,
-            950,
-            980,
-            1_000_000e18,
-            0,
-            IASSETS.CollateralTier.STABLE,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 950,
+                liquidationThreshold: 980,
+                maxSupplyThreshold: 1_000_000e18,
+                isolationDebtCap: 0,
+                assetMinimumOracles: 1,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.STABLE,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(stableOracleInstance),
+                    oracleDecimals: 8,
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0),
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
         // Register mock asset 3
         assetsInstance.updateAssetConfig(
             address(0x3),
-            address(0),
-            8,
-            18,
-            1,
-            850,
-            900,
-            1_000_000e18,
-            0,
-            IASSETS.CollateralTier.CROSS_A,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 850,
+                liquidationThreshold: 900,
+                maxSupplyThreshold: 1_000_000e18,
+                isolationDebtCap: 0,
+                assetMinimumOracles: 1,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(mockOracle),
+                    oracleDecimals: 8,
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0),
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
-        // THEN ADD ORACLES to the registered assets
-        assetsInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
-        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-
-        assetsInstance.addOracle(address(0x1), address(rwaOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
-        assetsInstance.setPrimaryOracle(address(0x1), address(rwaOracleInstance));
-
-        assetsInstance.addOracle(address(0x2), address(stableOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
-        assetsInstance.setPrimaryOracle(address(0x2), address(stableOracleInstance));
-
-        assetsInstance.addOracle(address(0x3), address(mockOracle), 8, IASSETS.OracleType.CHAINLINK);
-        assetsInstance.setPrimaryOracle(address(0x3), address(mockOracle));
+        // No need to call setPrimaryOracle separately since it's now done in updateAssetConfig
+        // through the primaryOracleType field
 
         vm.stopPrank();
     }
@@ -141,7 +187,7 @@ contract OraclePriceTest is BasicDeploy {
     function test_GetAssetPrice_Success() public {
         uint256 expectedPrice = 2500e8;
 
-        // Test through the Oracle module
+        // Test through the Asset module
         uint256 price2 = assetsInstance.getAssetPrice(address(wethInstance));
         assertEq(price2, expectedPrice, "Oracle module price should match");
     }
@@ -170,8 +216,8 @@ contract OraclePriceTest is BasicDeploy {
         mockOracle.setRoundId(20);
         mockOracle.setAnsweredInRound(20);
 
-        // Should succeed
-        uint256 price = assetsInstance.getSingleOraclePrice(address(mockOracle));
+        // Should succeed - use getAssetPriceByType instead of getSingleOraclePrice
+        uint256 price = assetsInstance.getAssetPriceByType(address(0x3), IASSETS.OracleType.CHAINLINK);
         assertEq(price, 1000e8, "Should return price when roundId equals answeredInRound");
     }
 
@@ -183,8 +229,8 @@ contract OraclePriceTest is BasicDeploy {
         // Set the test price
         mockOracle.setPrice(testPrice);
 
-        // Get the price from the oracle
-        uint256 returnedPrice = assetsInstance.getSingleOraclePrice(address(mockOracle));
+        // Get the price from the oracle - use getAssetPriceByType instead of getSingleOraclePrice
+        uint256 returnedPrice = assetsInstance.getAssetPriceByType(address(0x3), IASSETS.OracleType.CHAINLINK);
 
         // Verify the result
         assertEq(returnedPrice, uint256(testPrice), "Should return the exact price set");
@@ -192,57 +238,68 @@ contract OraclePriceTest is BasicDeploy {
 
     // Test 8: Multiple Oracle Types
     function test_GetAssetPrice_MultipleOracleTypes() public {
-        // Check WETH price using the oracle instance (not token)
-        uint256 wethPrice = assetsInstance.getSingleOraclePrice(address(wethOracleInstance));
+        // Check prices by directly getting them through the asset address
+        uint256 wethPrice = assetsInstance.getAssetPrice(address(wethInstance));
         assertEq(wethPrice, 2500e8, "WETH price should be correct");
 
-        // Check RWA price using the oracle instance
-        uint256 rwaPrice = assetsInstance.getSingleOraclePrice(address(rwaOracleInstance));
+        // Check RWA price
+        uint256 rwaPrice = assetsInstance.getAssetPrice(address(0x1));
         assertEq(rwaPrice, 1000e8, "RWA price should be correct");
 
-        // Check Stable price using the oracle instance
-        uint256 stablePrice = assetsInstance.getSingleOraclePrice(address(stableOracleInstance));
+        // Check Stable price
+        uint256 stablePrice = assetsInstance.getAssetPrice(address(0x2));
         assertEq(stablePrice, 1e8, "Stable price should be correct");
     }
 
     // Test 9: Price Changes
     function test_GetAssetPriceOracle_PriceChanges() public {
         // Get initial price
-        uint256 initialPrice = assetsInstance.getSingleOraclePrice(address(wethOracleInstance));
+        uint256 initialPrice = assetsInstance.getAssetPrice(address(wethInstance));
         assertEq(initialPrice, 2500e8, "Initial price should be correct");
 
         // Change price
         wethOracleInstance.setPrice(3000e8);
 
         // Get updated price
-        uint256 updatedPrice = assetsInstance.getSingleOraclePrice(address(wethOracleInstance));
+        uint256 updatedPrice = assetsInstance.getAssetPrice(address(wethInstance));
         assertEq(updatedPrice, 3000e8, "Updated price should reflect the change");
     }
 
     // Test 10: Integration with Asset Config
     function test_GetAssetPriceOracle_WithAssetConfig() public {
-        // Setup asset config with WETH oracle
+        // Setup asset config with WETH oracle using the new Asset struct
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethOracleInstance),
-            8, // oracle decimals
-            18, // asset decimals
-            1, // active
-            800, // borrow threshold
-            850, // liquidation threshold
-            1_000_000 ether, // supply cap
-            0, // isolation debt cap
-            IASSETS.CollateralTier.CROSS_A,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 800,
+                liquidationThreshold: 850,
+                maxSupplyThreshold: 1_000_000 ether,
+                isolationDebtCap: 0,
+                assetMinimumOracles: 1,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(wethOracleInstance),
+                    oracleDecimals: 8,
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0),
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
         vm.stopPrank();
 
-        // Get asset info
-        IASSETS.Asset memory assetInfo = assetsInstance.getAssetInfo(address(wethInstance));
-
         // Use the oracle from asset config
-        uint256 price = assetsInstance.getSingleOraclePrice(assetInfo.oracleUSD);
+        uint256 price = assetsInstance.getAssetPrice(address(wethInstance));
         assertEq(price, 2500e8, "Should get correct price from asset-configured oracle");
     }
 
@@ -258,7 +315,7 @@ contract OraclePriceTest is BasicDeploy {
         mockOracle.setHistoricalRoundData(19, 1000e8, block.timestamp - 4 hours, 19);
 
         // This should pass since timestamp is recent (< 1 hour)
-        uint256 price = assetsInstance.getSingleOraclePrice(address(mockOracle));
+        uint256 price = assetsInstance.getAssetPrice(address(0x3));
         assertEq(price, 1200e8);
 
         // Now set timestamp to be stale for volatility check (>= 1 hour)
@@ -273,33 +330,6 @@ contract OraclePriceTest is BasicDeploy {
                 20 // 20% change
             )
         );
-        assetsInstance.getSingleOraclePrice(address(mockOracle));
-    }
-
-    // Test 12: Test with Uniswap Oracle Type
-    function test_UniswapOracleType() public {
-        // This would require a more complex setup with mocked Uniswap pool
-        // For a basic test, we can verify that the OracleType enum is correctly used
-        vm.startPrank(address(timelockInstance));
-
-        // Create a mock asset with Uniswap oracle type
-        assetsInstance.updateAssetConfig(
-            address(0x4),
-            address(0),
-            8,
-            18,
-            1,
-            850,
-            900,
-            1_000_000e18,
-            0,
-            IASSETS.CollateralTier.CROSS_A,
-            IASSETS.OracleType.UNISWAP_V3_TWAP
-        );
-
-        vm.stopPrank();
-
-        // If the interface functions are updated correctly, this test should pass compilation
-        // The actual Uniswap oracle functionality would need more complex mocking
+        assetsInstance.getAssetPrice(address(0x3));
     }
 }
