@@ -1610,4 +1610,202 @@ contract LendefiAssetsTest is BasicDeploy {
         vm.expectRevert(abi.encodeWithSelector(IASSETS.OracleInvalidPrice.selector, address(zeroPriceOracle), 0));
         assetsInstance.getAssetPrice(address(wethInstance));
     }
+
+    function test_GetAssetDecimals() public {
+        // Verify the decimals for each configured asset
+        assertEq(assetsInstance.getAssetDecimals(address(wethInstance)), 18, "WETH decimals should be 18");
+        assertEq(assetsInstance.getAssetDecimals(address(usdcInstance)), 6, "USDC decimals should be 6");
+        assertEq(assetsInstance.getAssetDecimals(address(linkInstance)), 18, "LINK decimals should be 18");
+        assertEq(assetsInstance.getAssetDecimals(address(uniInstance)), 18, "UNI decimals should be 18");
+
+        // Attempt to get decimals for non-listed asset should revert
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.AssetNotListed.selector, address(0xDEAD)));
+        assetsInstance.getAssetDecimals(address(0xDEAD));
+    }
+
+    function test_GetAssetLiquidationThreshold() public {
+        // Verify the liquidation thresholds for each configured asset
+        assertEq(
+            assetsInstance.getAssetLiquidationThreshold(address(wethInstance)),
+            850,
+            "WETH liquidation threshold should be 85%"
+        );
+        assertEq(
+            assetsInstance.getAssetLiquidationThreshold(address(usdcInstance)),
+            950,
+            "USDC liquidation threshold should be 95%"
+        );
+        assertEq(
+            assetsInstance.getAssetLiquidationThreshold(address(linkInstance)),
+            750,
+            "LINK liquidation threshold should be 75%"
+        );
+        assertEq(
+            assetsInstance.getAssetLiquidationThreshold(address(uniInstance)),
+            800,
+            "UNI liquidation threshold should be 80%"
+        );
+
+        // Update an asset's liquidation threshold and verify the change
+        vm.startPrank(address(timelockInstance));
+        assetsInstance.updateAssetConfig(
+            address(wethInstance),
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 750, // Lower borrow threshold to maintain required gap
+                liquidationThreshold: 800, // Changed from 850 to 800
+                maxSupplyThreshold: 1_000_000 ether,
+                isolationDebtCap: 0,
+                assetMinimumOracles: 1,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(wethOracle),
+                    oracleDecimals: 8,
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0),
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
+        );
+        vm.stopPrank();
+
+        // Verify the updated threshold
+        assertEq(
+            assetsInstance.getAssetLiquidationThreshold(address(wethInstance)),
+            800,
+            "Updated WETH liquidation threshold should be 80%"
+        );
+
+        // Attempt to get liquidation threshold for non-listed asset should revert
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.AssetNotListed.selector, address(0xDEAD)));
+        assetsInstance.getAssetLiquidationThreshold(address(0xDEAD));
+    }
+
+    function test_GetAssetBorrowThreshold() public {
+        // Verify the borrow thresholds for each configured asset
+        assertEq(
+            assetsInstance.getAssetBorrowThreshold(address(wethInstance)), 800, "WETH borrow threshold should be 80%"
+        );
+        assertEq(
+            assetsInstance.getAssetBorrowThreshold(address(usdcInstance)), 900, "USDC borrow threshold should be 90%"
+        );
+        assertEq(
+            assetsInstance.getAssetBorrowThreshold(address(linkInstance)), 700, "LINK borrow threshold should be 70%"
+        );
+        assertEq(
+            assetsInstance.getAssetBorrowThreshold(address(uniInstance)), 750, "UNI borrow threshold should be 75%"
+        );
+
+        // Update an asset's borrow threshold and verify the change
+        vm.startPrank(address(timelockInstance));
+        assetsInstance.updateAssetConfig(
+            address(linkInstance),
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 650, // Changed from 700 to 650
+                liquidationThreshold: 750,
+                maxSupplyThreshold: 100_000 ether,
+                isolationDebtCap: 5_000e6,
+                assetMinimumOracles: 1,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.ISOLATED,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(linkOracle),
+                    oracleDecimals: 8,
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0),
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
+        );
+        vm.stopPrank();
+
+        // Verify the updated threshold
+        assertEq(
+            assetsInstance.getAssetBorrowThreshold(address(linkInstance)),
+            650,
+            "Updated LINK borrow threshold should be 65%"
+        );
+
+        // Attempt to get borrow threshold for non-listed asset should revert
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.AssetNotListed.selector, address(0xDEAD)));
+        assetsInstance.getAssetBorrowThreshold(address(0xDEAD));
+    }
+
+    function test_GetAssetCalculationParams() public {
+        // First let's set a specific price in the oracle
+        wethOracle.setPrice(int256(ETH_PRICE)); // $2500 per ETH
+
+        // Get the calculation params for WETH
+        IASSETS.AssetCalculationParams memory params = assetsInstance.getAssetCalculationParams(address(wethInstance));
+
+        // Verify all parameters match what we expect
+        assertEq(params.price, ETH_PRICE, "Price should match oracle price");
+        assertEq(params.borrowThreshold, 800, "Borrow threshold should be 80%");
+        assertEq(params.liquidationThreshold, 850, "Liquidation threshold should be 85%");
+        assertEq(params.decimals, 18, "Decimals should be 18");
+
+        // Test for USDC with its different parameters
+        stableOracle.setPrice(1e8); // $1 per USDC
+        params = assetsInstance.getAssetCalculationParams(address(usdcInstance));
+
+        assertEq(params.price, 1e8, "USDC price should be $1");
+        assertEq(params.borrowThreshold, 900, "USDC borrow threshold should be 90%");
+        assertEq(params.liquidationThreshold, 950, "USDC liquidation threshold should be 95%");
+        assertEq(params.decimals, 6, "USDC decimals should be 6");
+
+        // Test how circuit breaker affects the function
+        vm.prank(guardian);
+        assetsInstance.triggerCircuitBreaker(address(wethInstance));
+
+        // Now getAssetCalculationParams should revert for WETH
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.CircuitBreakerActive.selector, address(wethInstance)));
+        assetsInstance.getAssetCalculationParams(address(wethInstance));
+
+        // Reset the circuit breaker
+        vm.prank(guardian);
+        assetsInstance.resetCircuitBreaker(address(wethInstance));
+
+        // Function should work again after resetting circuit breaker
+        params = assetsInstance.getAssetCalculationParams(address(wethInstance));
+        assertEq(params.price, ETH_PRICE, "Price should match oracle price after reset");
+
+        // Test with non-listed asset should revert
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.AssetNotListed.selector, address(0xDEAD)));
+        assetsInstance.getAssetCalculationParams(address(0xDEAD));
+    }
+
+    function testFuzz_GetAssetCalculationParams(uint256 price) public {
+        // Bound the price to something reasonable to avoid overflows
+        price = bound(price, 1, 10000e8);
+
+        // Set the price in the oracle
+        wethOracle.setPrice(int256(price));
+
+        // Get the calculation params
+        IASSETS.AssetCalculationParams memory params = assetsInstance.getAssetCalculationParams(address(wethInstance));
+
+        // Verify the price matches what we set
+        assertEq(params.price, price, "Price should match the fuzzed oracle price");
+
+        // Other parameters should remain constant
+        assertEq(params.borrowThreshold, 800, "Borrow threshold should still be 80%");
+        assertEq(params.liquidationThreshold, 850, "Liquidation threshold should still be 85%");
+        assertEq(params.decimals, 18, "Decimals should still be 18");
+    }
 }
