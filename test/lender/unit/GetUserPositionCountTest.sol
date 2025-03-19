@@ -52,39 +52,64 @@ contract GetUserPositionsCountTest is BasicDeploy {
     function _setupAssets() internal {
         vm.startPrank(address(timelockInstance));
 
-        // Configure WETH as a cross collateral asset - Changed from LendefiInstance to assetsInstance
+        // Configure WETH as a cross collateral asset - Changed to struct-based approach
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(ethOracle),
-            8, // oracle decimals
-            18, // asset decimals
-            1, // active
-            800, // 80% borrow threshold
-            850, // 85% liquidation threshold
-            1_000_000 ether, // max supply
-            0,
-            IASSETS.CollateralTier.CROSS_A, // Changed from IPROTOCOL to IASSETS
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18, // asset decimals
+                borrowThreshold: 800, // 80% borrow threshold
+                liquidationThreshold: 850, // 85% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // max supply
+                isolationDebtCap: 0, // no isolation debt cap for cross assets
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(ethOracle),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
-        // Configure RWA token as isolation-eligible - Changed from LendefiInstance to assetsInstance
+        // Configure RWA token as isolation-eligible - Changed to struct-based approach
         assetsInstance.updateAssetConfig(
             address(rwaToken),
-            address(rwaOracle),
-            8, // oracle decimals
-            18, // asset decimals
-            1, // active
-            650, // 65% borrow threshold
-            750, // 75% liquidation threshold
-            1_000_000 ether, // max supply
-            100_000e6, // $100k max borrow cap
-            IASSETS.CollateralTier.ISOLATED, // Changed from IPROTOCOL to IASSETS
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18, // asset decimals
+                borrowThreshold: 650, // 65% borrow threshold
+                liquidationThreshold: 750, // 75% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // max supply
+                isolationDebtCap: 100_000e6, // $100k max borrow cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.ISOLATED,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(rwaOracle),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
-        // Register oracles with Oracle module
 
-        assetsInstance.setPrimaryOracle(address(wethInstance), address(ethOracle));
-        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracle));
         vm.stopPrank();
     }
 
