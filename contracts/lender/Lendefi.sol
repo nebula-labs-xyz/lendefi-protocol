@@ -775,7 +775,7 @@ contract Lendefi is
         if (position.isIsolated) {
             EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
             (address posAsset,) = collaterals.at(0);
-            // IASSETS.Asset memory asset = assetsModule.getAssetInfo(posAsset);
+
             uint256 isolationDebtCap = assetsModule.getIsolationDebtCap(posAsset);
             if (currentDebt + amount > isolationDebtCap) revert IsolationDebtCapExceeded();
         }
