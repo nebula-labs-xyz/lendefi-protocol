@@ -142,7 +142,8 @@ contract FlashLoanRecipient is IFlashLoanRecipient, Ownable {
             if (tokenAmounts[i] > 0) {
                 IASSETS.Asset memory assetInfo = ASSETS_INSTANCE.getAssetInfo(assets[i]);
                 uint256 assetPrice = ASSETS_INSTANCE.getAssetPrice(assets[i]);
-                uint256 amountOutMin = (tokenAmounts[i] * assetPrice * 99) / 10 ** assetInfo.oracleDecimals / 100;
+                uint256 amountOutMin =
+                    (tokenAmounts[i] * assetPrice * 99) / 10 ** assetInfo.chainlinkConfig.oracleDecimals / 100;
                 uint256 outAmount = uniswapV3(assets[i], tokenAmounts[i], amountOutMin);
                 recievedBase += outAmount;
             }
