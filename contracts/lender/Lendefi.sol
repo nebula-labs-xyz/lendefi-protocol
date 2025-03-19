@@ -775,8 +775,9 @@ contract Lendefi is
         if (position.isIsolated) {
             EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
             (address posAsset,) = collaterals.at(0);
-            IASSETS.Asset memory asset = assetsModule.getAssetInfo(posAsset);
-            if (currentDebt + amount > asset.isolationDebtCap) revert IsolationDebtCapExceeded();
+            // IASSETS.Asset memory asset = assetsModule.getAssetInfo(posAsset);
+            uint256 isolationDebtCap = assetsModule.getIsolationDebtCap(posAsset);
+            if (currentDebt + amount > isolationDebtCap) revert IsolationDebtCapExceeded();
         }
 
         // Check credit limit
@@ -1273,9 +1274,11 @@ contract Lendefi is
             (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount > 0) {
-                IASSETS.Asset memory item = assetsModule.getAssetInfo(asset);
-                credit += (amount * assetsModule.getAssetPrice(asset) * item.borrowThreshold * WAD)
-                    / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
+                // Get all parameters in a single call
+                IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
+
+                credit +=
+                    (amount * params.price * params.borrowThreshold * WAD) / (10 ** params.decimals * 1000 * 10 ** 8);
             }
         }
     }
@@ -1301,9 +1304,8 @@ contract Lendefi is
             (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount > 0) {
-                IASSETS.Asset memory item = assetsModule.getAssetInfo(asset);
-                value += (amount * assetsModule.getAssetPrice(asset) * WAD)
-                    / (10 ** item.decimals * 10 ** item.oracleDecimals);
+                IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
+                value += (amount * params.price * WAD) / (10 ** params.decimals * 10 ** 8);
             }
         }
     }
@@ -1358,9 +1360,11 @@ contract Lendefi is
             (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount != 0) {
-                IASSETS.Asset memory item = assetsModule.getAssetInfo(asset);
-                liqLevel += (amount * assetsModule.getAssetPrice(asset) * item.liquidationThreshold * WAD)
-                    / (10 ** item.decimals * 1000 * 10 ** item.oracleDecimals);
+                // Get all parameters in a single call
+                IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
+
+                liqLevel += (amount * params.price * params.liquidationThreshold * WAD)
+                    / (10 ** params.decimals * 1000 * 10 ** 8);
             }
         }
 
@@ -1442,9 +1446,9 @@ contract Lendefi is
             (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount > 0) {
-                IASSETS.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
-                if (uint8(assetConfig.tier) > uint8(tier)) {
-                    tier = assetConfig.tier;
+                IASSETS.CollateralTier assetTier = assetsModule.getAssetTier(asset);
+                if (uint8(assetTier) > uint8(tier)) {
+                    tier = assetTier;
                 }
             }
         }
@@ -1504,13 +1508,12 @@ contract Lendefi is
         validAsset(asset)
         activePosition(msg.sender, positionId)
     {
-        IASSETS.Asset memory assetConfig = assetsModule.getAssetInfo(asset);
         if (assetsModule.isAssetAtCapacity(asset, amount)) revert AssetCapacityReached(); // Asset capacity reached
 
         UserPosition storage position = positions[msg.sender][positionId];
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
 
-        if (assetConfig.tier == IASSETS.CollateralTier.ISOLATED && !position.isIsolated) {
+        if (assetsModule.getAssetTier(asset) == IASSETS.CollateralTier.ISOLATED && !position.isIsolated) {
             revert IsolatedAssetViolation();
         }
 
