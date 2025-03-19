@@ -57,22 +57,9 @@ contract LendefiAssetsV2 is
     mapping(CollateralTier => TierRates) public tierConfig;
 
     // Oracle configuration
-    OracleConfig public oracleConfig;
+    MainOracleConfig public mainOracleConfig;
 
-    // Asset oracles
-    mapping(address asset => address[] oracles) private assetOracles;
-    mapping(address asset => address primary) public primaryOracle;
-    mapping(address oracle => uint8 decimals) public oracleDecimals;
-    mapping(address asset => uint256 minOraclesForAsset) public assetMinimumOracles;
-
-    // Oracle state
     mapping(address asset => bool broken) public circuitBroken;
-    // Track oracle types
-    mapping(address oracle => OracleType) public oracleTypes;
-    mapping(address asset => mapping(OracleType => address oracle)) public assetOracleByType;
-
-    // Virtual oracle address => Uniswap config
-    mapping(address virtualOracle => UniswapOracleConfig) public uniswapConfigs;
 
     modifier onlyListedAsset(address asset) {
         if (!listedAssets.contains(asset)) revert AssetNotListed(asset);
@@ -88,8 +75,8 @@ contract LendefiAssetsV2 is
         _;
     }
     // ==================== CONSTRUCTOR & INITIALIZER ====================
-    /// @custom:oz-upgrades-unsafe-allow constructor
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
@@ -109,12 +96,12 @@ contract LendefiAssetsV2 is
         _grantRole(CIRCUIT_BREAKER_ROLE, guardian);
 
         // Initialize oracle config
-        oracleConfig = OracleConfig({
+        mainOracleConfig = MainOracleConfig({
             freshnessThreshold: 28800, // 8 hours
             volatilityThreshold: 3600, // 1 hour
             volatilityPercentage: 20, // 20%
             circuitBreakerThreshold: 50, // 50%
-            minimumOraclesRequired: 1 // Min 2 oracles
+            minimumRequiredOracles: 1 // Min 2 oracles
         });
 
         _initializeDefaultTierParameters();
@@ -132,61 +119,54 @@ contract LendefiAssetsV2 is
      * @param twapPeriod The TWAP period in seconds
      * @param resultDecimals The expected decimals for the price result
      */
-    function addUniswapOracle(
+    function updateUniswapOracle(
         address asset,
         address uniswapPool,
         address quoteToken,
         uint32 twapPeriod,
-        uint8 resultDecimals
-    ) external nonZeroAddress(uniswapPool) onlyListedAsset(asset) onlyRole(MANAGER_ROLE) whenNotPaused {
-        // Verify the pool contains the asset
-        address token0 = IUniswapV3Pool(uniswapPool).token0();
-        address token1 = IUniswapV3Pool(uniswapPool).token1();
+        uint8 resultDecimals,
+        uint8 active
+    ) public nonZeroAddress(uniswapPool) onlyListedAsset(asset) onlyRole(MANAGER_ROLE) whenNotPaused {
+        // Validate the pool contains both tokens
+        bool isToken0 = _validatePool(asset, quoteToken, uniswapPool);
 
-        if (asset != token0 && asset != token1) {
-            revert AssetNotInUniswapPool(asset, uniswapPool);
-        }
-
-        if (quoteToken != token0 && quoteToken != token1) {
-            revert TokenNotInUniswapPool(quoteToken, uniswapPool);
-        }
-
-        // Create a deterministic virtual oracle address from the pool
-        address virtualOracle = address(uint160(uint256(keccak256(abi.encodePacked(asset, uniswapPool, "UNISWAP_V3")))));
-
-        // Configure Uniswap oracle
-        uniswapConfigs[virtualOracle] = UniswapOracleConfig({
+        // Asset storage item = assetInfo[asset];
+        assetInfo[asset].poolConfig = UniswapPoolConfig({
             pool: uniswapPool,
             quoteToken: quoteToken,
-            isToken0: asset == token0,
-            twapPeriod: twapPeriod
+            isToken0: isToken0,
+            decimalsUniswap: resultDecimals == 8 ? resultDecimals : 8, //enforce
+            twapPeriod: twapPeriod,
+            active: active
         });
-
-        // Register the virtual oracle
-        _addOracleInternal(asset, virtualOracle, resultDecimals, OracleType.UNISWAP_V3_TWAP);
     }
 
     /**
      * @notice Add an oracle with type specification
      * @param asset The asset to add the oracle for
      * @param oracle The oracle address
-     * @param decimals_ The oracle decimals
-     * @param oracleType The type of oracle
+     * @param decimals The oracle decimals
      */
-    function addOracle(address asset, address oracle, uint8 decimals_, OracleType oracleType)
+    function updateChainlinkOracle(address asset, address oracle, uint8 decimals, uint8 active)
         external
         nonZeroAddress(oracle)
         onlyListedAsset(asset)
         onlyRole(MANAGER_ROLE)
         whenNotPaused
     {
-        _addOracleInternal(asset, oracle, decimals_, oracleType);
+        assetInfo[asset].chainlinkConfig = ChainlinkOracleConfig({
+            oracleUSD: oracle,
+            oracleDecimals: decimals, // Always enforce 8 decimals
+            active: active
+        });
+
+        emit ChainlinkOracleUpdated(asset, oracle, active);
     }
 
     // ==================== OTHER FUNCTIONS ====================
     // ==================== BATCH CONFIGURATION ====================
 
-    function updateOracleConfig(
+    function updateMainOracleConfig(
         uint80 freshness,
         uint80 volatility,
         uint40 volatilityPct,
@@ -215,20 +195,20 @@ contract LendefiAssetsV2 is
         }
 
         // Update config
-        OracleConfig memory oldConfig = oracleConfig;
+        MainOracleConfig memory oldConfig = mainOracleConfig;
 
-        oracleConfig.freshnessThreshold = freshness;
-        oracleConfig.volatilityThreshold = volatility;
-        oracleConfig.volatilityPercentage = volatilityPct;
-        oracleConfig.circuitBreakerThreshold = circuitBreakerPct;
-        oracleConfig.minimumOraclesRequired = minOracles;
+        mainOracleConfig.freshnessThreshold = freshness;
+        mainOracleConfig.volatilityThreshold = volatility;
+        mainOracleConfig.volatilityPercentage = volatilityPct;
+        mainOracleConfig.circuitBreakerThreshold = circuitBreakerPct;
+        mainOracleConfig.minimumRequiredOracles = minOracles;
 
         // Emit events
         emit FreshnessThresholdUpdated(oldConfig.freshnessThreshold, freshness);
         emit VolatilityThresholdUpdated(oldConfig.volatilityThreshold, volatility);
         emit VolatilityPercentageUpdated(oldConfig.volatilityPercentage, volatilityPct);
         emit CircuitBreakerThresholdUpdated(oldConfig.circuitBreakerThreshold, circuitBreakerPct);
-        emit MinimumOraclesUpdated(oldConfig.minimumOraclesRequired, minOracles);
+        emit MinimumOraclesUpdated(oldConfig.minimumRequiredOracles, minOracles);
     }
 
     function updateTierConfig(CollateralTier tier, uint256 jumpRate, uint256 liquidationFee)
@@ -268,47 +248,22 @@ contract LendefiAssetsV2 is
 
     // ==================== ASSET MANAGEMENT ====================
 
-    function updateAssetConfig(
-        address asset,
-        address oracle_,
-        uint8 oracleDecimals_,
-        uint8 assetDecimals,
-        uint8 active,
-        uint32 borrowThreshold,
-        uint32 liquidationThreshold,
-        uint256 maxSupplyLimit,
-        uint256 isolationDebtCap,
-        CollateralTier tier,
-        OracleType oracleType
-    ) external onlyRole(MANAGER_ROLE) whenNotPaused {
-        // Validation logic
-        if (liquidationThreshold > 990) revert InvalidLiquidationThreshold(liquidationThreshold);
-        if (borrowThreshold > liquidationThreshold - 10) revert InvalidBorrowThreshold(borrowThreshold);
+    function updateAssetConfig(address asset, Asset calldata config)
+        external
+        nonZeroAddress(asset)
+        onlyRole(MANAGER_ROLE)
+        whenNotPaused
+    {
+        // Validate the entire config in one go
+        _validateAssetConfig(config);
 
         bool newAsset = !listedAssets.contains(asset);
         if (newAsset) {
             require(listedAssets.add(asset), "ADDING_ASSET");
         }
 
-        // Update asset config
-        Asset storage item = assetInfo[asset];
-        item.active = active;
-        item.oracleUSD = oracle_;
-        item.oracleDecimals = oracleDecimals_;
-        item.decimals = assetDecimals;
-        item.borrowThreshold = borrowThreshold;
-        item.liquidationThreshold = liquidationThreshold;
-        item.maxSupplyThreshold = maxSupplyLimit;
-        item.isolationDebtCap = isolationDebtCap;
-        item.tier = tier;
-        item.oracleType = uint8(oracleType);
-
-        // Handle oracle registration
-        if (oracle_ != address(0) && (newAsset || item.oracleUSD != oracle_)) {
-            _addOracleInternal(asset, oracle_, oracleDecimals_, oracleType);
-        }
-
-        emit UpdateAssetConfig(asset);
+        assetInfo[asset] = config;
+        emit UpdateAssetConfig(config);
     }
 
     function updateAssetTier(address asset, CollateralTier newTier)
@@ -323,28 +278,13 @@ contract LendefiAssetsV2 is
 
     // ==================== ORACLE MANAGEMENT ====================
 
-    function removeOracle(address asset, address oracle)
+    function setPrimaryOracle(address asset, OracleType oracleType)
         external
         onlyListedAsset(asset)
         onlyRole(MANAGER_ROLE)
         whenNotPaused
     {
-        _removeOracleInternal(asset, oracle);
-    }
-
-    function setPrimaryOracle(address asset, address oracle)
-        external
-        onlyListedAsset(asset)
-        onlyRole(MANAGER_ROLE)
-        whenNotPaused
-    {
-        _setPrimaryOracleInternal(asset, oracle);
-    }
-
-    function updateMinimumOracles(address asset, uint256 minimum) external onlyRole(MANAGER_ROLE) {
-        uint256 oldValue = assetMinimumOracles[asset];
-        assetMinimumOracles[asset] = minimum;
-        emit AssetMinimumOraclesUpdated(asset, oldValue, minimum);
+        _setPrimaryOracleInternal(asset, oracleType);
     }
 
     function triggerCircuitBreaker(address asset) external onlyRole(CIRCUIT_BREAKER_ROLE) {
@@ -358,59 +298,17 @@ contract LendefiAssetsV2 is
     }
 
     /**
-     * @notice Replace an existing oracle of a specific type for an asset
-     * @dev If an oracle of the specified type exists, it will be removed and replaced with the new one.
-     *      If no oracle of that type exists, the new oracle is simply added.
-     *      If the oracle being replaced is the primary oracle, the new oracle will become the primary.
-     *      Asset configuration is updated if the oracle type matches the asset's configured oracle type.
-     * @param asset The asset to replace the oracle for
-     * @param oracleType The type of oracle to replace
-     * @param newOracle The address of the new oracle
-     * @param oracleDecimalsValue The number of decimals used by the new oracle
-     */
-    function replaceOracle(address asset, OracleType oracleType, address newOracle, uint8 oracleDecimalsValue)
-        external
-        nonZeroAddress(newOracle)
-        onlyListedAsset(asset)
-        onlyRole(MANAGER_ROLE)
-        whenNotPaused
-    {
-        if (newOracle == address(0)) revert InvalidOracle(newOracle);
-
-        bool updatingConfigOracle = (oracleType == OracleType(assetInfo[asset].oracleType));
-        // Find the existing oracle of this type
-        address oldOracle = address(0);
-        address[] storage oracles = assetOracles[asset];
-
-        for (uint256 i = 0; i < oracles.length; i++) {
-            if (oracleTypes[oracles[i]] == oracleType) {
-                oldOracle = oracles[i];
-                break;
-            }
-        }
-
-        _removeOracleInternal(asset, oldOracle);
-        // Add the new oracle with the same type
-        _addOracleInternal(asset, newOracle, oracleDecimalsValue, oracleType);
-        // Update asset config if the primary oracle was replaced
-
-        if (updatingConfigOracle) {
-            assetInfo[asset].oracleUSD = newOracle;
-            assetInfo[asset].oracleDecimals = oracleDecimalsValue;
-            assetInfo[asset].oracleType = uint8(oracleType);
-        }
-
-        emit OracleReplaced(asset, oldOracle, newOracle, uint8(oracleType));
-    }
-
-    /**
      * @notice Get the oracle address for a specific asset and oracle type
      * @param asset The asset address
      * @param oracleType The oracle type to retrieve
      * @return The oracle address for the specified type, or address(0) if none exists
      */
     function getOracleByType(address asset, OracleType oracleType) external view returns (address) {
-        return assetOracleByType[asset][oracleType];
+        if (oracleType == OracleType.UNISWAP_V3_TWAP) {
+            return assetInfo[asset].poolConfig.pool;
+        }
+
+        return assetInfo[asset].chainlinkConfig.oracleUSD;
     }
 
     /**
@@ -429,19 +327,18 @@ contract LendefiAssetsV2 is
             revert CircuitBreakerActive(asset);
         }
 
-        address oracle = assetOracleByType[asset][oracleType];
-        if (oracle == address(0)) {
-            revert OracleNotFound(asset);
+        if (oracleType == OracleType.UNISWAP_V3_TWAP) {
+            return _getUniswapTWAPPrice(asset);
         }
 
-        return _getSingleOraclePrice(oracle);
+        return _getChainlinkPrice(asset);
     }
     // ==================== ASSET VIEW FUNCTIONS ====================
 
     /**
      * @notice Get asset price as a view function (no state changes)
      * @param asset The asset to get price for
-     * @return The current price of the asset
+     * @return price The current price of the asset
      */
     function getAssetPrice(address asset) public view onlyListedAsset(asset) returns (uint256) {
         // When circuit breaker is active, we can't retrieve prices
@@ -449,37 +346,19 @@ contract LendefiAssetsV2 is
             revert CircuitBreakerActive(asset);
         }
 
-        address[] memory oracles = assetOracles[asset];
-        uint256 length = oracles.length;
+        // Direct storage access instead of copying entire struct to memory
+        uint8 chainlinkActive = assetInfo[asset].chainlinkConfig.active;
+        uint8 uniswapActive = assetInfo[asset].poolConfig.active;
+        uint8 totalActive = chainlinkActive + uniswapActive;
 
-        // Check minimum oracles required
-        uint256 minRequired =
-            assetMinimumOracles[asset] > 0 ? assetMinimumOracles[asset] : oracleConfig.minimumOraclesRequired;
-
-        // Fast path for single oracle
-        if (length == 1) {
-            return _getSingleOraclePrice(oracles[0]);
+        // Use early returns for clearer control flow
+        if (totalActive == 1) {
+            return chainlinkActive == 1 ? _getChainlinkPrice(asset) : _getUniswapTWAPPrice(asset);
         }
 
-        // Calculate median price
-        (uint256 median, uint256 validCount,) = _calculateMedianPrice(asset);
-
-        // Handle case where we don't have enough valid oracles
-        if (validCount < minRequired) {
-            // Try primary oracle as fallback
-            if (primaryOracle[asset] != address(0)) {
-                try this.getSingleOraclePrice(primaryOracle[asset]) returns (uint256 price) {
-                    return price;
-                } catch {
-                    // Primary oracle failed
-                }
-            }
-
-            // No fallback to last valid price anymore
-            revert NotEnoughValidOracles(asset, minRequired, validCount);
-        }
-
-        return median;
+        // If two oracles are active, calculate median
+        (uint256 price,) = _calculateMedianPrice(asset);
+        return price;
     }
 
     /**
@@ -532,11 +411,15 @@ contract LendefiAssetsV2 is
         onlyListedAsset(asset)
         returns (uint256 price, uint256 totalSupplied, uint256 maxSupply, CollateralTier tier)
     {
-        Asset memory assetConfig = assetInfo[asset];
+        // Direct storage access instead of copying entire struct
+        maxSupply = assetInfo[asset].maxSupplyThreshold;
+        tier = assetInfo[asset].tier;
+
+        // Get price (this will revert if circuit breaker is active)
         price = getAssetPrice(asset);
+
+        // Get total supplied from protocol
         totalSupplied = lendefiInstance.assetTVL(asset);
-        maxSupply = assetConfig.maxSupplyThreshold;
-        tier = assetConfig.tier;
     }
 
     function getTierRates() external view returns (uint256[4] memory jumpRates, uint256[4] memory liquidationFees) {
@@ -585,22 +468,53 @@ contract LendefiAssetsV2 is
         return tierConfig[tier].liquidationFee;
     }
 
-    function isIsolationAsset(address asset) external view onlyListedAsset(asset) returns (bool) {
-        return assetInfo[asset].tier == CollateralTier.ISOLATED;
+    function getAssetTier(address asset) external view onlyListedAsset(asset) returns (CollateralTier tier) {
+        return assetInfo[asset].tier;
+    }
+
+    function getAssetDecimals(address asset) external view onlyListedAsset(asset) returns (uint8) {
+        return assetInfo[asset].decimals;
+    }
+
+    function getAssetLiquidationThreshold(address asset) external view onlyListedAsset(asset) returns (uint16) {
+        return assetInfo[asset].liquidationThreshold;
+    }
+
+    function getAssetBorrowThreshold(address asset) external view onlyListedAsset(asset) returns (uint16) {
+        return assetInfo[asset].borrowThreshold;
     }
 
     function getIsolationDebtCap(address asset) external view onlyListedAsset(asset) returns (uint256) {
         return assetInfo[asset].isolationDebtCap;
     }
 
-    // ==================== ORACLE VIEW FUNCTIONS ====================
+    /**
+     * @notice Gets all parameters needed for collateral calculations in a single call
+     * @dev Consolidates multiple getter calls into a single cross-contract call
+     * @param asset Address of the asset to query
+     * @return Struct containing price, thresholds and decimals
+     */
+    function getAssetCalculationParams(address asset)
+        external
+        view
+        onlyListedAsset(asset)
+        returns (AssetCalculationParams memory)
+    {
+        // When circuit breaker is active, we can't retrieve prices
+        if (circuitBroken[asset]) {
+            revert CircuitBreakerActive(asset);
+        }
 
-    function getOracleCount(address asset) external view returns (uint256) {
-        return assetOracles[asset].length;
+        return AssetCalculationParams({
+            price: getAssetPrice(asset),
+            borrowThreshold: assetInfo[asset].borrowThreshold,
+            liquidationThreshold: assetInfo[asset].liquidationThreshold,
+            decimals: assetInfo[asset].decimals
+        });
     }
 
-    function getAssetOracles(address asset) external view returns (address[] memory) {
-        return assetOracles[asset];
+    function getOracleCount(address asset) external view returns (uint256) {
+        return assetInfo[asset].chainlinkConfig.active + assetInfo[asset].poolConfig.active;
     }
 
     /**
@@ -609,21 +523,10 @@ contract LendefiAssetsV2 is
      * @return Whether the asset has a large price deviation
      */
     function checkPriceDeviation(address asset) external view returns (bool, uint256) {
-        (, uint256 validCount, uint256 deviation) = _calculateMedianPrice(asset);
-
-        if (validCount < 2) {
-            return (false, 0); // Not enough prices to calculate deviation
-        }
-
-        return (deviation >= oracleConfig.circuitBreakerThreshold, deviation);
+        (, uint256 deviation) = _calculateMedianPrice(asset);
+        return (deviation >= mainOracleConfig.circuitBreakerThreshold, deviation);
     }
 
-    function getSingleOraclePrice(address oracle) public view returns (uint256) {
-        return _getSingleOraclePrice(oracle);
-    }
-
-    // ==================== INTERNAL FUNCTIONS ====================
-    // ==================== INTERNAL FUNCTIONS ====================
     // ==================== INTERNAL FUNCTIONS ====================
 
     function _initializeDefaultTierParameters() internal {
@@ -649,222 +552,110 @@ contract LendefiAssetsV2 is
         });
     }
 
-    function _removeOracleInternal(address asset, address oracle) internal {
-        address[] storage oracles = assetOracles[asset];
-        uint256 length = oracles.length;
-        bool found = false;
-        uint256 index = 0;
-
-        // Find the oracle to remove
-        for (uint256 i = 0; i < length; i++) {
-            if (oracles[i] == oracle) {
-                found = true;
-                index = i;
-                break;
-            }
-        }
-
-        if (!found) revert OracleNotFound(asset);
-        OracleType oType = oracleTypes[oracle];
-        delete assetOracleByType[asset][oType];
-
-        // If removing the primary oracle, set a new primary
-        if (primaryOracle[asset] == oracle) {
-            if (length > 1) {
-                // Set the next oracle as primary, or the previous if removing the last one
-                address newPrimary = index < length - 1 ? oracles[index + 1] : oracles[0];
-                primaryOracle[asset] = newPrimary;
-                emit PrimaryOracleSet(asset, newPrimary);
-            } else {
-                // If it's the only oracle, clear the primary
-                delete primaryOracle[asset];
-            }
-        }
-
-        // Remove the oracle by swapping with the last element and popping
-        if (index < length - 1) {
-            oracles[index] = oracles[length - 1];
-        }
-        oracles.pop();
-
-        // Check if remaining oracles are sufficient
-        uint256 minRequired =
-            assetMinimumOracles[asset] > 0 ? assetMinimumOracles[asset] : oracleConfig.minimumOraclesRequired;
-
-        if (oracles.length < minRequired) {
-            emit NotEnoughOraclesWarning(asset, minRequired, oracles.length);
-        }
-
-        emit OracleRemoved(asset, oracle);
-    }
-
-    function _setPrimaryOracleInternal(address asset, address oracle) internal {
-        address[] storage oracles = assetOracles[asset];
-        bool found = false;
-
-        for (uint256 i = 0; i < oracles.length; i++) {
-            if (oracles[i] == oracle) {
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) revert OracleNotFound(asset);
-        primaryOracle[asset] = oracle;
-        emit PrimaryOracleSet(asset, oracle);
+    function _setPrimaryOracleInternal(address asset, OracleType oracleType) internal {
+        assetInfo[asset].primaryOracleType = oracleType;
+        emit PrimaryOracleSet(asset, oracleType);
     }
 
     /**
      * @notice Calculate median price from oracles without modifying state
      * @param asset The asset to get price for
      * @return median The median price across all valid oracles
-     * @return validCount Number of valid oracle readings found
      * @return deviation Maximum deviation between any two prices (instead of vs stored price)
      */
-    function _calculateMedianPrice(address asset)
-        internal
-        view
-        returns (uint256 median, uint256 validCount, uint256 deviation)
-    {
-        address[] memory oracles = assetOracles[asset];
-        uint256 length = oracles.length;
-
-        // Early return for no oracles
-        if (length == 0) {
-            return (0, 0, 0);
+    function _calculateMedianPrice(address asset) internal view returns (uint256 median, uint256 deviation) {
+        uint8 active = assetInfo[asset].chainlinkConfig.active + assetInfo[asset].poolConfig.active;
+        if (active != 2) {
+            revert NotEnoughValidOracles(asset, 2, active);
         }
 
-        // Fast path for single oracle
-        if (length == 1) {
-            try this.getSingleOraclePrice(oracles[0]) returns (uint256 price) {
-                return (price, 1, 0);
-            } catch {
-                return (0, 0, 0);
-            }
-        }
-
-        // With our constraint, we now have exactly 2 oracles of different types
-        uint256 price1;
-        uint256 price2;
-        bool valid1;
-        bool valid2;
-
-        try this.getSingleOraclePrice(oracles[0]) returns (uint256 price) {
-            price1 = price;
-            valid1 = true;
-        } catch {}
-
-        try this.getSingleOraclePrice(oracles[1]) returns (uint256 price) {
-            price2 = price;
-            valid2 = true;
-        } catch {}
-
-        validCount = (valid1 ? 1 : 0) + (valid2 ? 1 : 0);
-
-        if (validCount == 0) {
-            return (0, 0, 0);
-        }
-
-        if (validCount == 1) {
-            return (valid1 ? price1 : price2, 1, 0);
-        }
+        // Get prices directly - will revert if either fails
+        uint256 price1 = _getChainlinkPrice(asset);
+        uint256 price2 = _getUniswapTWAPPrice(asset);
 
         // Calculate median (average of two prices)
         median = (price1 + price2) / 2;
 
-        // Calculate deviation
+        // Calculate deviation with guaranteed non-zero minPrice
         uint256 minPrice = price1 < price2 ? price1 : price2;
         uint256 maxPrice = price1 > price2 ? price1 : price2;
         uint256 priceDelta = maxPrice - minPrice;
         deviation = (priceDelta * 100) / minPrice;
 
-        return (median, validCount, deviation);
+        return (median, deviation);
     }
 
     // ==================== INTERNAL FUNCTIONS ====================
-
     /**
-     * @notice Add an oracle with type specification
-     * @param asset The asset to add the oracle for
-     * @param oracle The oracle address
-     * @param oracleDecimalsValue The oracle decimals
-     * @param oracleType The type of oracle
+     * @notice Validate asset configuration parameters
+     * @dev Centralized validation to ensure consistent checks across all configuration updates
+     * @param config The asset configuration to validate
      */
-    function _addOracleInternal(address asset, address oracle, uint8 oracleDecimalsValue, OracleType oracleType)
-        internal
-        nonZeroAddress(oracle)
-    {
-        assetOracleByType[asset][oracleType] = oracle;
+    function _validateAssetConfig(Asset calldata config) internal pure {
+        // Basic validation
+        if (config.chainlinkConfig.oracleUSD == address(0)) revert ZeroAddressNotAllowed();
 
-        // Check if oracle is already added for this asset
-        address[] storage oracles = assetOracles[asset];
-        for (uint256 i = 0; i < oracles.length; i++) {
-            if (oracles[i] == oracle) {
-                revert OracleAlreadyAdded(asset, oracle);
-            }
-
-            // Check if an oracle of this type already exists
-            if (oracleTypes[oracles[i]] == oracleType) {
-                revert OracleTypeAlreadyAdded(asset, oracleType);
-            }
+        // Threshold validations
+        if (config.liquidationThreshold > 990) {
+            revert InvalidLiquidationThreshold(config.liquidationThreshold);
         }
 
-        // Add the oracle
-        oracles.push(oracle);
-        oracleDecimals[oracle] = oracleDecimalsValue;
-        oracleTypes[oracle] = oracleType;
-
-        // If this is the first oracle, set it as primary
-        if (oracles.length == 1) {
-            primaryOracle[asset] = oracle;
-            emit PrimaryOracleSet(asset, oracle);
+        if (config.borrowThreshold > config.liquidationThreshold - 10) {
+            revert InvalidBorrowThreshold(config.borrowThreshold);
         }
 
-        emit OracleAdded(asset, oracle);
-        emit OracleTypeSet(asset, oracle, uint8(oracleType));
-    }
+        // Decimal validations
+        if (config.chainlinkConfig.oracleDecimals != 8) {
+            revert InvalidParameter("oracleDecimals", config.chainlinkConfig.oracleDecimals);
+        }
 
-    /**
-     * @notice Get price from any oracle based on its type
-     * @param oracleAddress The oracle address
-     * @return The price with the specified decimals
-     */
-    function _getSingleOraclePrice(address oracleAddress) internal view returns (uint256) {
-        OracleType oracleType = oracleTypes[oracleAddress];
+        if (config.decimals == 0 || config.decimals > 18) {
+            revert InvalidParameter("assetDecimals", config.decimals);
+        }
 
-        if (oracleType == OracleType.UNISWAP_V3_TWAP) {
-            return _getUniswapTWAPPrice(oracleAddress);
-        } else {
-            // Default to Chainlink
-            return _getChainlinkPrice(oracleAddress);
+        // Activity check
+        if (config.active > 1) {
+            revert InvalidParameter("active", config.active);
+        }
+
+        // Supply limit validation
+        if (config.maxSupplyThreshold == 0) {
+            revert InvalidParameter("maxSupplyThreshold", 0);
+        }
+
+        // For isolated assets, check debt cap
+        if (config.tier == CollateralTier.ISOLATED && config.isolationDebtCap == 0) {
+            revert InvalidParameter("isolationDebtCap", 0);
         }
     }
 
     /**
      * @notice Get price from Chainlink oracle
-     * @param oracleAddress The Chainlink oracle address
+     * @param asset The Chainlink oracle address
      * @return The price with the specified decimals
      */
-    function _getChainlinkPrice(address oracleAddress) internal view returns (uint256) {
+    function _getChainlinkPrice(address asset) internal view returns (uint256) {
+        // Asset memory item = assetInfo[asset];
+        address oracle = assetInfo[asset].chainlinkConfig.oracleUSD;
         (uint80 roundId, int256 price,, uint256 timestamp, uint80 answeredInRound) =
-            AggregatorV3Interface(oracleAddress).latestRoundData();
+            AggregatorV3Interface(oracle).latestRoundData();
 
         if (price <= 0) {
-            revert OracleInvalidPrice(oracleAddress, price);
+            revert OracleInvalidPrice(oracle, price);
         }
 
         if (answeredInRound < roundId) {
-            revert OracleStalePrice(oracleAddress, roundId, answeredInRound);
+            revert OracleStalePrice(oracle, roundId, answeredInRound);
         }
 
         uint256 age = block.timestamp - timestamp;
-        if (age > oracleConfig.freshnessThreshold) {
-            revert OracleTimeout(oracleAddress, timestamp, block.timestamp, oracleConfig.freshnessThreshold);
+        if (age > mainOracleConfig.freshnessThreshold) {
+            revert OracleTimeout(oracle, timestamp, block.timestamp, mainOracleConfig.freshnessThreshold);
         }
 
         if (roundId > 1) {
             (, int256 previousPrice,, uint256 previousTimestamp,) =
-                AggregatorV3Interface(oracleAddress).getRoundData(roundId - 1);
+                AggregatorV3Interface(oracle).getRoundData(roundId - 1);
 
             if (previousPrice > 0 && previousTimestamp > 0) {
                 uint256 currentPrice = uint256(price);
@@ -873,8 +664,11 @@ contract LendefiAssetsV2 is
                 uint256 priceDelta = currentPrice > prevPrice ? currentPrice - prevPrice : prevPrice - currentPrice;
                 uint256 changePercent = (priceDelta * 100) / prevPrice;
 
-                if (changePercent >= oracleConfig.volatilityPercentage && age >= oracleConfig.volatilityThreshold) {
-                    revert OracleInvalidPriceVolatility(oracleAddress, price, changePercent);
+                if (
+                    changePercent >= mainOracleConfig.volatilityPercentage
+                        && age >= mainOracleConfig.volatilityThreshold
+                ) {
+                    revert OracleInvalidPriceVolatility(oracle, price, changePercent);
                 }
             }
         }
@@ -884,14 +678,14 @@ contract LendefiAssetsV2 is
 
     /**
      * @notice Get time-weighted average price from Uniswap V3
-     * @param virtualOracle The virtual oracle address
-     * @return The TWAP price with the specified decimals
+     * @param asset The virtual oracle address
+     * @return price The TWAP price with the specified decimals
      */
-    function _getUniswapTWAPPrice(address virtualOracle) internal view returns (uint256) {
-        UniswapOracleConfig memory config = uniswapConfigs[virtualOracle];
+    function _getUniswapTWAPPrice(address asset) internal view returns (uint256 price) {
+        UniswapPoolConfig memory config = assetInfo[asset].poolConfig;
 
-        if (config.pool == address(0)) {
-            revert InvalidUniswapConfig(virtualOracle);
+        if (config.pool == address(0) || config.active == 0) {
+            revert InvalidUniswapConfig(asset);
         }
 
         // Prepare observation timestamps
@@ -901,25 +695,41 @@ contract LendefiAssetsV2 is
 
         // Get tick cumulative data from Uniswap
         (int56[] memory tickCumulatives,) = IUniswapV3Pool(config.pool).observe(secondsAgos);
-
-        // Calculate time-weighted tick
         int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
         int24 timeWeightedAverageTick = int24(tickCumulativesDelta / int56(uint56(config.twapPeriod)));
 
         // Convert tick to price based on whether asset is token0 or token1
-        uint256 price = config.isToken0
-            ? UniswapTickMath.getQuoteAtTick(-timeWeightedAverageTick)
-            : UniswapTickMath.getQuoteAtTick(timeWeightedAverageTick);
+        price = config.isToken0
+            ? UniswapTickMath.getQuoteAtTick(timeWeightedAverageTick)
+            : UniswapTickMath.getQuoteAtTick(-timeWeightedAverageTick);
 
-        // Convert to expected decimals
-        uint8 decimals = oracleDecimals[virtualOracle];
-        if (decimals < 18) {
-            return price / (10 ** (18 - decimals));
-        } else if (decimals > 18) {
-            return price * (10 ** (decimals - 18));
+        if (price <= 0) revert OracleInvalidPrice(config.pool, int256(price));
+    }
+
+    /**
+     * @notice Validates that both asset and quote token are present in a Uniswap V3 pool
+     * @param asset The asset token address to validate
+     * @param quoteToken The quote token address to validate
+     * @param uniswapPool The Uniswap V3 pool address
+     * @return isToken0 Whether the asset is token0 in the pool
+     */
+    function _validatePool(address asset, address quoteToken, address uniswapPool)
+        internal
+        view
+        returns (bool isToken0)
+    {
+        address token0 = IUniswapV3Pool(uniswapPool).token0();
+        address token1 = IUniswapV3Pool(uniswapPool).token1();
+
+        if (asset != token0 && asset != token1) {
+            revert AssetNotInUniswapPool(asset, uniswapPool);
         }
 
-        return price;
+        if (quoteToken != token0 && quoteToken != token1) {
+            revert TokenNotInUniswapPool(quoteToken, uniswapPool);
+        }
+
+        return asset == token0;
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {
