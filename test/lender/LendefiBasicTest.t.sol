@@ -21,7 +21,7 @@ contract LendefiTest is BasicDeploy {
 
     // Contract instances
     MockRWA internal rwaToken;
-    RWAPriceConsumerV3 internal rwaassetsInstance;
+    RWAPriceConsumerV3 internal rwaOracleInstance;
     WETHPriceConsumerV3 internal wethassetsInstance;
 
     // Constants for price setting
@@ -44,15 +44,15 @@ contract LendefiTest is BasicDeploy {
 
         // Deploy oracles
         wethassetsInstance = new WETHPriceConsumerV3();
-        rwaassetsInstance = new RWAPriceConsumerV3();
+        rwaOracleInstance = new RWAPriceConsumerV3();
 
         // Set prices
         wethassetsInstance.setPrice(int256(ETH_PRICE)); // $2500 per ETH
-        rwaassetsInstance.setPrice(int256(RWA_PRICE)); // $1000 per RWA token
+        rwaOracleInstance.setPrice(int256(RWA_PRICE)); // $1000 per RWA token
 
         // Set the minimum oracles required to 1 to avoid NotEnoughOracles errors
         vm.prank(address(timelockInstance));
-        assetsInstance.updateOracleConfig(
+        assetsInstance.updateMainOracleConfig(
             uint80(28800), // 8 hours freshness
             uint80(3600), // 1 hour volatility
             uint40(20), // 20% volatility percentage
@@ -73,41 +73,61 @@ contract LendefiTest is BasicDeploy {
         // Configure RWA token (isolated)
         assetsInstance.updateAssetConfig(
             address(rwaToken),
-            address(rwaassetsInstance),
-            8,
-            18,
-            1,
-            650,
-            750,
-            1_000_000 ether,
-            100_000e6, // isolation debt cap
-            IASSETS.CollateralTier.ISOLATED, // tier moved after isolation debt cap
-            IASSETS.OracleType.CHAINLINK // new parameter
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 650, // 65% LTV
+                liquidationThreshold: 750, // 75% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Max supply limit
+                isolationDebtCap: 100_000e6, // Isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.ISOLATED,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(rwaOracleInstance),
+                    oracleDecimals: 8, // Oracle decimals
+                    active: 1 // Chainlink oracle is active
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0 // Uniswap oracle is inactive
+                })
+            })
         );
 
         // Configure WETH (cross-collateral)
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethassetsInstance),
-            8,
-            18,
-            1,
-            800,
-            850,
-            1_000_000 ether,
-            0, // isolation debt cap
-            IASSETS.CollateralTier.CROSS_A,
-            IASSETS.OracleType.CHAINLINK // new parameter
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 800,
+                liquidationThreshold: 850,
+                maxSupplyThreshold: 1_000_000 ether,
+                isolationDebtCap: 0, // isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(wethassetsInstance),
+                    oracleDecimals: 8,
+                    active: 1 // Chainlink oracle is active
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0 // Uniswap oracle is inactive
+                })
+            })
         );
 
-        // Add a second oracle for the RWA token
-        // RWAPriceConsumerV3 rwaBackupOracle = new RWAPriceConsumerV3();
-        // rwaBackupOracle.setPrice(int256(RWA_PRICE)); // Same price as primary oracle
-        // assetsInstance.addOracle(address(rwaToken), address(rwaBackupOracle), 8, IASSETS.OracleType.CHAINLINK);
-
-        // Register oracles with Oracle module
-        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethassetsInstance));
-        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaassetsInstance));
         vm.stopPrank();
     }
 
@@ -125,16 +145,30 @@ contract LendefiTest is BasicDeploy {
         vm.prank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
             address(rwaToken),
-            address(rwaassetsInstance),
-            8, // Oracle decimals
-            18, // Asset decimals
-            1, // Active
-            650, // 65% LTV
-            750, // 75% liquidation threshold
-            1_000_000 ether, // Max supply limit
-            50_000e6, // Isolation debt cap (lower than potential borrow amount)
-            IASSETS.CollateralTier.ISOLATED, // Tier
-            IASSETS.OracleType.CHAINLINK // new parameter
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 650, // 65% LTV
+                liquidationThreshold: 750, // 75% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Max supply limit
+                isolationDebtCap: 50_000e6, // Isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.ISOLATED,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(rwaOracleInstance),
+                    oracleDecimals: 8, // Oracle decimals
+                    active: 1 // Chainlink oracle is active
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0 // Uniswap oracle is inactive
+                })
+            })
         );
 
         // Setup borrower with collateral
@@ -204,16 +238,30 @@ contract LendefiTest is BasicDeploy {
         vm.prank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
             address(rwaToken),
-            address(rwaassetsInstance),
-            8, // Oracle decimals
-            18, // Asset decimals
-            1, // Active
-            650, // 65% LTV
-            750, // 75% liquidation threshold
-            1_000_000 ether, // Max supply limit
-            300_000e6, // Isolation debt cap increased to be higher than our credit limit
-            IASSETS.CollateralTier.ISOLATED, // Tier
-            IASSETS.OracleType.CHAINLINK // new parameter
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 650, // 65% LTV
+                liquidationThreshold: 750, // 75% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Max supply limit
+                isolationDebtCap: 300_000e6, // Isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.ISOLATED,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(rwaOracleInstance),
+                    oracleDecimals: 8, // Oracle decimals
+                    active: 1 // Chainlink oracle is active
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0 // Uniswap oracle is inactive
+                })
+            })
         );
         vm.startPrank(bob);
 
@@ -266,7 +314,6 @@ contract LendefiTest is BasicDeploy {
 
         IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
         console2.log("Asset Decimals:", asset.decimals);
-        console2.log("Oracle Decimals:", asset.oracleDecimals);
         console2.log("Borrow Threshold:", asset.borrowThreshold);
 
         uint256 price = assetsInstance.getAssetPrice(address(rwaToken));
@@ -275,7 +322,7 @@ contract LendefiTest is BasicDeploy {
         // Calculation:
         // 100 ether (10^18) * $1000 (10^8) * 650 / (1000 * 10^18 * 10^8) = 65_000_000_000 (65M USDC with 6 decimals)
         uint256 expected = (100 ether * price * 650) / (1000 * 10 ** asset.decimals);
-        expected = expected / 10 ** asset.oracleDecimals * 1e6; // Convert to USDC decimals
+        expected = expected / 10 ** asset.chainlinkConfig.oracleDecimals * 1e6; // Convert to USDC decimals
         console2.log("Expected Credit Limit:", expected);
 
         assertEq(creditLimit, expected);
