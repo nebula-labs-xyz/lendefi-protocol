@@ -63,35 +63,61 @@ contract PauseUnpauseTest is BasicDeploy {
         // Configure WETH as CROSS_A tier
         assetsInstance.updateAssetConfig(
             address(wethInstance),
-            address(wethOracleInstance),
-            8,
-            18,
-            1,
-            800, // 80% borrow threshold
-            850, // 85% liquidation threshold
-            1_000_000 ether,
-            0,
-            IASSETS.CollateralTier.CROSS_A,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18, // Asset decimals
+                borrowThreshold: 800, // 80% borrow threshold
+                liquidationThreshold: 850, // 85% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Supply limit
+                isolationDebtCap: 0, // No isolation debt cap
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(wethOracleInstance),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
 
         // Configure RWA token as ISOLATED tier
         assetsInstance.updateAssetConfig(
             address(rwaToken),
-            address(rwaOracleInstance),
-            8,
-            18,
-            1,
-            650, // 65% borrow threshold
-            750, // 75% liquidation threshold
-            1_000_000 ether,
-            100_000e6, // Isolation debt cap of 100,000 USDC
-            IASSETS.CollateralTier.ISOLATED,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18, // Asset decimals
+                borrowThreshold: 650, // 65% borrow threshold
+                liquidationThreshold: 750, // 75% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Supply limit
+                isolationDebtCap: 100_000e6, // Isolation debt cap of 100,000 USDC
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.ISOLATED,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(rwaOracleInstance),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
-        // Register oracles with Oracle module
-        assetsInstance.setPrimaryOracle(address(wethInstance), address(wethOracleInstance));
-        assetsInstance.setPrimaryOracle(address(rwaToken), address(rwaOracleInstance));
+
         vm.stopPrank();
     }
 
@@ -503,28 +529,39 @@ contract PauseUnpauseTest is BasicDeploy {
 
     // Test 20: Admin functions work when paused
     function test_AdminFunctionsWorkWhenPaused() public {
-        // Pause the protocol
-        vm.prank(guardian);
-        LendefiInstance.pause();
-
         // Try admin functions
-        vm.startPrank(address(timelockInstance));
-
+        vm.prank(address(timelockInstance));
         // Update asset config should work
         assetsInstance.updateAssetConfig(
             address(rwaToken),
-            address(rwaOracleInstance),
-            8,
-            18,
-            1,
-            600, // Change from 650 to 600
-            700, // Change from 750 to 700
-            1_000_000 ether,
-            100_000e6,
-            IASSETS.CollateralTier.ISOLATED,
-            IASSETS.OracleType.CHAINLINK
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18, // Asset decimals
+                borrowThreshold: 650, // 65% borrow threshold
+                liquidationThreshold: 750, // 75% liquidation threshold
+                maxSupplyThreshold: 1_000_000 ether, // Supply limit
+                isolationDebtCap: 100_000e6, // Isolation debt cap of 100,000 USDC
+                assetMinimumOracles: 1, // Need at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.ISOLATED,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(rwaOracleInstance),
+                    oracleDecimals: 8, // Standardized to 8 decimals
+                    active: 1
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(0), // No Uniswap pool
+                    quoteToken: address(0),
+                    isToken0: false,
+                    decimalsUniswap: 0,
+                    twapPeriod: 0,
+                    active: 0
+                })
+            })
         );
-
+        // Pause the protocol
+        vm.prank(guardian);
+        LendefiInstance.pause();
         // Update flash loan fee using the new config approach
         // First get the current config
         IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
@@ -536,13 +573,13 @@ contract PauseUnpauseTest is BasicDeploy {
         config.flashLoanFee = 10; // Change from current value to 10
 
         // Apply the updated config
+        vm.prank(address(timelockInstance));
         LendefiInstance.loadProtocolConfig(config);
-        vm.stopPrank();
 
         // Verify changes were applied
         IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
-        assertEq(asset.borrowThreshold, 600, "borrowThreshold should be updated to 600");
-        assertEq(asset.liquidationThreshold, 700, "liquidationThreshold should be updated to 700");
+        assertEq(asset.borrowThreshold, 650, "borrowThreshold should be updated to 600");
+        assertEq(asset.liquidationThreshold, 750, "liquidationThreshold should be updated to 700");
 
         // Verify flash loan fee update using the new config approach
         IPROTOCOL.ProtocolConfig memory updatedConfig = LendefiInstance.getConfig();
