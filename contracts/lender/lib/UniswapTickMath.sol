@@ -1,6 +1,7 @@
-// Create a new file: contracts/libraries/UniswapTickMath.sol
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
+
+import "./FullMath.sol";
 
 library UniswapTickMath {
     function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160) {
@@ -36,9 +37,25 @@ library UniswapTickMath {
         return uint160((ratio >> 32) + (ratio % (1 << 32) == 0 ? 0 : 1));
     }
 
+    // Updated getQuoteAtTick method based on Uniswap's implementation
     function getQuoteAtTick(int24 tick) internal pure returns (uint256) {
         uint160 sqrtRatioX96 = getSqrtRatioAtTick(tick);
-        uint256 price = (uint256(sqrtRatioX96) * uint256(sqrtRatioX96)) / (1 << 192);
-        return price * 10 ** 18;
+
+        // We're calculating a price, so we need a "base amount" - use 1e8 (with 8 decimals)
+        uint256 baseAmount = 1e8;
+
+        // Calculate price with proper precision
+        uint256 quoteAmount;
+        if (sqrtRatioX96 <= type(uint128).max) {
+            // For smaller sqrt ratios, use full 192-bit precision
+            uint256 ratioX192 = uint256(sqrtRatioX96) * uint256(sqrtRatioX96);
+            quoteAmount = FullMath.mulDiv(ratioX192, baseAmount, 1 << 192);
+        } else {
+            // For larger sqrt ratios, use 128-bit precision to avoid overflow
+            uint256 ratioX128 = FullMath.mulDiv(sqrtRatioX96, sqrtRatioX96, 1 << 64);
+            quoteAmount = FullMath.mulDiv(ratioX128, baseAmount, 1 << 128);
+        }
+
+        return quoteAmount;
     }
 }
