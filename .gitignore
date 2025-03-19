@@ -14,6 +14,7 @@ out-via-ir
 
 # Config files
 .env
+lcov.info
 
 # Avoid ignoring gitkeep
 !/**/.gitkeep
@@ -32,5 +33,6 @@ out
 # Docs
 docs/
 saved-tests/
+coverage-report/
 
 
