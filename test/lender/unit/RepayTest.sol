@@ -359,7 +359,7 @@ contract RepayTest is BasicDeploy {
         uint256 positionId = _setupPositionWithDebt(bob, collateralAmount, borrowAmount);
 
         // Pause the protocol
-        vm.startPrank(guardian);
+        vm.startPrank(gnosisSafe);
         LendefiInstance.pause();
         vm.stopPrank();
 
