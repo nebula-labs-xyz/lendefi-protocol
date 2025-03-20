@@ -186,8 +186,8 @@ contract GetAssetDetailsTest is BasicDeploy {
     }
 
     function _addLiquidity(uint256 amount) internal {
-        usdcInstance.mint(guardian, amount);
-        vm.startPrank(guardian);
+        usdcInstance.mint(gnosisSafe, amount);
+        vm.startPrank(gnosisSafe);
         usdcInstance.approve(address(LendefiInstance), amount);
         LendefiInstance.supplyLiquidity(amount);
         vm.stopPrank();
