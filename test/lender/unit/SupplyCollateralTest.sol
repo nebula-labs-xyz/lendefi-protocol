@@ -588,7 +588,7 @@ contract SupplyCollateralTest is BasicDeploy {
         _mintTokens(bob, address(wethInstance), 10 ether);
 
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         vm.startPrank(bob);
