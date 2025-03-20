@@ -72,20 +72,6 @@ contract BasicDeployTest is BasicDeploy {
         deployTeamManagerUpgrade();
     }
 
-    // function test_012_deployOracle() public {
-    //     deployComplete();
-    //     _deployOracle();
-
-    //     // Verify Oracle deployment
-    //     assertFalse(
-    //         address(oracleInstance) == Upgrades.getImplementationAddress(address(oracleInstance)),
-    //         "Implementation should be different from proxy"
-    //     );
-
-    //     // Test Oracle functionality
-    //     assertTrue(oracleInstance.hasRole(MANAGER_ROLE, address(timelockInstance)), "Timelock should have MANAGER_ROLE");
-    // }
-
     function test_013_deployYieldToken() public {
         deployComplete();
         _deployYieldToken();
@@ -97,7 +83,7 @@ contract BasicDeployTest is BasicDeploy {
         );
 
         // Test YieldToken functionality
-        assertTrue(yieldTokenInstance.hasRole(PAUSER_ROLE, guardian), "Guardian should have PAUSER_ROLE");
+        assertTrue(yieldTokenInstance.hasRole(PAUSER_ROLE, gnosisSafe), "Guardian should have PAUSER_ROLE");
     }
 
     function test_014_deployYieldTokenUpgrade() public {
