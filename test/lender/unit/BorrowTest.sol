@@ -255,9 +255,8 @@ contract BorrowTest is BasicDeploy {
         uint256 positionId = _setupPosition(bob, address(wethInstance), collateralAmount, false);
 
         // Pause protocol
-        vm.startPrank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
-        vm.stopPrank();
 
         // Attempt to borrow
         vm.startPrank(bob);
