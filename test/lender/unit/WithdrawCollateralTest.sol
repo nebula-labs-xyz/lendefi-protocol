@@ -465,7 +465,7 @@ contract WithdrawCollateralTest is BasicDeploy {
         _supplyCollateral(bob, address(wethInstance), collateralAmount, positionId);
 
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         vm.startPrank(bob);
