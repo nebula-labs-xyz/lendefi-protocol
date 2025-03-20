@@ -119,7 +119,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
         // First schedule an upgrade
         LendefiAssets newImplementation = new LendefiAssets();
 
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(newImplementation));
 
         // Attempt to cancel without proper role
@@ -136,7 +136,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
         // Schedule an upgrade with one implementation
         LendefiAssets scheduledImpl = new LendefiAssets();
 
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(scheduledImpl));
 
         // Try to upgrade with a different implementation
@@ -144,7 +144,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
 
         vm.warp(block.timestamp + 3 days + 1);
 
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectRevert(
             abi.encodeWithSelector(ImplementationMismatch.selector, address(scheduledImpl), address(differentImpl))
         );
@@ -156,7 +156,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
     function test_updateUniswapOracleWithInvalidAsset() public {
         address invalidAsset = address(0xDEAD);
 
-        vm.prank(address(timelockInstance)); // Changed from guardian to timelockInstance
+        vm.prank(address(timelockInstance)); // Changed from gnosisSafe to timelockInstance
         vm.expectRevert(abi.encodeWithSelector(AssetNotListed.selector, invalidAsset));
         assetsInstance.updateUniswapOracle(invalidAsset, address(mockUniswapPool), address(usdcInstance), 1800, 8, 1);
     }
@@ -207,7 +207,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
     function test_updateUniswapOracleQuoteTokenNotInPool() public {
         address invalidQuote = address(0xEEEE);
 
-        vm.prank(address(timelockInstance)); // Changed from guardian to timelockInstance
+        vm.prank(address(timelockInstance)); // Changed from gnosisSafe to timelockInstance
         vm.expectRevert(abi.encodeWithSelector(TokenNotInUniswapPool.selector, invalidQuote, address(mockUniswapPool)));
         assetsInstance.updateUniswapOracle(address(wethInstance), address(mockUniswapPool), invalidQuote, 1800, 8, 1);
     }
@@ -215,7 +215,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
     // ======== 3. Configuration Tests ========
 
     function test_UpdateOracleConfigInvalidThresholds() public {
-        vm.startPrank(address(timelockInstance)); // Changed from guardian to timelockInstance
+        vm.startPrank(address(timelockInstance)); // Changed from gnosisSafe to timelockInstance
 
         // Test freshness threshold
         vm.expectRevert(
@@ -225,8 +225,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
             10 minutes, // Too low
             1 hours,
             10,
-            50,
-            1
+            50
         );
 
         // Test volatility threshold
@@ -235,8 +234,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
             1 hours,
             3 minutes, // Too low
             10,
-            50,
-            1
+            50
         );
 
         // Test volatility percent
@@ -245,8 +243,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
             1 hours,
             1 hours,
             3, // Too low
-            50,
-            1
+            50
         );
 
         // Test circuit breaker threshold
@@ -255,25 +252,14 @@ contract LendefiAssetsBranchTest is BasicDeploy {
             1 hours,
             1 hours,
             10,
-            20, // Too low
-            1
-        );
-
-        // Test minimum oracles
-        vm.expectRevert(abi.encodeWithSelector(InvalidThreshold.selector, "minOracles", 0, 1, type(uint16).max));
-        assetsInstance.updateMainOracleConfig(
-            1 hours,
-            1 hours,
-            10,
-            50,
-            0 // Too low
+            20 // Too low
         );
 
         vm.stopPrank();
     }
 
     function test_UpdateTierConfigThresholds() public {
-        vm.startPrank(address(timelockInstance)); // Changed from guardian to timelockInstance
+        vm.startPrank(address(timelockInstance)); // Changed from gnosisSafe to timelockInstance
 
         // Test jump rate too high
         vm.expectRevert(abi.encodeWithSelector(RateTooHigh.selector, 0.26e6, 0.25e6));
@@ -335,8 +321,8 @@ contract LendefiAssetsBranchTest is BasicDeploy {
     // ======== 4. Oracle Price Tests ========
 
     function test_CircuitBreakerActive() public {
-        // Trigger circuit breaker - use guardian here since it has CIRCUIT_BREAKER_ROLE
-        vm.prank(guardian);
+        // Trigger circuit breaker - use gnosisSafe here since it has CIRCUIT_BREAKER_ROLE
+        vm.prank(gnosisSafe);
         assetsInstance.triggerCircuitBreaker(address(wethInstance));
 
         // Verify price function reverts
@@ -396,10 +382,8 @@ contract LendefiAssetsBranchTest is BasicDeploy {
             8 hours, // Default freshness
             30 minutes, // Volatility checking period
             20, // 20% max volatility
-            50, // Circuit breaker threshold
-            1 // Min oracles
+            50 // Circuit breaker threshold
         );
-
         // Set current price with timestamp exactly at volatilityThreshold age
         uint256 currentTimestamp = block.timestamp - 30 minutes; // Exactly at volatility threshold
         mockChainlinkOracle.setPrice(1000e8); // Current price
@@ -493,12 +477,8 @@ contract LendefiAssetsBranchTest is BasicDeploy {
 
     function test_IsAssetAtCapacity() public {
         // Use LendefiInstance from BasicDeploy instead of creating a new mock
-        vm.startPrank(guardian);
-        assetsInstance.setCoreAddress(address(LendefiInstance));
-        vm.stopPrank();
-
         vm.startPrank(address(timelockInstance));
-
+        assetsInstance.setCoreAddress(address(LendefiInstance));
         // Use a mock method to simulate TVL in LendefiInstance
         // We need to configure how to mock this in BasicDeploy or directly access internals
         vm.mockCall(
