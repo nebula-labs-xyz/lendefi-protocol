@@ -527,7 +527,7 @@ contract ExitPositionTest is BasicDeploy {
         _supplyCollateral(bob, address(wethInstance), 5 ether, positionId);
 
         // Pause protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         vm.startPrank(bob);
