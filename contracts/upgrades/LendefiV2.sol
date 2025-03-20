@@ -65,7 +65,7 @@ import {IPROTOCOL} from "../interfaces/IProtocol.sol";
 import {IECOSYSTEM} from "../interfaces/IEcosystem.sol";
 import {IASSETS} from "../interfaces/IASSETS.sol";
 import {IFlashLoanReceiver} from "../interfaces/IFlashLoanReceiver.sol";
-import {ILendefiYieldToken} from "../interfaces/ILendefiYieldToken.sol";
+import {IYIELDTOKEN} from "../interfaces/ILendefiYieldToken.sol";
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import {IERC20, SafeERC20 as TH} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -133,7 +133,7 @@ contract LendefiV2 is
     /**
      * @dev Reference to the yield token (LP token) contract
      */
-    ILendefiYieldToken internal yieldTokenInstance;
+    IYIELDTOKEN internal yieldTokenInstance;
 
     /**
      * @dev Reference to the assets module for collateral management
@@ -292,7 +292,7 @@ contract LendefiV2 is
         tokenInstance = IERC20(govToken);
         ecosystemInstance = IECOSYSTEM(payable(ecosystem));
         treasury = treasury_;
-        yieldTokenInstance = ILendefiYieldToken(yieldToken);
+        yieldTokenInstance = IYIELDTOKEN(yieldToken);
         assetsModule = IASSETS(assetsModule_);
 
         // Initialize default parameters in mainConfig
