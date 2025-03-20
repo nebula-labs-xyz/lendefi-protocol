@@ -73,7 +73,6 @@ interface IASSETS {
         uint80 volatilityThreshold;
         uint40 volatilityPercentage;
         uint40 circuitBreakerThreshold;
-        uint16 minimumRequiredOracles;
     }
 
     // Add to IASSETS.sol
@@ -115,7 +114,6 @@ interface IASSETS {
     event VolatilityThresholdUpdated(uint256 oldValue, uint256 newValue);
     event VolatilityPercentageUpdated(uint256 oldValue, uint256 newValue);
     event CircuitBreakerThresholdUpdated(uint256 oldValue, uint256 newValue);
-    event MinimumOraclesUpdated(uint256 oldValue, uint256 newValue);
     event TierParametersUpdated(CollateralTier indexed tier, uint256 jumpRate, uint256 liquidationFee);
     event UpgradeScheduled(
         address indexed sender, address indexed implementation, uint64 scheduledTime, uint64 effectiveTime
@@ -188,15 +186,9 @@ interface IASSETS {
      * @param volatility Volatility monitoring period in seconds
      * @param volatilityPct Maximum price change percentage allowed
      * @param circuitBreakerPct Percentage difference that triggers circuit breaker
-     * @param minOracles Minimum required oracles for price calculation
      */
-    function updateMainOracleConfig(
-        uint80 freshness,
-        uint80 volatility,
-        uint40 volatilityPct,
-        uint40 circuitBreakerPct,
-        uint16 minOracles
-    ) external;
+    function updateMainOracleConfig(uint80 freshness, uint80 volatility, uint40 volatilityPct, uint40 circuitBreakerPct)
+        external;
 
     /**
      * @notice Update rate configuration for a collateral tier
