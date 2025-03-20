@@ -144,15 +144,6 @@ contract OraclePriceExpandedTest is BasicDeploy {
             1 // active
         );
 
-        // Update oracle config using the new updateMainOracleConfig method
-        assetsInstance.updateMainOracleConfig(
-            28800, // 8 hours freshness
-            3600, // 1 hour volatility
-            20, // 20% volatility threshold
-            50, // 50% circuit breaker
-            1 // Require only 1 valid oracle
-        );
-
         vm.stopPrank();
     }
 
@@ -347,7 +338,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
         assertEq(initialPrice, 1000e8, "Initial price should be correct");
 
         // Trigger circuit breaker
-        vm.prank(address(guardian));
+        vm.prank(address(gnosisSafe));
         assetsInstance.triggerCircuitBreaker(address(testAsset));
 
         // Try to get price - should revert
@@ -355,7 +346,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
         assetsInstance.getAssetPrice(address(testAsset));
 
         // Reset circuit breaker
-        vm.prank(address(guardian));
+        vm.prank(address(gnosisSafe));
         assetsInstance.resetCircuitBreaker(address(testAsset));
 
         // Get price again using the Chainlink oracle directly rather than the median calculation
@@ -425,13 +416,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
     // Test 15: Test median price calculation with both oracles
     function test_GetMedianPrice() public {
         vm.prank(address(timelockInstance));
-        assetsInstance.updateMainOracleConfig(
-            uint80(28800), // default freshness
-            uint80(3600), // default volatility
-            uint40(20), // default volatility %
-            uint40(50), // default circuit breaker %
-            2 // minimum 1 oracle
-        );
+
         // Set the Chainlink oracle price
         mockOracle.setPrice(1000e8);
         mockOracle.setTimestamp(block.timestamp);
@@ -522,7 +507,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
         assertEq(price, 1000e8, "Price should be available initially");
 
         // Trigger circuit breaker manually
-        vm.prank(address(guardian));
+        vm.prank(address(gnosisSafe));
         assetsInstance.triggerCircuitBreaker(address(testAsset));
 
         // Now it should revert
