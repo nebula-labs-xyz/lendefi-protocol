@@ -19,6 +19,7 @@ contract InitializeTest is BasicDeploy {
         // TGE setup
         vm.prank(guardian);
         tokenInstance.initializeTGE(address(ecoInstance), address(treasuryInstance));
+
         data = abi.encodeCall(
             Lendefi.initialize,
             (
@@ -29,7 +30,7 @@ contract InitializeTest is BasicDeploy {
                 address(timelockInstance),
                 address(yieldTokenInstance),
                 address(assetsInstance),
-                guardian
+                gnosisSafe
             )
         );
     }
@@ -41,12 +42,14 @@ contract InitializeTest is BasicDeploy {
 
         // Check roles assignment - UPDATED to match contract implementation
         assertTrue(LendefiInstance.hasRole(0x00, address(timelockInstance)), "Timelock not assigned DEFAULT_ADMIN_ROLE");
-        assertTrue(LendefiInstance.hasRole(keccak256("PAUSER_ROLE"), guardian), "Guardian not assigned PAUSER_ROLE");
+        assertTrue(LendefiInstance.hasRole(keccak256("PAUSER_ROLE"), gnosisSafe), "gnosisSafe not assigned PAUSER_ROLE");
         assertTrue(
             LendefiInstance.hasRole(keccak256("MANAGER_ROLE"), address(timelockInstance)),
             "Timelock not assigned MANAGER_ROLE"
         );
-        assertTrue(LendefiInstance.hasRole(keccak256("UPGRADER_ROLE"), guardian), "Guardian not assigned UPGRADER_ROLE");
+        assertTrue(
+            LendefiInstance.hasRole(keccak256("UPGRADER_ROLE"), gnosisSafe), "gnosisSafe not assigned UPGRADER_ROLE"
+        );
 
         // Check default parameters using the mainConfig struct
         IPROTOCOL.ProtocolConfig memory config = LendefiInstance.getConfig();
@@ -102,27 +105,31 @@ contract InitializeTest is BasicDeploy {
         bytes32 pauserRole = keccak256("PAUSER_ROLE");
         bytes32 managerRole = keccak256("MANAGER_ROLE");
         bytes32 upgraderRole = keccak256("UPGRADER_ROLE");
+
         bytes32 defaultAdminRole = 0x00;
 
         address payable proxy = payable(Upgrades.deployUUPSProxy("Lendefi.sol", data));
         LendefiInstance = Lendefi(proxy);
 
-        // UPDATED: Check that roles are properly assigned to the right addresses
+        // Check positive role assignments for timelock
         assertTrue(
-            LendefiInstance.hasRole(defaultAdminRole, address(timelockInstance)), "Timelock should have admin role"
+            LendefiInstance.hasRole(defaultAdminRole, address(timelockInstance)),
+            "Timelock should have DEFAULT_ADMIN_ROLE"
         );
-        assertTrue(LendefiInstance.hasRole(pauserRole, guardian), "Guardian should have pauser role");
-        assertTrue(LendefiInstance.hasRole(managerRole, address(timelockInstance)), "Timelock should have manager role");
-        assertTrue(LendefiInstance.hasRole(upgraderRole, guardian), "Guardian should have upgrader role");
+        assertTrue(LendefiInstance.hasRole(managerRole, address(timelockInstance)), "Timelock should have MANAGER_ROLE");
+        assertTrue(
+            LendefiInstance.hasRole(upgraderRole, address(timelockInstance)), "Timelock should have UPGRADER_ROLE"
+        );
+        assertTrue(LendefiInstance.hasRole(pauserRole, address(timelockInstance)), "Timelock should have PAUSER_ROLE");
 
-        // UPDATED: Verify negative cases - addresses that shouldn't have roles
-        assertFalse(LendefiInstance.hasRole(managerRole, guardian), "Guardian should not have manager role");
-        assertFalse(LendefiInstance.hasRole(defaultAdminRole, guardian), "Guardian should not have admin role");
+        // Check positive role assignments for gnosisSafe
+        assertTrue(LendefiInstance.hasRole(upgraderRole, gnosisSafe), "gnosisSafe should have UPGRADER_ROLE");
+        assertTrue(LendefiInstance.hasRole(pauserRole, gnosisSafe), "gnosisSafe should have PAUSER_ROLE");
+
+        // Check negative role assignments
+        assertFalse(LendefiInstance.hasRole(managerRole, gnosisSafe), "gnosisSafe should not have MANAGER_ROLE");
         assertFalse(
-            LendefiInstance.hasRole(upgraderRole, address(timelockInstance)), "Timelock should not have upgrader role"
-        );
-        assertFalse(
-            LendefiInstance.hasRole(pauserRole, address(timelockInstance)), "Timelock should not have pauser role"
+            LendefiInstance.hasRole(defaultAdminRole, gnosisSafe), "gnosisSafe should not have DEFAULT_ADMIN_ROLE"
         );
     }
 
