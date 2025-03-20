@@ -151,33 +151,27 @@ contract PauseUnpauseTest is BasicDeploy {
     /* Permission Tests                */
     /* ------------------------------- */
 
-    // Test 1: Guardian can pause
-    function test_GuardianCanPause() public {
-        vm.startPrank(guardian);
-
+    // Test 1: Pauser can pause
+    function test_PauserCanPause() public {
         // Expect Paused event
         vm.expectEmit(true, false, false, false);
-        emit Paused(guardian);
-
+        emit Paused(gnosisSafe);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
-        vm.stopPrank();
-
         // Verify paused state
         assertTrue(LendefiInstance.paused(), "Contract should be paused");
     }
 
-    // Test 2: Guardian can unpause
-    function test_GuardianCanUnpause() public {
+    // Test 2: Pauser can unpause
+    function test_PauserCanUnpause() public {
         // First pause
-        vm.prank(guardian);
+        vm.startPrank(gnosisSafe);
         LendefiInstance.pause();
         assertTrue(LendefiInstance.paused(), "Contract should be paused");
 
-        vm.startPrank(guardian);
-
         // Expect Unpaused event
         vm.expectEmit(true, false, false, false);
-        emit Unpaused(guardian);
+        emit Unpaused(gnosisSafe);
 
         LendefiInstance.unpause();
         vm.stopPrank();
@@ -205,7 +199,7 @@ contract PauseUnpauseTest is BasicDeploy {
     // Test 4: Non-guardian cannot unpause
     function test_NonGuardianCannotUnpause() public {
         // First pause
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         vm.startPrank(bob);
@@ -224,10 +218,8 @@ contract PauseUnpauseTest is BasicDeploy {
 
     // Test 5: Cannot pause when already paused
     function test_CannotPauseWhenAlreadyPaused() public {
-        vm.prank(guardian);
+        vm.startPrank(gnosisSafe);
         LendefiInstance.pause();
-
-        vm.startPrank(guardian);
 
         // Expect error for already paused
         bytes memory expectedError = abi.encodeWithSignature("EnforcedPause()");
@@ -239,7 +231,7 @@ contract PauseUnpauseTest is BasicDeploy {
 
     // Test 6: Cannot unpause when already unpaused
     function test_CannotUnpauseWhenAlreadyUnpaused() public {
-        vm.startPrank(guardian);
+        vm.startPrank(gnosisSafe);
 
         // Expect error for already unpaused
         bytes memory expectedError = abi.encodeWithSignature("ExpectedPause()");
@@ -256,7 +248,7 @@ contract PauseUnpauseTest is BasicDeploy {
     // Test 7: supplyCollateral fails when paused
     function test_SupplyCollateralFailsWhenPaused() public {
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Try to supply collateral
@@ -275,7 +267,7 @@ contract PauseUnpauseTest is BasicDeploy {
     // Test 8: withdrawCollateral fails when paused
     function test_WithdrawCollateralFailsWhenPaused() public {
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Try to withdraw collateral
@@ -291,7 +283,7 @@ contract PauseUnpauseTest is BasicDeploy {
     // Test 9: createPosition fails when paused
     function test_CreatePositionFailsWhenPaused() public {
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Try to create a position
@@ -307,7 +299,7 @@ contract PauseUnpauseTest is BasicDeploy {
     // Test 10: borrow fails when paused
     function test_BorrowFailsWhenPaused() public {
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Try to borrow
@@ -323,7 +315,7 @@ contract PauseUnpauseTest is BasicDeploy {
     // Test 11: repay fails when paused
     function test_RepayFailsWhenPaused() public {
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Try to repay
@@ -340,7 +332,7 @@ contract PauseUnpauseTest is BasicDeploy {
     // Test 12: exitPosition fails when paused
     function test_ExitPositionFailsWhenPaused() public {
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Try to exit position
@@ -363,7 +355,7 @@ contract PauseUnpauseTest is BasicDeploy {
         usdcInstance.mint(charlie, 10_000e6);
 
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Try to liquidate
@@ -380,7 +372,7 @@ contract PauseUnpauseTest is BasicDeploy {
     // Test 14: flashLoan fails when paused
     function test_FlashLoanFailsWhenPaused() public {
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Try to use flash loan
@@ -393,11 +385,11 @@ contract PauseUnpauseTest is BasicDeploy {
     // Test 16: functionality works after unpause
     function test_FunctionalityRestoredAfterUnpause() public {
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Now unpause
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.unpause();
 
         // Try operations after unpausing
@@ -457,7 +449,7 @@ contract PauseUnpauseTest is BasicDeploy {
         vm.stopPrank();
 
         // Now pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Try each function - all should fail
@@ -484,7 +476,7 @@ contract PauseUnpauseTest is BasicDeploy {
         vm.stopPrank();
 
         // Unpause
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.unpause();
 
         // Now all functions should work again
@@ -513,7 +505,7 @@ contract PauseUnpauseTest is BasicDeploy {
     // Test 19: View functions work when paused
     function test_ViewFunctionsWorkWhenPaused() public {
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Try various view functions
@@ -560,7 +552,7 @@ contract PauseUnpauseTest is BasicDeploy {
             })
         );
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
         // Update flash loan fee using the new config approach
         // First get the current config
