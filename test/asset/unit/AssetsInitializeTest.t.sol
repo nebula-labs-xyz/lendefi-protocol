@@ -28,7 +28,7 @@ contract AssetsInitializeTest is BasicDeploy {
         timelockAddr = address(timelockInstance);
 
         // Create initialization data
-        initData = abi.encodeCall(LendefiAssets.initialize, (timelockAddr, guardian));
+        initData = abi.encodeCall(LendefiAssets.initialize, (timelockAddr, gnosisSafe));
     }
 
     function test_InitializeSuccess() public {
@@ -37,10 +37,15 @@ contract AssetsInitializeTest is BasicDeploy {
         LendefiAssets assetsContract = LendefiAssets(proxy);
 
         // Check role assignments
-        assertTrue(assetsContract.hasRole(DEFAULT_ADMIN_ROLE, guardian), "Guardian should have DEFAULT_ADMIN_ROLE");
+        assertTrue(assetsContract.hasRole(DEFAULT_ADMIN_ROLE, timelockAddr), "Timelock should have DEFAULT_ADMIN_ROLE");
         assertTrue(assetsContract.hasRole(MANAGER_ROLE, timelockAddr), "Timelock should have MANAGER_ROLE");
-        assertTrue(assetsContract.hasRole(UPGRADER_ROLE, guardian), "Guardian should have UPGRADER_ROLE");
-        assertTrue(assetsContract.hasRole(PAUSER_ROLE, guardian), "Guardian should have PAUSER_ROLE");
+        assertTrue(assetsContract.hasRole(UPGRADER_ROLE, gnosisSafe), "gnosisSafe should have UPGRADER_ROLE");
+        assertTrue(assetsContract.hasRole(UPGRADER_ROLE, timelockAddr), "Timelock should have UPGRADER_ROLE");
+        assertTrue(assetsContract.hasRole(PAUSER_ROLE, gnosisSafe), "gnosisSafe should have PAUSER_ROLE");
+        assertTrue(assetsContract.hasRole(PAUSER_ROLE, timelockAddr), "Timelock should have PAUSER_ROLE");
+        assertTrue(
+            assetsContract.hasRole(CIRCUIT_BREAKER_ROLE, gnosisSafe), "gnosisSafe should have CIRCUIT_BREAKER_ROLE"
+        );
 
         // Check version
         assertEq(assetsContract.version(), 1, "Initial version should be 1");
@@ -73,9 +78,9 @@ contract AssetsInitializeTest is BasicDeploy {
 
         // Test with zero address for timelock
         vm.expectRevert(abi.encodeWithSignature("ZeroAddressNotAllowed()"));
-        assetsModule.initialize(address(0), guardian);
+        assetsModule.initialize(address(0), gnosisSafe);
 
-        // Test with zero address for guardian
+        // Test with zero address for gnosisSafe
         vm.expectRevert(abi.encodeWithSignature("ZeroAddressNotAllowed()"));
         assetsModule.initialize(timelockAddr, address(0));
     }
@@ -87,7 +92,7 @@ contract AssetsInitializeTest is BasicDeploy {
 
         // Try to initialize again
         vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
-        assetsContract.initialize(timelockAddr, guardian);
+        assetsContract.initialize(timelockAddr, gnosisSafe);
     }
 
     function test_RoleExclusivity() public {
@@ -95,14 +100,40 @@ contract AssetsInitializeTest is BasicDeploy {
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", initData));
         LendefiAssets assetsContract = LendefiAssets(proxy);
 
-        // Guardian should have specific roles, but not CORE_ROLE
-        assertTrue(assetsContract.hasRole(DEFAULT_ADMIN_ROLE, guardian), "Guardian should have DEFAULT_ADMIN_ROLE");
-        assertFalse(assetsContract.hasRole(CORE_ROLE, guardian), "Guardian should not have CORE_ROLE");
+        // Verify timelock has admin role but gnosisSafe doesn't
+        assertTrue(assetsContract.hasRole(DEFAULT_ADMIN_ROLE, timelockAddr), "Timelock should have DEFAULT_ADMIN_ROLE");
+        assertFalse(
+            assetsContract.hasRole(DEFAULT_ADMIN_ROLE, gnosisSafe), "gnosisSafe should not have DEFAULT_ADMIN_ROLE"
+        );
 
-        // Timelock should have MANAGER_ROLE but not other roles
+        // Neither should have CORE_ROLE initially
+        assertFalse(assetsContract.hasRole(CORE_ROLE, gnosisSafe), "gnosisSafe should not have CORE_ROLE");
+        assertFalse(assetsContract.hasRole(CORE_ROLE, timelockAddr), "timelock should not have CORE_ROLE");
+
+        // Timelock should have MANAGER_ROLE
         assertTrue(assetsContract.hasRole(MANAGER_ROLE, timelockAddr), "Timelock should have MANAGER_ROLE");
-        assertFalse(assetsContract.hasRole(UPGRADER_ROLE, timelockAddr), "Timelock should not have UPGRADER_ROLE");
-        assertFalse(assetsContract.hasRole(PAUSER_ROLE, timelockAddr), "Timelock should not have PAUSER_ROLE");
+        assertFalse(assetsContract.hasRole(MANAGER_ROLE, gnosisSafe), "gnosisSafe should not have MANAGER_ROLE");
+
+        // Both timelock and gnosisSafe should have CIRCUIT_BREAKER_ROLE
+        assertTrue(
+            assetsContract.hasRole(CIRCUIT_BREAKER_ROLE, gnosisSafe), "gnosisSafe should have CIRCUIT_BREAKER_ROLE"
+        );
+        assertTrue(
+            assetsContract.hasRole(CIRCUIT_BREAKER_ROLE, timelockAddr), "timelock should have CIRCUIT_BREAKER_ROLE"
+        );
+    }
+
+    function test_BothHaveUpgraderAndPauserRoles() public {
+        // Deploy with initialization
+        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", initData));
+        LendefiAssets assetsContract = LendefiAssets(proxy);
+
+        // Both timelock and gnosisSafe should have UPGRADER_ROLE and PAUSER_ROLE
+        assertTrue(assetsContract.hasRole(UPGRADER_ROLE, timelockAddr), "Timelock should have UPGRADER_ROLE");
+        assertTrue(assetsContract.hasRole(UPGRADER_ROLE, gnosisSafe), "gnosisSafe should have UPGRADER_ROLE");
+
+        assertTrue(assetsContract.hasRole(PAUSER_ROLE, timelockAddr), "Timelock should have PAUSER_ROLE");
+        assertTrue(assetsContract.hasRole(PAUSER_ROLE, gnosisSafe), "gnosisSafe should have PAUSER_ROLE");
     }
 
     function test_RoleHierarchy() public {
@@ -110,19 +141,19 @@ contract AssetsInitializeTest is BasicDeploy {
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", initData));
         LendefiAssets assetsContract = LendefiAssets(proxy);
 
-        // Guardian with DEFAULT_ADMIN_ROLE should be able to grant roles
-        vm.startPrank(guardian);
+        // timelockAddr with DEFAULT_ADMIN_ROLE should be able to grant roles
+        vm.startPrank(timelockAddr);
         assetsContract.grantRole(CORE_ROLE, address(0x123));
         vm.stopPrank();
 
-        assertTrue(assetsContract.hasRole(CORE_ROLE, address(0x123)), "Guardian should be able to grant CORE_ROLE");
+        assertTrue(assetsContract.hasRole(CORE_ROLE, address(0x123)), "timelockAddr should be able to grant CORE_ROLE");
 
-        // Timelock with just MANAGER_ROLE should not be able to grant roles
-        vm.startPrank(timelockAddr);
+        // gnosisSafe without DEFAULT_ADMIN_ROLE should not be able to grant roles
+        vm.startPrank(gnosisSafe);
         // Updated for newer OZ error format
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, timelockAddr, DEFAULT_ADMIN_ROLE
+                IAccessControl.AccessControlUnauthorizedAccount.selector, gnosisSafe, DEFAULT_ADMIN_ROLE
             )
         );
         assetsContract.grantRole(CORE_ROLE, address(0x456));
@@ -148,6 +179,26 @@ contract AssetsInitializeTest is BasicDeploy {
         );
     }
 
+    function test_OracleConfigInitialization() public {
+        // Deploy with initialization
+        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", initData));
+        LendefiAssets assetsContract = LendefiAssets(proxy);
+
+        // Get the oracle config
+        (
+            uint80 freshnessThreshold,
+            uint80 volatilityThreshold,
+            uint40 volatilityPercentage,
+            uint40 circuitBreakerThreshold
+        ) = assetsContract.mainOracleConfig();
+
+        // Verify default values
+        assertEq(freshnessThreshold, 28800, "Freshness threshold should be 28800 (8 hours)");
+        assertEq(volatilityThreshold, 3600, "Volatility threshold should be 3600 (1 hour)");
+        assertEq(volatilityPercentage, 20, "Volatility percentage should be 20%");
+        assertEq(circuitBreakerThreshold, 50, "Circuit breaker threshold should be 50%");
+    }
+
     function test_ListedAssetsEmptyAfterInit() public {
         // Deploy with initialization
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", initData));
@@ -159,8 +210,8 @@ contract AssetsInitializeTest is BasicDeploy {
     }
 
     function test_PauseStateAfterInit() public {
-        // Deploy with initialization using explicit guardian address
-        bytes memory localInitData = abi.encodeCall(LendefiAssets.initialize, (timelockAddr, guardian));
+        // Deploy with initialization using explicit gnosisSafe address
+        bytes memory localInitData = abi.encodeCall(LendefiAssets.initialize, (timelockAddr, gnosisSafe));
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", localInitData));
         LendefiAssets assetsContract = LendefiAssets(proxy);
 
@@ -199,35 +250,50 @@ contract AssetsInitializeTest is BasicDeploy {
         assertTrue(assetsContract.isAssetValid(address(wethInstance)), "Asset should be valid");
         vm.stopPrank();
 
-        // Now pause the contract - use the guardian address
-        vm.prank(guardian);
+        // Both timelock and gnosisSafe can pause
+        vm.prank(gnosisSafe);
         assetsContract.pause();
 
         // Try a function that's protected by whenNotPaused
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         vm.prank(timelockAddr);
         assetsContract.updateAssetConfig(address(wethInstance), item);
+
+        // Test unpause with timelock
+        vm.prank(timelockAddr);
+        assetsContract.unpause();
+
+        // Now update should work again
+        vm.prank(timelockAddr);
+        assetsContract.updateAssetConfig(address(wethInstance), item);
     }
 
-    function test_InitializeWithDifferentGuardian() public {
-        // Use different address for guardian
-        address newGuardian = address(0xbeff);
-
-        bytes memory customData = abi.encodeCall(LendefiAssets.initialize, (timelockAddr, newGuardian));
-
-        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", customData));
+    function test_CircuitBreakerRoleFunction() public {
+        // Deploy with initialization
+        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", initData));
         LendefiAssets assetsContract = LendefiAssets(proxy);
 
-        // Check that the new guardian has the correct roles
-        assertTrue(
-            assetsContract.hasRole(DEFAULT_ADMIN_ROLE, newGuardian), "New guardian should have DEFAULT_ADMIN_ROLE"
-        );
-        assertTrue(assetsContract.hasRole(UPGRADER_ROLE, newGuardian), "New guardian should have UPGRADER_ROLE");
-        assertTrue(assetsContract.hasRole(PAUSER_ROLE, newGuardian), "New guardian should have PAUSER_ROLE");
+        // Set up an asset
+        address testAsset = address(0x1234);
 
-        // Original guardian should not have any roles
-        assertFalse(
-            assetsContract.hasRole(DEFAULT_ADMIN_ROLE, guardian), "Original guardian should not have DEFAULT_ADMIN_ROLE"
-        );
+        // gnosisSafe should be able to trigger circuit breaker
+        vm.prank(gnosisSafe);
+        assetsContract.triggerCircuitBreaker(testAsset);
+
+        // Verify circuit breaker was triggered
+        assertTrue(assetsContract.circuitBroken(testAsset), "Circuit breaker should be activated");
+
+        // Non-CIRCUIT_BREAKER_ROLE accounts can't trigger circuit breaker
+        address randomUser = address(0x9999);
+        vm.expectRevert();
+        vm.prank(randomUser);
+        assetsContract.triggerCircuitBreaker(testAsset);
+
+        // gnosisSafe should be able to reset circuit breaker
+        vm.prank(gnosisSafe);
+        assetsContract.resetCircuitBreaker(testAsset);
+
+        // Verify circuit breaker was reset
+        assertFalse(assetsContract.circuitBroken(testAsset), "Circuit breaker should be deactivated");
     }
 }
