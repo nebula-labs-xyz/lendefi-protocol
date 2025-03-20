@@ -780,7 +780,7 @@ contract BasicDeploy is Test {
                 address(timelockInstance),
                 address(yieldTokenInstance),
                 address(assetsInstance), // Use the combined contract for asset management
-                guardian
+                gnosisSafe
             )
         );
 
