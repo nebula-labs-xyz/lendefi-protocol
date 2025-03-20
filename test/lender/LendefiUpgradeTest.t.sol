@@ -35,7 +35,7 @@ contract LendefiUpgradeTest is BasicDeploy {
         assertEq(LendefiInstance.upgradeTimelockRemaining(), 0);
 
         // Schedule an upgrade
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.scheduleUpgrade(mockImplementation);
 
         // Should now return the full timelock duration (3 days)
@@ -60,9 +60,9 @@ contract LendefiUpgradeTest is BasicDeploy {
         uint64 effectiveTime = currentTime + uint64(LendefiInstance.UPGRADE_TIMELOCK_DURATION());
 
         // Schedule upgrade
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectEmit(true, true, true, true);
-        emit UpgradeScheduled(guardian, mockImplementation, currentTime, effectiveTime);
+        emit UpgradeScheduled(gnosisSafe, mockImplementation, currentTime, effectiveTime);
         LendefiInstance.scheduleUpgrade(mockImplementation);
 
         // Verify upgrade request was stored
@@ -73,7 +73,7 @@ contract LendefiUpgradeTest is BasicDeploy {
     }
 
     function testRevert_ScheduleUpgradeZeroAddress() public {
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectRevert(ZeroAddressNotAllowed.selector);
         LendefiInstance.scheduleUpgrade(address(0));
     }
@@ -89,13 +89,13 @@ contract LendefiUpgradeTest is BasicDeploy {
 
     function test_CancelUpgrade() public {
         // Schedule an upgrade first
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.scheduleUpgrade(mockImplementation);
 
         // Then cancel it
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectEmit(true, true, false, false);
-        emit UpgradeCancelled(guardian, mockImplementation);
+        emit UpgradeCancelled(gnosisSafe, mockImplementation);
         LendefiInstance.cancelUpgrade();
 
         // Verify upgrade request was cleared
@@ -107,7 +107,7 @@ contract LendefiUpgradeTest is BasicDeploy {
 
     function testRevert_CancelUpgradeUnauthorized() public {
         // Schedule an upgrade first
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.scheduleUpgrade(mockImplementation);
 
         // Attempt alice cancellation
@@ -119,7 +119,7 @@ contract LendefiUpgradeTest is BasicDeploy {
     }
 
     function testRevert_CancelNonExistentUpgrade() public {
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectRevert(UpgradeNotScheduled.selector);
         LendefiInstance.cancelUpgrade();
     }
@@ -129,11 +129,11 @@ contract LendefiUpgradeTest is BasicDeploy {
         Lendefi newImplementation = new Lendefi();
 
         // Schedule the upgrade
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.scheduleUpgrade(address(newImplementation));
 
         // Verify we can't upgrade yet due to timelock
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectRevert(abi.encodeWithSelector(UpgradeTimelockActive.selector, 3 days));
         LendefiInstance.upgradeToAndCall(address(newImplementation), "");
 
@@ -141,9 +141,9 @@ contract LendefiUpgradeTest is BasicDeploy {
         vm.warp(block.timestamp + 3 days + 1);
 
         // Now the upgrade should succeed
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectEmit(true, true, false, false);
-        emit Upgrade(guardian, address(newImplementation));
+        emit Upgrade(gnosisSafe, address(newImplementation));
         LendefiInstance.upgradeToAndCall(address(newImplementation), "");
 
         // Verify version was incremented (assuming initial version was 1)
@@ -159,7 +159,7 @@ contract LendefiUpgradeTest is BasicDeploy {
         Lendefi newImplementation = new Lendefi();
 
         // Try to upgrade without scheduling first
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectRevert(UpgradeNotScheduled.selector);
         LendefiInstance.upgradeToAndCall(address(newImplementation), "");
     }
@@ -170,14 +170,14 @@ contract LendefiUpgradeTest is BasicDeploy {
         Lendefi attemptedImpl = new Lendefi();
 
         // Schedule the first implementation
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.scheduleUpgrade(address(scheduledImpl));
 
         // Fast forward past the timelock period
         vm.warp(block.timestamp + 3 days + 1);
 
         // Try to upgrade with the wrong implementation
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectRevert(
             abi.encodeWithSelector(ImplementationMismatch.selector, address(scheduledImpl), address(attemptedImpl))
         );
@@ -186,15 +186,15 @@ contract LendefiUpgradeTest is BasicDeploy {
 
     function test_ScheduleNewUpgradeAfterCancellation() public {
         // Schedule first upgrade
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.scheduleUpgrade(mockImplementation);
 
         // Cancel it
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.cancelUpgrade();
 
         // Schedule a different upgrade
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.scheduleUpgrade(mockImplementation2);
 
         // Verify the new upgrade was scheduled
@@ -205,11 +205,11 @@ contract LendefiUpgradeTest is BasicDeploy {
 
     function test_RescheduleUpgrade() public {
         // Schedule first upgrade
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.scheduleUpgrade(mockImplementation);
 
         // Schedule a new upgrade (implicitly overwrites the first one)
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.scheduleUpgrade(mockImplementation2);
 
         // Verify the second upgrade was scheduled
