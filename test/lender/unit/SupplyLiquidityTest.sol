@@ -288,7 +288,7 @@ contract SupplyLiquidityTest is BasicDeploy {
         uint256 amount = 10_000e6;
 
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Mint USDC to alice
