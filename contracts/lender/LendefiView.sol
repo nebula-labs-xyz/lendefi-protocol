@@ -13,26 +13,26 @@ pragma solidity 0.8.23;
 import {IPROTOCOL} from "../interfaces/IProtocol.sol";
 import {IASSETS} from "../interfaces/IASSETS.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ILendefiYieldToken} from "../interfaces/ILendefiYieldToken.sol";
+import {IYIELDTOKEN} from "../interfaces/ILendefiYieldToken.sol";
 import {IECOSYSTEM} from "../interfaces/IEcosystem.sol";
-import {ILendefiView} from "../interfaces/ILendefiView.sol";
+import {ILENDEFIVIEW} from "../interfaces/ILendefiView.sol";
 
 /**
  * @notice LendefiView provides consolidated view functions for the protocol's state
  * @dev This contract doesn't hold any assets or modify state, it only aggregates data
  */
-contract LendefiView is ILendefiView {
+contract LendefiView is ILENDEFIVIEW {
     /// @notice Main protocol contract reference
-    IPROTOCOL public protocol;
+    IPROTOCOL internal protocol;
 
     /// @notice USDC token contract reference
-    IERC20 public usdcInstance;
+    IERC20 internal usdcInstance;
 
     /// @notice Yield token (LP token) contract reference
-    ILendefiYieldToken public yieldTokenInstance;
+    IYIELDTOKEN internal yieldTokenInstance;
 
     /// @notice Ecosystem contract reference for rewards calculation
-    IECOSYSTEM public ecosystemInstance;
+    IECOSYSTEM internal ecosystemInstance;
 
     /**
      * @notice Initializes the LendefiView contract with required contract references
@@ -50,7 +50,7 @@ contract LendefiView is ILendefiView {
 
         protocol = IPROTOCOL(_protocol);
         usdcInstance = IERC20(_usdc);
-        yieldTokenInstance = ILendefiYieldToken(_yieldToken);
+        yieldTokenInstance = IYIELDTOKEN(_yieldToken);
         ecosystemInstance = IECOSYSTEM(_ecosystem);
     }
 
