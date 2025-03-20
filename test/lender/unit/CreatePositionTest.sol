@@ -214,9 +214,8 @@ contract CreatePositionTest is BasicDeploy {
     // Test 5: Create position when protocol is paused (should fail)
     function test_CreatePositionWhenPaused() public {
         // Pause the protocol
-        vm.startPrank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
-        vm.stopPrank();
 
         vm.startPrank(bob);
 
