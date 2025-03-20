@@ -241,7 +241,7 @@ contract ClaimRewardTest is BasicDeploy {
         vm.warp(block.timestamp + defaultRewardInterval + 1 days);
 
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Attempt to claim reward
@@ -251,7 +251,7 @@ contract ClaimRewardTest is BasicDeploy {
         LendefiInstance.claimReward();
 
         // Unpause and try again
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.unpause();
 
         vm.prank(alice);
