@@ -364,7 +364,7 @@ contract LendefiExtendedTest is BasicDeploy {
         vm.stopPrank();
 
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Try to borrow when paused
