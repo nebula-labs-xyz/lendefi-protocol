@@ -273,7 +273,7 @@ contract ExchangeTest is BasicDeploy {
         _supplyLiquidity(alice, supplyAmount);
 
         // Pause protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         vm.startPrank(alice);
