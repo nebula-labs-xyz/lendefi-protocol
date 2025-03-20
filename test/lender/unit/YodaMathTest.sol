@@ -19,26 +19,26 @@ contract YodaMathTest is Test {
 
     // RMUL TESTS
 
-    function testRmulBasic() public {
+    function test_RmulBasic() public {
         // Basic multiplication
         assertEq(math.rmul(RAY, RAY), RAY, "RAY * RAY should equal RAY");
         assertEq(math.rmul(2 * RAY, 3 * RAY), 6 * RAY, "2 * 3 should equal 6");
     }
 
-    function testRmulZero() public {
+    function test_RmulZero() public {
         // Zero case
         assertEq(math.rmul(0, RAY), 0, "0 * RAY should equal 0");
         assertEq(math.rmul(RAY, 0), 0, "RAY * 0 should equal 0");
     }
 
-    function testRmulLarge() public {
+    function test_RmulLarge() public {
         // Test with large numbers - use type(uint128).max to avoid overflow
         uint256 maxSafe = type(uint128).max;
         assertEq(math.rmul(maxSafe, RAY), maxSafe, "maxSafe * RAY should equal maxSafe");
         assertEq(math.rmul(maxSafe, 2 * RAY), maxSafe * 2, "maxSafe * 2RAY should equal 2*maxSafe");
     }
 
-    function testRmulRounding() public {
+    function test_RmulRounding() public {
         // Test rounding behavior
         uint256 result = math.rmul(RAY + RAY / 4, RAY);
         assertEq(result, RAY + RAY / 4, "Should round correctly with RAY/4");
@@ -50,14 +50,14 @@ contract YodaMathTest is Test {
 
     // RDIV TESTS
 
-    function testRdivBasic() public {
+    function test_RdivBasic() public {
         // Basic division
         assertEq(math.rdiv(RAY, RAY), RAY, "RAY / RAY should equal RAY");
         assertEq(math.rdiv(6 * RAY, 3 * RAY), 2 * RAY, "6 / 3 should equal 2");
         assertEq(math.rdiv(RAY / 2, RAY), RAY / 2, "RAY/2 / RAY should equal 0.5");
     }
 
-    function testRdivZero() public {
+    function test_RdivZero() public {
         // Zero case
         assertEq(math.rdiv(0, RAY), 0, "0 / RAY should equal 0");
 
@@ -66,7 +66,7 @@ contract YodaMathTest is Test {
         math.rdiv(RAY, 0);
     }
 
-    function testRdivRounding() public {
+    function test_RdivRounding() public {
         // Test rounding behavior - check exact rounding behavior
         uint256 result = math.rdiv(RAY / 4, RAY);
         assertEq(result, RAY / 4, "Should handle fractions correctly");
@@ -83,7 +83,7 @@ contract YodaMathTest is Test {
 
     // RPOW TESTS
 
-    function testRpowCurrentImplementation() public {
+    function test_RpowCurrentImplementation() public {
         // Document the current behavior (for reference)
         assertEq(math.rpow(RAY, 0), RAY, "RAY^0 should equal RAY");
         assertEq(math.rpow(RAY, 1), RAY, "RAY^1 should equal RAY");
@@ -95,7 +95,7 @@ contract YodaMathTest is Test {
         assertApproxEqRel(result, 8 * RAY, 0.001e18, "2^3 should equal 8");
     }
 
-    function testRpowEdgeCases() public {
+    function test_RpowEdgeCases() public {
         // Any number to power of 0 should be 1
         assertEq(math.rpow(0, 0), RAY, "0^0 should equal 1 (RAY)");
         assertEq(math.rpow(5 * RAY, 0), RAY, "5^0 should equal 1 (RAY)");
@@ -105,7 +105,7 @@ contract YodaMathTest is Test {
         assertEq(math.rpow(RAY / 2, 1), RAY / 2, "0.5^1 should equal 0.5");
     }
 
-    function testRpowFractionalBase() public {
+    function test_RpowFractionalBase() public {
         // Test powers with fractional base
         uint256 halfRAY = RAY / 2; // 0.5 in RAY precision
 
@@ -116,7 +116,7 @@ contract YodaMathTest is Test {
         assertApproxEqRel(math.rpow(halfRAY, 3), RAY / 8, 0.000001e18, "0.5^3 should equal 0.125");
     }
 
-    function testRpowWithLargeExponent() public {
+    function test_RpowWithLargeExponent() public {
         // Test with larger exponent but still reasonable values
         // 1.1^10 ≈ 2.5937424601
         uint256 baseValue = RAY + RAY / 10; // 1.1 in RAY precision
@@ -132,7 +132,7 @@ contract YodaMathTest is Test {
 
     // ANNUAL RATE TO RAY TESTS
 
-    function testAnnualRateToRay() public {
+    function test_AnnualRateToRay() public {
         // Test with 10% annual rate (0.1 * WAD)
         uint256 tenPctRate = 0.1e6;
         uint256 rateRay = math.annualRateToRay(tenPctRate);
@@ -147,12 +147,12 @@ contract YodaMathTest is Test {
         assertApproxEqRel(rateRay, expected, 0.05e18, "10% annual rate conversion incorrect");
     }
 
-    function testAnnualRateToRayZero() public {
+    function test_AnnualRateToRayZero() public {
         // Zero rate should return RAY (1.0)
         assertEq(math.annualRateToRay(0), RAY, "Zero rate should return RAY");
     }
 
-    function testAnnualRateToRayVariousRates() public {
+    function test_AnnualRateToRayVariousRates() public {
         // Test with various rates
         uint256[] memory rates = new uint256[](3);
         rates[0] = 0.05e6; // 5%
@@ -179,7 +179,7 @@ contract YodaMathTest is Test {
 
     // ACCRUE INTEREST TESTS
 
-    function testAccrueInterestBasic() public {
+    function test_AccrueInterestBasic() public {
         // 100 principal, 10% annualized (converted to rateRay), for 365 days
         uint256 principal = 100 * WAD;
         uint256 rateRay = math.annualRateToRay(0.1e6);
@@ -196,7 +196,7 @@ contract YodaMathTest is Test {
         assertApproxEqRel(result, expectedApprox, 0.005e18, "Compound interest calculation incorrect");
     }
 
-    function testAccrueInterestZeroTime() public {
+    function test_AccrueInterestZeroTime() public {
         uint256 principal = 100 * WAD;
         uint256 rateRay = math.annualRateToRay(0.1e6);
 
@@ -204,7 +204,7 @@ contract YodaMathTest is Test {
         assertEq(math.accrueInterest(principal, rateRay, 0), principal, "Zero time should return principal");
     }
 
-    function testAccrueInterestZeroPrincipal() public {
+    function test_AccrueInterestZeroPrincipal() public {
         uint256 rateRay = math.annualRateToRay(0.1e6);
         uint256 oneYear = SECONDS_PER_YEAR;
 
@@ -212,7 +212,7 @@ contract YodaMathTest is Test {
         assertEq(math.accrueInterest(0, rateRay, oneYear), 0, "Zero principal should return zero");
     }
 
-    function testAccrueInterestVariousTimes() public {
+    function test_AccrueInterestVariousTimes() public {
         // Test interest accrual for various timeframes
         uint256 principal = 1000 * WAD;
         uint256 rateRay = math.annualRateToRay(0.1e6); // 10% APR
@@ -238,7 +238,7 @@ contract YodaMathTest is Test {
 
     // GET INTEREST TESTS
 
-    function testGetInterestBasic() public {
+    function test_GetInterestBasic() public {
         // 100 principal, 10% annualized (converted to rateRay), for 365 days
         uint256 principal = 100 * WAD;
         uint256 rateRay = math.annualRateToRay(0.1e6);
@@ -254,7 +254,7 @@ contract YodaMathTest is Test {
         assertApproxEqRel(result, expectedApprox, 0.005e18, "Interest calculation incorrect");
     }
 
-    function testGetInterestZeroTime() public {
+    function test_GetInterestZeroTime() public {
         uint256 principal = 100 * WAD;
         uint256 rateRay = math.annualRateToRay(0.1e6);
 
@@ -262,7 +262,7 @@ contract YodaMathTest is Test {
         assertEq(math.getInterest(principal, rateRay, 0), 0, "Zero time should return zero interest");
     }
 
-    function testGetInterestZeroPrincipal() public {
+    function test_GetInterestZeroPrincipal() public {
         uint256 rateRay = math.annualRateToRay(0.1e6);
         uint256 oneYear = SECONDS_PER_YEAR;
 
@@ -272,7 +272,7 @@ contract YodaMathTest is Test {
 
     // BREAK EVEN RATE TESTS
 
-    function testBreakEvenRateBasic() public {
+    function test_BreakEvenRateBasic() public {
         // Loan of 1000 WAD with supply interest of 100 WAD
         uint256 loan = 1000 * WAD;
         uint256 supplyInterest = 100 * WAD;
@@ -284,20 +284,20 @@ contract YodaMathTest is Test {
         assertEq(result, expected, "Breakeven rate calculation incorrect");
     }
 
-    function testBreakEvenRateZeroInterest() public {
+    function test_BreakEvenRateZeroInterest() public {
         uint256 loan = 1000 * WAD;
 
         // With zero supply interest, breakeven rate should be 0
         assertEq(math.breakEvenRate(loan, 0), 0, "Zero supply interest should result in zero breakeven rate");
     }
 
-    function testBreakEvenRateZeroLoan() public {
+    function test_BreakEvenRateZeroLoan() public {
         // Division by zero should revert
         vm.expectRevert();
         math.breakEvenRate(0, 100 * WAD);
     }
 
-    function testBreakEvenRateVariousScenarios() public {
+    function test_BreakEvenRateVariousScenarios() public {
         // Test various loan-to-interest ratios
 
         // Scenario 1: 5% interest
