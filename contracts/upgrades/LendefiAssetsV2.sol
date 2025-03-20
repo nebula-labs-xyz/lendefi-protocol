@@ -81,27 +81,29 @@ contract LendefiAssetsV2 is
         _disableInitializers();
     }
 
-    function initialize(address timelock, address guardian) external initializer {
-        if (timelock == address(0) || guardian == address(0)) revert ZeroAddressNotAllowed();
+    function initialize(address timelock, address multisig) external initializer {
+        if (timelock == address(0) || multisig == address(0)) revert ZeroAddressNotAllowed();
 
         __AccessControl_init();
         __ReentrancyGuard_init();
         __Pausable_init();
         __UUPSUpgradeable_init();
 
-        _grantRole(DEFAULT_ADMIN_ROLE, guardian);
+        _grantRole(DEFAULT_ADMIN_ROLE, timelock);
         _grantRole(MANAGER_ROLE, timelock);
-        _grantRole(UPGRADER_ROLE, guardian);
-        _grantRole(PAUSER_ROLE, guardian);
-        _grantRole(CIRCUIT_BREAKER_ROLE, guardian);
+        _grantRole(UPGRADER_ROLE, multisig);
+        _grantRole(UPGRADER_ROLE, timelock);
+        _grantRole(PAUSER_ROLE, multisig);
+        _grantRole(PAUSER_ROLE, timelock);
+        _grantRole(CIRCUIT_BREAKER_ROLE, timelock);
+        _grantRole(CIRCUIT_BREAKER_ROLE, multisig);
 
         // Initialize oracle config
         mainOracleConfig = MainOracleConfig({
             freshnessThreshold: 28800, // 8 hours
             volatilityThreshold: 3600, // 1 hour
             volatilityPercentage: 20, // 20%
-            circuitBreakerThreshold: 50, // 50%
-            minimumRequiredOracles: 1 // Min 2 oracles
+            circuitBreakerThreshold: 50 // 50%
         });
 
         _initializeDefaultTierParameters();
@@ -166,13 +168,11 @@ contract LendefiAssetsV2 is
     // ==================== OTHER FUNCTIONS ====================
     // ==================== BATCH CONFIGURATION ====================
 
-    function updateMainOracleConfig(
-        uint80 freshness,
-        uint80 volatility,
-        uint40 volatilityPct,
-        uint40 circuitBreakerPct,
-        uint16 minOracles
-    ) external onlyRole(MANAGER_ROLE) whenNotPaused {
+    function updateMainOracleConfig(uint80 freshness, uint80 volatility, uint40 volatilityPct, uint40 circuitBreakerPct)
+        external
+        onlyRole(MANAGER_ROLE)
+        whenNotPaused
+    {
         // Validate parameters
         if (freshness < 15 minutes || freshness > 24 hours) {
             revert InvalidThreshold("freshness", freshness, 15 minutes, 24 hours);
@@ -190,10 +190,6 @@ contract LendefiAssetsV2 is
             revert InvalidThreshold("circuitBreaker", circuitBreakerPct, 25, 70);
         }
 
-        if (minOracles < 1) {
-            revert InvalidThreshold("minOracles", minOracles, 1, type(uint16).max);
-        }
-
         // Update config
         MainOracleConfig memory oldConfig = mainOracleConfig;
 
@@ -201,14 +197,12 @@ contract LendefiAssetsV2 is
         mainOracleConfig.volatilityThreshold = volatility;
         mainOracleConfig.volatilityPercentage = volatilityPct;
         mainOracleConfig.circuitBreakerThreshold = circuitBreakerPct;
-        mainOracleConfig.minimumRequiredOracles = minOracles;
 
         // Emit events
         emit FreshnessThresholdUpdated(oldConfig.freshnessThreshold, freshness);
         emit VolatilityThresholdUpdated(oldConfig.volatilityThreshold, volatility);
         emit VolatilityPercentageUpdated(oldConfig.volatilityPercentage, volatilityPct);
         emit CircuitBreakerThresholdUpdated(oldConfig.circuitBreakerThreshold, circuitBreakerPct);
-        emit MinimumOraclesUpdated(oldConfig.minimumRequiredOracles, minOracles);
     }
 
     function updateTierConfig(CollateralTier tier, uint256 jumpRate, uint256 liquidationFee)
