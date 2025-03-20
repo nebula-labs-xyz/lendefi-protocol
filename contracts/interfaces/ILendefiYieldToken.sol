@@ -8,7 +8,7 @@ pragma solidity 0.8.23;
  * @dev This interface defines the external functions of the LP token contract that uses 6 decimals to match USDC
  * @custom:security-contact security@nebula-labs.xyz
  */
-interface ILendefiYieldToken {
+interface IYIELDTOKEN {
     /**
      * @notice Emitted when the contract is initialized
      * @param admin Address of the initial admin
