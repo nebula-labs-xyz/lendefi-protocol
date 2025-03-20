@@ -117,11 +117,10 @@ contract LendefiYieldToken is
      * @dev Sets up token details and access control roles
      * @param protocol Address of the Lendefi protocol contract (receives PROTOCOL_ROLE)
      * @param timelock Address of the timelock contract (receives DEFAULT_ADMIN_ROLE)
-     * @param guardian Address with pausing capability (receives PAUSER_ROLE)
      * @param multisig Address with upgrade capability (receives UPGRADER_ROLE)
      */
-    function initialize(address protocol, address timelock, address guardian, address multisig) external initializer {
-        if (protocol == address(0) || timelock == address(0) || guardian == address(0) || multisig == address(0)) {
+    function initialize(address protocol, address timelock, address multisig) external initializer {
+        if (protocol == address(0) || timelock == address(0) || multisig == address(0)) {
             revert ZeroAddressNotAllowed();
         }
 
@@ -134,7 +133,9 @@ contract LendefiYieldToken is
         // Set up roles
         _grantRole(DEFAULT_ADMIN_ROLE, timelock);
         _grantRole(PROTOCOL_ROLE, protocol);
-        _grantRole(PAUSER_ROLE, guardian);
+        _grantRole(PAUSER_ROLE, timelock);
+        _grantRole(PAUSER_ROLE, multisig);
+        _grantRole(UPGRADER_ROLE, timelock);
         _grantRole(UPGRADER_ROLE, multisig);
 
         // Set initial version
