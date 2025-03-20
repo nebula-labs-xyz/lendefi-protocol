@@ -262,7 +262,7 @@ contract Lendefi is
      * @param timelock_ Address of the timelock contract for governance actions
      * @param yieldToken Address of the yield token (LP token) contract
      * @param assetsModule_ Address of the assets module for managing supported collateral
-     * @param guardian Address of the protocol guardian with emergency powers
+     * @param multisig Address of the protocol multisig with emergency powers
      * @custom:access-control Can only be called once during deployment
      * @custom:events Emits an Initialized event
      */
@@ -274,7 +274,7 @@ contract Lendefi is
         address timelock_,
         address yieldToken,
         address assetsModule_,
-        address guardian
+        address multisig
     ) external initializer {
         __Pausable_init();
         __AccessControl_init();
@@ -282,9 +282,11 @@ contract Lendefi is
         __ReentrancyGuard_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, timelock_);
-        _grantRole(PAUSER_ROLE, guardian);
         _grantRole(MANAGER_ROLE, timelock_);
-        _grantRole(UPGRADER_ROLE, guardian);
+        _grantRole(PAUSER_ROLE, timelock_);
+        _grantRole(PAUSER_ROLE, multisig);
+        _grantRole(UPGRADER_ROLE, timelock_);
+        _grantRole(UPGRADER_ROLE, multisig);
 
         usdcInstance = IERC20(usdc);
         tokenInstance = IERC20(govToken);
