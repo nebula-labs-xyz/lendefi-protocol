@@ -221,7 +221,7 @@ contract FlashLoanTest is BasicDeploy {
         uint256 flashLoanAmount = 100_000e6;
 
         // Pause the protocol
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         LendefiInstance.pause();
 
         // Expect revert with EnforcedPause error
