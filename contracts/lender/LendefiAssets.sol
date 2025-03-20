@@ -60,6 +60,7 @@ contract LendefiAssets is
     MainOracleConfig public mainOracleConfig;
 
     mapping(address asset => bool broken) public circuitBroken;
+    uint256[22] private __gap;
 
     modifier onlyListedAsset(address asset) {
         if (!listedAssets.contains(asset)) revert AssetNotListed(asset);
