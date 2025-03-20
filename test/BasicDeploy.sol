@@ -665,7 +665,7 @@ contract BasicDeploy is Test {
             _deployTimelock();
         }
         // Protocol Oracle deploy (combined Oracle + Assets)
-        bytes memory data = abi.encodeCall(LendefiAssets.initialize, (address(timelockInstance), guardian));
+        bytes memory data = abi.encodeCall(LendefiAssets.initialize, (address(timelockInstance), gnosisSafe));
 
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", data));
 
@@ -676,11 +676,11 @@ contract BasicDeploy is Test {
         assertFalse(address(assetsInstance) == implementation);
 
         // Grant necessary roles
-        vm.startPrank(guardian);
-        assetsInstance.grantRole(MANAGER_ROLE, address(timelockInstance));
-        assetsInstance.grantRole(CIRCUIT_BREAKER_ROLE, address(timelockInstance));
-        assetsInstance.grantRole(PAUSER_ROLE, guardian);
-        vm.stopPrank();
+        // vm.startPrank(guardian);
+        // assetsInstance.grantRole(MANAGER_ROLE, address(timelockInstance));
+        // assetsInstance.grantRole(CIRCUIT_BREAKER_ROLE, address(timelockInstance));
+        // assetsInstance.grantRole(PAUSER_ROLE, guardian);
+        // vm.stopPrank();
     }
     /**
      * @notice Upgrades the LendefiAssets implementation
@@ -703,11 +703,6 @@ contract BasicDeploy is Test {
         // Get the current implementation address for assertion later
         address implAddressV1 = Upgrades.getImplementationAddress(proxy);
 
-        // Grant upgrader role to manager admin
-        vm.startPrank(guardian);
-        assetsInstance.grantRole(UPGRADER_ROLE, managerAdmin);
-        vm.stopPrank();
-
         // Create options struct for the implementation
         Options memory opts = Options({
             referenceContract: "LendefiAssets.sol",
@@ -729,7 +724,7 @@ contract BasicDeploy is Test {
         address newImpl = Upgrades.prepareUpgrade("LendefiAssetsV2.sol", opts);
 
         // Schedule the upgrade with that exact address
-        vm.startPrank(managerAdmin);
+        vm.startPrank(gnosisSafe);
         assetsInstance.scheduleUpgrade(newImpl);
 
         // Fast forward past the timelock period (3 days for Assets)
@@ -746,12 +741,15 @@ contract BasicDeploy is Test {
         // Assert that upgrade was successful
         assertEq(assetsInstanceV2.version(), 2, "Version not incremented to 2");
         assertFalse(implAddressV2 == implAddressV1, "Implementation address didn't change");
-        assertTrue(assetsInstanceV2.hasRole(UPGRADER_ROLE, managerAdmin), "Lost UPGRADER_ROLE");
+        assertTrue(assetsInstanceV2.hasRole(UPGRADER_ROLE, gnosisSafe), "Lost UPGRADER_ROLE");
 
         // Test role management still works
-        vm.prank(guardian);
-        assetsInstance.revokeRole(UPGRADER_ROLE, managerAdmin);
-        assertFalse(assetsInstance.hasRole(UPGRADER_ROLE, managerAdmin), "Role should be revoked successfully");
+        vm.startPrank(address(timelockInstance));
+        assetsInstanceV2.revokeRole(UPGRADER_ROLE, gnosisSafe);
+        assertFalse(assetsInstanceV2.hasRole(UPGRADER_ROLE, gnosisSafe), "Role should be revoked successfully");
+        assetsInstance.grantRole(UPGRADER_ROLE, gnosisSafe);
+        assertTrue(assetsInstanceV2.hasRole(UPGRADER_ROLE, gnosisSafe), "Lost UPGRADER_ROLE");
+        vm.stopPrank();
     }
     /**
      * @notice Updates the _deployLendefiModules function to use the combined protocol oracle
@@ -796,7 +794,7 @@ contract BasicDeploy is Test {
         vm.stopPrank();
 
         // Update the core address in the protocol oracle to point to the real Lendefi address
-        vm.startPrank(guardian);
+        vm.startPrank(address(timelockInstance));
         assetsInstance.setCoreAddress(address(LendefiInstance));
         assetsInstance.grantRole(CORE_ROLE, address(LendefiInstance));
         vm.stopPrank();
