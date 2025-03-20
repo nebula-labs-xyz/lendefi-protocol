@@ -30,9 +30,9 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         _deployAssetsModule();
 
         // Ensure we have the necessary roles for testing
-        vm.startPrank(guardian);
-        assetsInstance.grantRole(UPGRADER_ROLE, managerAdmin);
-        vm.stopPrank();
+        // vm.startPrank(address(timelockInstance));
+        // assetsInstance.grantRole(UPGRADER_ROLE, gnosisSafe);
+        // vm.stopPrank();
     }
 
     function test_ScheduleUpgrade() public {
@@ -44,9 +44,9 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         uint64 effectiveTime = currentTime + uint64(3 days); // UPGRADE_TIMELOCK_DURATION
 
         // Schedule the upgrade
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         vm.expectEmit(true, true, true, true);
-        emit UpgradeScheduled(managerAdmin, address(newImplementation), currentTime, effectiveTime);
+        emit UpgradeScheduled(gnosisSafe, address(newImplementation), currentTime, effectiveTime);
         assetsInstance.scheduleUpgrade(address(newImplementation));
 
         // Verify upgrade request was stored correctly
@@ -58,7 +58,7 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
 
     function testRevert_ScheduleUpgradeZeroAddress() public {
         // Schedule upgrade with zero address
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         vm.expectRevert(ZeroAddressNotAllowed.selector);
         assetsInstance.scheduleUpgrade(address(0));
     }
@@ -82,13 +82,13 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         LendefiAssets newImplementation = new LendefiAssets();
 
         // Schedule an upgrade first
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(newImplementation));
 
         // Then cancel it
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         vm.expectEmit(true, true, false, false);
-        emit UpgradeCancelled(managerAdmin, address(newImplementation));
+        emit UpgradeCancelled(gnosisSafe, address(newImplementation));
         assetsInstance.cancelUpgrade();
 
         // Verify upgrade request was cleared
@@ -103,7 +103,7 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         LendefiAssets newImplementation = new LendefiAssets();
 
         // Schedule an upgrade first
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(newImplementation));
 
         // Attempt unauthorized cancellation
@@ -119,7 +119,7 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
 
     function testRevert_CancelNonExistentUpgrade() public {
         // Try to cancel when no upgrade is scheduled
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         vm.expectRevert(UpgradeNotScheduled.selector);
         assetsInstance.cancelUpgrade();
     }
@@ -132,7 +132,7 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         assertEq(assetsInstance.upgradeTimelockRemaining(), 0);
 
         // Schedule an upgrade
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(newImplementation));
 
         // Should now return the full timelock duration (3 days)
@@ -156,11 +156,11 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         LendefiAssets newImplementation = new LendefiAssets();
 
         // Schedule the upgrade
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(newImplementation));
 
         // Verify we can't upgrade yet due to timelock
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         vm.expectRevert(abi.encodeWithSelector(UpgradeTimelockActive.selector, 3 days));
         assetsInstance.upgradeToAndCall(address(newImplementation), "");
 
@@ -168,9 +168,9 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         vm.warp(block.timestamp + 3 days + 1);
 
         // Now the upgrade should succeed
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         vm.expectEmit(true, true, false, false);
-        emit Upgrade(managerAdmin, address(newImplementation));
+        emit Upgrade(gnosisSafe, address(newImplementation));
         assetsInstance.upgradeToAndCall(address(newImplementation), "");
 
         // Verify version was incremented
@@ -186,7 +186,7 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         LendefiAssets newImplementation = new LendefiAssets();
 
         // Try to upgrade without scheduling first
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         vm.expectRevert(UpgradeNotScheduled.selector);
         assetsInstance.upgradeToAndCall(address(newImplementation), "");
     }
@@ -197,14 +197,14 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         LendefiAssets attemptedImpl = new LendefiAssets();
 
         // Schedule the first implementation
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(scheduledImpl));
 
         // Fast forward past the timelock period
         vm.warp(block.timestamp + 3 days + 1);
 
         // Try to upgrade with the wrong implementation
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         vm.expectRevert(
             abi.encodeWithSelector(ImplementationMismatch.selector, address(scheduledImpl), address(attemptedImpl))
         );
@@ -217,15 +217,15 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         LendefiAssets secondImpl = new LendefiAssets();
 
         // Schedule first upgrade
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(firstImpl));
 
         // Cancel it
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.cancelUpgrade();
 
         // Schedule a different upgrade
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(secondImpl));
 
         // Verify the new upgrade was scheduled
@@ -240,11 +240,11 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         LendefiAssets secondImpl = new LendefiAssets();
 
         // Schedule first upgrade
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(firstImpl));
 
         // Schedule a new upgrade (implicitly cancels the first one)
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(secondImpl));
 
         // Verify the second upgrade was scheduled
@@ -258,18 +258,18 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         LendefiAssets newImplementation = new LendefiAssets();
 
         // Schedule the upgrade
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(newImplementation));
 
         // Pause the contract
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         assetsInstance.pause();
 
         // Fast forward past timelock
         vm.warp(block.timestamp + 3 days + 1);
 
         // Upgrade should still work even when paused
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.upgradeToAndCall(address(newImplementation), "");
 
         // Verify upgrade succeeded
@@ -278,13 +278,13 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
 
     function test_ScheduleUpgradeWhenPaused() public {
         // Pause the contract first
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         assetsInstance.pause();
 
         // Try to schedule an upgrade while paused
         LendefiAssets newImplementation = new LendefiAssets();
 
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(newImplementation));
     }
 
@@ -293,15 +293,15 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         LendefiAssets newImplementation = new LendefiAssets();
 
         // Schedule an upgrade
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(newImplementation));
 
         // Pause the contract
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         assetsInstance.pause();
 
         // Try to cancel when paused
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.cancelUpgrade();
     }
 
@@ -310,14 +310,14 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         LendefiAssets newImplementation = new LendefiAssets();
 
         // Schedule the upgrade
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(newImplementation));
 
         // Fast forward to 1 second BEFORE the timelock expiration
         vm.warp(block.timestamp + 3 days - 1);
 
         // Should revert since we're not yet past the timelock
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         vm.expectRevert(
             abi.encodeWithSelector(
                 UpgradeTimelockActive.selector,
@@ -330,7 +330,7 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         vm.warp(block.timestamp + 1);
 
         // At exactly 3 days, upgrade should succeed
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.upgradeToAndCall(address(newImplementation), "");
 
         // Verify upgrade succeeded
@@ -343,23 +343,23 @@ contract LendefiAssetsUpgradeTest is BasicDeploy {
         LendefiAssets implV3 = new LendefiAssets();
 
         // Upgrade to V2
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(implV2));
 
         vm.warp(block.timestamp + 3 days + 1);
 
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.upgradeToAndCall(address(implV2), "");
 
         assertEq(assetsInstance.version(), 2, "First upgrade should set version to 2");
 
         // Upgrade to V3
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(implV3));
 
         vm.warp(block.timestamp + 3 days + 1);
 
-        vm.prank(managerAdmin);
+        vm.prank(gnosisSafe);
         assetsInstance.upgradeToAndCall(address(implV3), "");
 
         assertEq(assetsInstance.version(), 3, "Second upgrade should set version to 3");
