@@ -50,15 +50,6 @@ contract OraclePriceTest is BasicDeploy {
 
         vm.startPrank(address(timelockInstance));
 
-        // Set minimum required oracles to 1
-        assetsInstance.updateMainOracleConfig(
-            uint80(28800), // Keep default freshness
-            uint80(3600), // Keep default volatility
-            uint40(20), // Keep default volatility %
-            uint40(50), // Keep default circuit breaker %
-            1 // # oracles
-        );
-
         // REGISTER ASSETS WITH ORACLES USING UPDATED STRUCT FORMAT
 
         // Register WETH asset
