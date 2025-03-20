@@ -188,8 +188,8 @@ contract LendefiAssetsTest is BasicDeploy {
     }
 
     function _addLiquidity(uint256 amount) internal {
-        usdcInstance.mint(guardian, amount);
-        vm.startPrank(guardian);
+        usdcInstance.mint(gnosisSafe, amount);
+        vm.startPrank(gnosisSafe);
         usdcInstance.approve(address(LendefiInstance), amount);
         LendefiInstance.supplyLiquidity(amount);
         vm.stopPrank();
@@ -776,16 +776,16 @@ contract LendefiAssetsTest is BasicDeploy {
         LendefiAssets newImplementation = new LendefiAssets();
 
         // Step 1: Schedule the upgrade first (new requirement)
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         assetsInstance.scheduleUpgrade(address(newImplementation));
 
         // Step 2: Fast forward time to pass the timelock period (3 days)
         vm.warp(block.timestamp + 3 days + 1);
 
         // Step 3: Now perform the upgrade
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectEmit(true, true, false, false);
-        emit Upgrade(guardian, address(newImplementation));
+        emit Upgrade(gnosisSafe, address(newImplementation));
         assetsInstance.upgradeToAndCall(address(newImplementation), "");
 
         // After upgrade, version should be incremented
@@ -899,13 +899,13 @@ contract LendefiAssetsTest is BasicDeploy {
 
         // Add some collateral
         uint256 depositAmount = 300 ether; // 30% of max supply
-        vm.deal(guardian, depositAmount);
-        vm.startPrank(guardian);
+        vm.deal(gnosisSafe, depositAmount);
+        vm.startPrank(gnosisSafe);
         wethInstance.deposit{value: depositAmount}();
         wethInstance.approve(address(LendefiInstance), depositAmount);
 
         LendefiInstance.createPosition(address(wethInstance), false);
-        uint256 positionId = LendefiInstance.getUserPositionsCount(guardian) - 1;
+        uint256 positionId = LendefiInstance.getUserPositionsCount(gnosisSafe) - 1;
         LendefiInstance.supplyCollateral(address(wethInstance), depositAmount, positionId);
         vm.stopPrank();
 
@@ -917,14 +917,14 @@ contract LendefiAssetsTest is BasicDeploy {
 
     // For testRevert_SetCoreAddress_ZeroAddress()
     function testRevert_SetCoreAddress_ZeroAddress() public {
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         vm.expectRevert(abi.encodeWithSignature("ZeroAddressNotAllowed()"));
         assetsInstance.setCoreAddress(address(0));
     }
 
     function test_UnpauseAssets() public {
         // First pause the assets contract
-        vm.startPrank(guardian);
+        vm.startPrank(gnosisSafe);
         assetsInstance.pause();
 
         // Verify it's paused
@@ -1044,7 +1044,9 @@ contract LendefiAssetsTest is BasicDeploy {
         // The CoreAddressUpdated event has only one indexed parameter and no non-indexed parameters
         // So we should use vm.expectEmit(true, false, false, false)
 
-        vm.prank(guardian);
+        vm.prank(address(timelockInstance));
+        vm.expectEmit(true, false, false, false);
+        emit IASSETS.CoreAddressUpdated(newCore);
         assetsInstance.setCoreAddress(newCore);
 
         assertEq(assetsInstance.coreAddress(), newCore);
@@ -1054,16 +1056,18 @@ contract LendefiAssetsTest is BasicDeploy {
         address timelockAddr = address(timelockInstance);
 
         // Create initialization data
-        bytes memory initData = abi.encodeCall(LendefiAssets.initialize, (timelockAddr, guardian));
+        bytes memory initData = abi.encodeCall(LendefiAssets.initialize, (timelockAddr, gnosisSafe));
         // Deploy LendefiAssets with initialization
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", initData));
         LendefiAssets assetsContract = LendefiAssets(proxy);
 
         // Check role assignments
-        assertTrue(assetsContract.hasRole(DEFAULT_ADMIN_ROLE, guardian), "Guardian should have DEFAULT_ADMIN_ROLE");
+        assertTrue(
+            assetsContract.hasRole(DEFAULT_ADMIN_ROLE, timelockAddr), "gnosisSafe should have DEFAULT_ADMIN_ROLE"
+        );
         assertTrue(assetsContract.hasRole(MANAGER_ROLE, timelockAddr), "Timelock should have MANAGER_ROLE");
-        assertTrue(assetsContract.hasRole(UPGRADER_ROLE, guardian), "Guardian should have UPGRADER_ROLE");
-        assertTrue(assetsContract.hasRole(PAUSER_ROLE, guardian), "Guardian should have PAUSER_ROLE");
+        assertTrue(assetsContract.hasRole(UPGRADER_ROLE, gnosisSafe), "gnosisSafe should have UPGRADER_ROLE");
+        assertTrue(assetsContract.hasRole(PAUSER_ROLE, gnosisSafe), "gnosisSafe should have PAUSER_ROLE");
 
         // Check version
         assertEq(assetsContract.version(), 1, "Initial version should be 1");
@@ -1128,13 +1132,13 @@ contract LendefiAssetsTest is BasicDeploy {
 
         // Add some collateral to create TVL
         uint256 depositAmount = 300 ether;
-        vm.deal(guardian, depositAmount);
-        vm.startPrank(guardian);
+        vm.deal(gnosisSafe, depositAmount);
+        vm.startPrank(gnosisSafe);
         wethInstance.deposit{value: depositAmount}();
         wethInstance.approve(address(LendefiInstance), depositAmount);
 
         LendefiInstance.createPosition(address(wethInstance), false);
-        uint256 positionId = LendefiInstance.getUserPositionsCount(guardian) - 1;
+        uint256 positionId = LendefiInstance.getUserPositionsCount(gnosisSafe) - 1;
         LendefiInstance.supplyCollateral(address(wethInstance), depositAmount, positionId);
         vm.stopPrank();
 
@@ -1181,14 +1185,14 @@ contract LendefiAssetsTest is BasicDeploy {
         // No need to manually set TVL, we can test using real functionality
         // First deposit some WETH to create TVL
         uint256 depositAmount = 500 ether;
-        vm.deal(guardian, depositAmount);
-        vm.startPrank(guardian);
+        vm.deal(gnosisSafe, depositAmount);
+        vm.startPrank(gnosisSafe);
         wethInstance.deposit{value: depositAmount}();
         wethInstance.approve(address(LendefiInstance), depositAmount);
 
         // Create a position and supply collateral
         LendefiInstance.createPosition(address(wethInstance), false);
-        uint256 positionId = LendefiInstance.getUserPositionsCount(guardian) - 1;
+        uint256 positionId = LendefiInstance.getUserPositionsCount(gnosisSafe) - 1;
         LendefiInstance.supplyCollateral(address(wethInstance), depositAmount, positionId);
         vm.stopPrank();
 
@@ -1770,7 +1774,7 @@ contract LendefiAssetsTest is BasicDeploy {
         assertEq(params.decimals, 6, "USDC decimals should be 6");
 
         // Test how circuit breaker affects the function
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         assetsInstance.triggerCircuitBreaker(address(wethInstance));
 
         // Now getAssetCalculationParams should revert for WETH
@@ -1778,7 +1782,7 @@ contract LendefiAssetsTest is BasicDeploy {
         assetsInstance.getAssetCalculationParams(address(wethInstance));
 
         // Reset the circuit breaker
-        vm.prank(guardian);
+        vm.prank(gnosisSafe);
         assetsInstance.resetCircuitBreaker(address(wethInstance));
 
         // Function should work again after resetting circuit breaker
