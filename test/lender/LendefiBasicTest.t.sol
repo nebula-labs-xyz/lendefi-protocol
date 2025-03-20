@@ -50,15 +50,6 @@ contract LendefiTest is BasicDeploy {
         wethassetsInstance.setPrice(int256(ETH_PRICE)); // $2500 per ETH
         rwaOracleInstance.setPrice(int256(RWA_PRICE)); // $1000 per RWA token
 
-        // Set the minimum oracles required to 1 to avoid NotEnoughOracles errors
-        vm.prank(address(timelockInstance));
-        assetsInstance.updateMainOracleConfig(
-            uint80(28800), // 8 hours freshness
-            uint80(3600), // 1 hour volatility
-            uint40(20), // 20% volatility percentage
-            uint40(50), // 50% circuit breaker threshold
-            1 // Minimum oracles required
-        );
         // Setup roles
         vm.prank(address(timelockInstance));
         ecoInstance.grantRole(REWARDER_ROLE, address(LendefiInstance));
