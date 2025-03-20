@@ -12,13 +12,12 @@ contract LendefiYieldTokenTest is Test {
     LendefiYieldToken public implementation;
     LendefiYieldToken public yieldToken;
 
-    address public guardian = address(0x1);
+    address public multisig = address(0x1);
     address public protocol = address(0x2);
     address public user1 = address(0x3);
     address public user2 = address(0x4);
     address public unauthorized = address(0x5);
     address public timelock = address(0x6);
-    address public multisig = address(0x7);
 
     bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00;
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
@@ -43,7 +42,6 @@ contract LendefiYieldTokenTest is Test {
     event UpgradeCancelled(address indexed canceller, address indexed implementation);
 
     function setUp() public {
-        vm.label(guardian, "Guardian");
         vm.label(protocol, "Protocol");
         vm.label(user1, "User1");
         vm.label(user2, "User2");
@@ -56,7 +54,7 @@ contract LendefiYieldTokenTest is Test {
 
         // Deploy proxy and initialize with all required parameters
         bytes memory initData =
-            abi.encodeWithSelector(LendefiYieldToken.initialize.selector, protocol, timelock, guardian, multisig);
+            abi.encodeWithSelector(LendefiYieldToken.initialize.selector, protocol, timelock, multisig);
 
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         yieldToken = LendefiYieldToken(address(proxy));
@@ -74,7 +72,7 @@ contract LendefiYieldTokenTest is Test {
         // Check roles are assigned correctly
         assertTrue(yieldToken.hasRole(DEFAULT_ADMIN_ROLE, timelock));
         assertTrue(yieldToken.hasRole(PROTOCOL_ROLE, protocol));
-        assertTrue(yieldToken.hasRole(PAUSER_ROLE, guardian));
+        assertTrue(yieldToken.hasRole(PAUSER_ROLE, multisig));
         assertTrue(yieldToken.hasRole(UPGRADER_ROLE, multisig));
     }
 
@@ -88,12 +86,12 @@ contract LendefiYieldTokenTest is Test {
 
         // Now try to initialize with zero address - should revert with ZeroAddressNotAllowed()
         vm.expectRevert(ZeroAddressNotAllowed.selector);
-        newToken.initialize(address(0), timelock, guardian, multisig);
+        newToken.initialize(address(0), timelock, multisig);
     }
 
     function testRevert_DoubleInitialization() public {
         vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
-        yieldToken.initialize(protocol, timelock, guardian, multisig);
+        yieldToken.initialize(protocol, timelock, multisig);
     }
 
     // ------ Role Management Tests ------
@@ -279,9 +277,9 @@ contract LendefiYieldTokenTest is Test {
     // ------ Pause Functionality Tests ------
 
     function test_Pause() public {
-        vm.prank(guardian);
+        vm.prank(multisig);
         vm.expectEmit(false, false, false, true);
-        emit Paused(guardian);
+        emit Paused(multisig);
         yieldToken.pause();
 
         assertTrue(yieldToken.paused());
@@ -289,16 +287,16 @@ contract LendefiYieldTokenTest is Test {
 
     function test_Unpause() public {
         // First pause
-        vm.prank(guardian);
+        vm.startPrank(multisig);
         yieldToken.pause();
 
         // Then unpause
-        vm.prank(guardian);
         vm.expectEmit(false, false, false, true);
-        emit Unpaused(guardian);
+        emit Unpaused(multisig);
         yieldToken.unpause();
 
         assertFalse(yieldToken.paused());
+        vm.stopPrank();
     }
 
     function testRevert_TransferWhenPaused() public {
@@ -307,7 +305,7 @@ contract LendefiYieldTokenTest is Test {
         yieldToken.mint(user1, 1000 * 10 ** 6);
 
         // Pause the contract
-        vm.prank(guardian);
+        vm.prank(multisig);
         yieldToken.pause();
 
         // Try to transfer when paused
@@ -318,7 +316,7 @@ contract LendefiYieldTokenTest is Test {
 
     function testRevert_MintWhenPaused() public {
         // Pause the contract
-        vm.prank(guardian);
+        vm.prank(multisig);
         yieldToken.pause();
 
         // Try to mint when paused
@@ -333,7 +331,7 @@ contract LendefiYieldTokenTest is Test {
         yieldToken.mint(user1, 1000 * 10 ** 6);
 
         // Pause the contract
-        vm.prank(guardian);
+        vm.prank(multisig);
         yieldToken.pause();
 
         // Try to burn when paused
@@ -352,7 +350,7 @@ contract LendefiYieldTokenTest is Test {
 
     function testRevert_UnauthorizedUnpause() public {
         // First pause
-        vm.prank(guardian);
+        vm.prank(multisig);
         yieldToken.pause();
 
         // Try unauthorized unpause
@@ -504,7 +502,7 @@ contract LendefiYieldTokenTest is Test {
         uint64 currentTime = uint64(block.timestamp);
         uint64 effectiveTime = currentTime + uint64(yieldToken.UPGRADE_TIMELOCK_DURATION());
 
-        vm.prank(multisig); // Use multisig instead of guardian
+        vm.prank(multisig); // Use multisig instead of multisig
         vm.expectEmit(true, true, true, true);
         emit UpgradeScheduled(multisig, newImplementation, currentTime, effectiveTime);
         yieldToken.scheduleUpgrade(newImplementation);
@@ -517,7 +515,7 @@ contract LendefiYieldTokenTest is Test {
     }
 
     function testRevert_ScheduleUpgradeZeroAddress() public {
-        vm.prank(multisig); // Use multisig instead of guardian
+        vm.prank(multisig); // Use multisig instead of multisig
         vm.expectRevert(ZeroAddressNotAllowed.selector);
         yieldToken.scheduleUpgrade(address(0));
     }
