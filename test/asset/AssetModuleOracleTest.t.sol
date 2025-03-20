@@ -198,7 +198,7 @@ contract AssetModuleOracleTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Get current config values to preserve
-        (, uint256 oldVolatility, uint256 oldVolatilityPct, uint256 oldCircuitBreakerPct, uint256 oldMinOracles) =
+        (, uint256 oldVolatility, uint256 oldVolatilityPct, uint256 oldCircuitBreakerPct) =
             assetsInstance.mainOracleConfig();
 
         // Update freshness threshold
@@ -209,8 +209,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             7200, // 2 hours
             uint80(oldVolatility),
             uint40(oldVolatilityPct),
-            uint40(oldCircuitBreakerPct),
-            uint16(oldMinOracles)
+            uint40(oldCircuitBreakerPct)
         );
 
         // Try values outside valid range (should revert)
@@ -219,8 +218,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(14 minutes), // Too small
             uint80(oldVolatility),
             uint40(oldVolatilityPct),
-            uint40(oldCircuitBreakerPct),
-            uint16(oldMinOracles)
+            uint40(oldCircuitBreakerPct)
         );
 
         vm.expectRevert();
@@ -228,8 +226,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(25 hours), // Too large
             uint80(oldVolatility),
             uint40(oldVolatilityPct),
-            uint40(oldCircuitBreakerPct),
-            uint16(oldMinOracles)
+            uint40(oldCircuitBreakerPct)
         );
 
         vm.stopPrank();
@@ -239,7 +236,7 @@ contract AssetModuleOracleTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Get current config values to preserve
-        (uint256 oldFreshness,, uint256 oldVolatilityPct, uint256 oldCircuitBreakerPct, uint256 oldMinOracles) =
+        (uint256 oldFreshness,, uint256 oldVolatilityPct, uint256 oldCircuitBreakerPct) =
             assetsInstance.mainOracleConfig();
 
         // Update volatility threshold
@@ -250,8 +247,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(oldFreshness),
             1800, // 30 minutes
             uint40(oldVolatilityPct),
-            uint40(oldCircuitBreakerPct),
-            uint16(oldMinOracles)
+            uint40(oldCircuitBreakerPct)
         );
 
         // Try values outside valid range (should revert)
@@ -260,8 +256,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(oldFreshness),
             uint80(4 minutes), // Too small
             uint40(oldVolatilityPct),
-            uint40(oldCircuitBreakerPct),
-            uint16(oldMinOracles)
+            uint40(oldCircuitBreakerPct)
         );
 
         vm.expectRevert();
@@ -269,8 +264,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(oldFreshness),
             uint80(5 hours), // Too large
             uint40(oldVolatilityPct),
-            uint40(oldCircuitBreakerPct),
-            uint16(oldMinOracles)
+            uint40(oldCircuitBreakerPct)
         );
 
         vm.stopPrank();
@@ -280,8 +274,7 @@ contract AssetModuleOracleTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Get current config values to preserve
-        (uint256 oldFreshness, uint256 oldVolatility,, uint256 oldCircuitBreakerPct, uint256 oldMinOracles) =
-            assetsInstance.mainOracleConfig();
+        (uint256 oldFreshness, uint256 oldVolatility,, uint256 oldCircuitBreakerPct) = assetsInstance.mainOracleConfig();
 
         // Update volatility percentage
         vm.expectEmit(true, true, true, true);
@@ -291,8 +284,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(oldFreshness),
             uint80(oldVolatility),
             15, // 15%
-            uint40(oldCircuitBreakerPct),
-            uint16(oldMinOracles)
+            uint40(oldCircuitBreakerPct)
         );
 
         // Try values outside valid range (should revert)
@@ -301,8 +293,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(oldFreshness),
             uint80(oldVolatility),
             4, // Too small
-            uint40(oldCircuitBreakerPct),
-            uint16(oldMinOracles)
+            uint40(oldCircuitBreakerPct)
         );
 
         vm.expectRevert();
@@ -310,8 +301,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(oldFreshness),
             uint80(oldVolatility),
             31, // Too large
-            uint40(oldCircuitBreakerPct),
-            uint16(oldMinOracles)
+            uint40(oldCircuitBreakerPct)
         );
 
         vm.stopPrank();
@@ -321,8 +311,7 @@ contract AssetModuleOracleTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Get current config values to preserve
-        (uint256 oldFreshness, uint256 oldVolatility, uint256 oldVolatilityPct,, uint256 oldMinOracles) =
-            assetsInstance.mainOracleConfig();
+        (uint256 oldFreshness, uint256 oldVolatility, uint256 oldVolatilityPct,) = assetsInstance.mainOracleConfig();
 
         // Update circuit breaker threshold
         vm.expectEmit(true, true, true, true);
@@ -332,8 +321,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(oldFreshness),
             uint80(oldVolatility),
             uint40(oldVolatilityPct),
-            35, // 35%
-            uint16(oldMinOracles)
+            35 // 35%
         );
 
         // Try values outside valid range (should revert)
@@ -342,8 +330,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(oldFreshness),
             uint80(oldVolatility),
             uint40(oldVolatilityPct),
-            24, // Too small
-            uint16(oldMinOracles)
+            24 // Too small
         );
 
         vm.expectRevert();
@@ -351,8 +338,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(oldFreshness),
             uint80(oldVolatility),
             uint40(oldVolatilityPct),
-            71, // Too large
-            uint16(oldMinOracles)
+            71 // Too large
         );
 
         vm.stopPrank();
@@ -446,19 +432,6 @@ contract AssetModuleOracleTest is BasicDeploy {
     function test_GetMedianPrice_Single() public {
         vm.startPrank(address(timelockInstance));
 
-        // Get current config values to preserve
-        (uint256 oldFreshness, uint256 oldVolatility, uint256 oldVolatilityPct, uint256 oldCircuitBreakerPct,) =
-            assetsInstance.mainOracleConfig();
-
-        // Set minimum required oracles to 1
-        assetsInstance.updateMainOracleConfig(
-            uint80(oldFreshness),
-            uint80(oldVolatility),
-            uint40(oldVolatilityPct),
-            uint40(oldCircuitBreakerPct),
-            1 // Set to 1
-        );
-
         // Get median price (with single oracle, should return that oracle's price)
         uint256 price = assetsInstance.getAssetPrice(address(wethInstance));
         assertEq(price, 2010e8, "Single oracle should return its price"); //price from setUp()
@@ -468,9 +441,6 @@ contract AssetModuleOracleTest is BasicDeploy {
 
     function test_CircuitBreaker_ManualTrigger() public {
         vm.startPrank(address(timelockInstance));
-
-        // Add oracle
-        //assetsInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
 
         // Verify initially not broken
         assertEq(assetsInstance.circuitBroken(address(wethInstance)), false, "Circuit should not be broken initially");
@@ -492,7 +462,7 @@ contract AssetModuleOracleTest is BasicDeploy {
     }
 
     function test_CircuitBreaker_Reset() public {
-        vm.startPrank(address(timelockInstance));
+        vm.startPrank(address(gnosisSafe));
 
         // Trigger the circuit breaker
         assetsInstance.triggerCircuitBreaker(address(wethInstance));
@@ -518,20 +488,6 @@ contract AssetModuleOracleTest is BasicDeploy {
     function test_Integration_MultipleAssets() public {
         vm.startPrank(address(timelockInstance));
 
-        // Set minimum required oracles to 1
-        assetsInstance.updateMainOracleConfig(
-            uint80(28800), // Keep default freshness
-            uint80(3600), // Keep default volatility
-            uint40(20), // Keep default volatility %
-            uint40(50), // Keep default circuit breaker %
-            1 // Minimum 1 oracle
-        );
-
-        // Set up multiple assets with their oracles - UPDATED WITH ORACLE TYPE
-        // assetsInstance.addOracle(address(wethInstance), address(wethOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
-        // assetsInstance.addOracle(address(rwaToken), address(rwaOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
-        // assetsInstance.addOracle(address(stableToken), address(stableOracleInstance), 8, IASSETS.OracleType.CHAINLINK);
-
         // Check each asset price
         uint256 wethPrice = assetsInstance.getAssetPrice(address(wethInstance));
         uint256 rwaPrice = assetsInstance.getAssetPrice(address(rwaToken));
@@ -555,15 +511,6 @@ contract AssetModuleOracleTest is BasicDeploy {
 
     function test_Integration_OracleSwitch() public {
         vm.startPrank(address(timelockInstance));
-
-        // Configure for single oracle operation
-        assetsInstance.updateMainOracleConfig(
-            uint80(28800), // Keep default freshness
-            uint80(3600), // Keep default volatility
-            uint40(20), // Keep default volatility %
-            uint40(50), // Keep default circuit breaker %
-            1 // Minimum 1 oracle
-        );
 
         // Get initial price
         uint256 initialPrice = assetsInstance.getAssetPrice(address(wethInstance));
@@ -656,8 +603,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(28800), // default freshness
             uint80(3600), // default volatility
             uint40(20), // default volatility %
-            uint40(50), // default circuit breaker %
-            1 // minimum 1 oracle
+            uint40(50) // default circuit breaker %
         );
 
         // Update asset configuration to use the new rwaOracle
@@ -691,8 +637,8 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         vm.stopPrank();
 
-        // Now start the circuit breaker test with guardian role
-        vm.startPrank(guardian);
+        // Now start the circuit breaker test with gnosisSafe role
+        vm.startPrank(gnosisSafe);
 
         // Verify we can get the price before triggering circuit breaker
         uint256 initialPrice = assetsInstance.getAssetPrice(address(rwaToken));
@@ -793,8 +739,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint80(28800),
             uint80(3600),
             uint40(20),
-            uint40(40), // 40% threshold
-            2 // Require 2 oracles
+            uint40(40) // 40% threshold
         );
 
         assetsInstance.updateAssetConfig(
