@@ -582,9 +582,8 @@ contract BasicDeploy is Test {
         if (address(timelockInstance) == address(0)) {
             _deployTimelock();
         }
-        bytes memory data = abi.encodeCall(
-            LendefiYieldToken.initialize, (address(ethereum), address(timelockInstance), guardian, gnosisSafe)
-        );
+        bytes memory data =
+            abi.encodeCall(LendefiYieldToken.initialize, (address(ethereum), address(timelockInstance), gnosisSafe));
 
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiYieldToken.sol", data));
         yieldTokenInstance = LendefiYieldToken(proxy);
@@ -593,10 +592,10 @@ contract BasicDeploy is Test {
         assertFalse(address(yieldTokenInstance) == implementation);
 
         // Verify roles are properly assigned
-        assertTrue(yieldTokenInstance.hasRole(yieldTokenInstance.PROTOCOL_ROLE(), address(ethereum)));
+        assertTrue(yieldTokenInstance.hasRole(PAUSER_ROLE, gnosisSafe));
+        assertTrue(yieldTokenInstance.hasRole(UPGRADER_ROLE, gnosisSafe));
+        assertTrue(yieldTokenInstance.hasRole(PROTOCOL_ROLE, address(ethereum)));
         assertTrue(yieldTokenInstance.hasRole(DEFAULT_ADMIN_ROLE, address(timelockInstance)));
-        assertTrue(yieldTokenInstance.hasRole(yieldTokenInstance.PAUSER_ROLE(), guardian));
-        assertTrue(yieldTokenInstance.hasRole(yieldTokenInstance.UPGRADER_ROLE(), gnosisSafe));
     }
 
     /**
@@ -762,9 +761,8 @@ contract BasicDeploy is Test {
         }
 
         // Then deploy the yield token with proper initialization parameters
-        bytes memory tokenData = abi.encodeCall(
-            LendefiYieldToken.initialize, (address(ethereum), address(timelockInstance), guardian, gnosisSafe)
-        );
+        bytes memory tokenData =
+            abi.encodeCall(LendefiYieldToken.initialize, (address(ethereum), address(timelockInstance), gnosisSafe));
 
         address payable tokenProxy = payable(Upgrades.deployUUPSProxy("LendefiYieldToken.sol", tokenData));
         yieldTokenInstance = LendefiYieldToken(tokenProxy);
