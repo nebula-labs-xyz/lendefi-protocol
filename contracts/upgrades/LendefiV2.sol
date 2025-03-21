@@ -1529,8 +1529,10 @@ contract LendefiV2 is
         (bool exists, uint256 currentAmount) = collaterals.tryGet(asset);
         if (!exists) {
             if (!exists && collaterals.length() >= 20) revert MaximumAssetsReached(); // Maximum assets reached
+            if (assetsModule.poolLiquidityLimit(asset, amount)) revert PoolLiquidityLimitReached();
             collaterals.set(asset, amount);
         } else {
+            if (assetsModule.poolLiquidityLimit(asset, currentAmount + amount)) revert PoolLiquidityLimitReached();
             collaterals.set(asset, currentAmount + amount);
         }
 
