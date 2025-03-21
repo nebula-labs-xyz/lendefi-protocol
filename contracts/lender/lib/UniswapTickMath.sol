@@ -1,61 +1,60 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
 
-import "./FullMath.sol";
+import "@uniswap/v4-core/src/libraries/TickMath.sol";
+import "@uniswap/v4-core/src/libraries/FullMath.sol";
+import "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 
+/// @title Uniswap tick math wrapper for price calculations
+/// @notice Uses Uniswap v4 core libraries for accuracy and consistency, backward compatible with v3
 library UniswapTickMath {
-    function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160) {
-        uint256 absTick = tick < 0 ? uint256(-int256(tick)) : uint256(int256(tick));
-        require(absTick <= uint256(int256(887272)), "Tick out of range");
-
-        uint256 ratio = absTick & 0x1 != 0 ? 0xfffcb933bd6fad37aa2d162d1a594001 : 0x100000000000000000000000000000000;
-
-        if (absTick & 0x2 != 0) ratio = (ratio * 0xfff97272373d413259a46990580e213a) >> 128;
-        if (absTick & 0x4 != 0) ratio = (ratio * 0xfff2e50f5f656932ef12357cf3c7fdcc) >> 128;
-        if (absTick & 0x8 != 0) ratio = (ratio * 0xffe5caca7e10e4e61c3624eaa0941cd0) >> 128;
-        if (absTick & 0x10 != 0) ratio = (ratio * 0xffcb9843d60f6159c9db58835c926644) >> 128;
-        if (absTick & 0x20 != 0) ratio = (ratio * 0xff973b41fa98c081472e6896dfb254c0) >> 128;
-        if (absTick & 0x40 != 0) ratio = (ratio * 0xff2ea16466c96a3843ec78b326b52861) >> 128;
-        if (absTick & 0x80 != 0) ratio = (ratio * 0xfe5dee046a99a2a811c461f1969c3053) >> 128;
-        if (absTick & 0x100 != 0) ratio = (ratio * 0xfcbe86c7900a88aedcffc83b479aa3a4) >> 128;
-        if (absTick & 0x200 != 0) ratio = (ratio * 0xf987a7253ac413176f2b074cf7815e54) >> 128;
-        if (absTick & 0x400 != 0) ratio = (ratio * 0xf3392b0822b70005940c7a398e4b70f3) >> 128;
-        if (absTick & 0x800 != 0) ratio = (ratio * 0xe7159475a2c29b7443b29c7fa6e889d9) >> 128;
-        if (absTick & 0x1000 != 0) ratio = (ratio * 0xd097f3bdfd2022b8845ad8f792aa5825) >> 128;
-        if (absTick & 0x2000 != 0) ratio = (ratio * 0xa9f746462d870fdf8a65dc1f90e061e5) >> 128;
-        if (absTick & 0x4000 != 0) ratio = (ratio * 0x70d869a156d2a1b890bb3df62baf32f7) >> 128;
-        if (absTick & 0x8000 != 0) ratio = (ratio * 0x31be135f97d08fd981231505542fcfa6) >> 128;
-        if (absTick & 0x10000 != 0) ratio = (ratio * 0x9aa508b5b7a84e1c677de54f3e99bc9) >> 128;
-        if (absTick & 0x20000 != 0) ratio = (ratio * 0x5d6af8dedb81196699c329225ee604) >> 128;
-        if (absTick & 0x40000 != 0) ratio = (ratio * 0x2216e584f5fa1ea926041bedfe98) >> 128;
-        if (absTick & 0x80000 != 0) ratio = (ratio * 0x48a170391f7dc42444e8fa2) >> 128;
-
-        if (tick > 0) ratio = type(uint256).max / ratio;
-
-        // This divides by 1<<32 rounding up to go from a Q128.128 to a Q128.96.
-        // We then downcast because we know the result always fits within 160 bits due to our tick input constraint.
-        return uint160((ratio >> 32) + (ratio % (1 << 32) == 0 ? 0 : 1));
+    function getNextSqrtPriceFromInput(uint160 sqrtPriceX96, uint128 liquidity, uint256 amountIn, bool isToken0)
+        internal
+        pure
+        returns (uint160)
+    {
+        return SqrtPriceMath.getNextSqrtPriceFromInput(sqrtPriceX96, liquidity, amountIn, isToken0);
     }
 
-    // Updated getQuoteAtTick method based on Uniswap's implementation
     function getQuoteAtTick(int24 tick) internal pure returns (uint256) {
-        uint160 sqrtRatioX96 = getSqrtRatioAtTick(tick);
+        uint160 sqrtRatioX96 = TickMath.getSqrtPriceAtTick(tick);
 
-        // We're calculating a price, so we need a "base amount" - use 1e8 (with 8 decimals)
+        // We're calculating a price, so we need a "base amount" - use 1e6 for USDC decimals
         uint256 baseAmount = 1e8;
 
         // Calculate price with proper precision
-        uint256 quoteAmount;
-        if (sqrtRatioX96 <= type(uint128).max) {
-            // For smaller sqrt ratios, use full 192-bit precision
-            uint256 ratioX192 = uint256(sqrtRatioX96) * uint256(sqrtRatioX96);
-            quoteAmount = FullMath.mulDiv(ratioX192, baseAmount, 1 << 192);
-        } else {
-            // For larger sqrt ratios, use 128-bit precision to avoid overflow
-            uint256 ratioX128 = FullMath.mulDiv(sqrtRatioX96, sqrtRatioX96, 1 << 64);
-            quoteAmount = FullMath.mulDiv(ratioX128, baseAmount, 1 << 128);
-        }
+        uint256 ratioX192 = uint256(sqrtRatioX96) * uint256(sqrtRatioX96);
+        return FullMath.mulDiv(ratioX192, baseAmount, 1 << 192);
+    }
 
-        return quoteAmount;
+    /// @notice Calculates price from sqrt price for token0/token1 pair
+    /// @param sqrtPriceX96 The sqrt price in X96 format
+    /// @param isToken0 Whether to calculate price for token0 or token1
+    /// @return price The calculated price in 1e6 (USDC) precision
+    function getPriceFromSqrtPrice(uint160 sqrtPriceX96, bool isToken0) internal pure returns (uint256 price) {
+        if (isToken0) {
+            // token0/token1 price = sqrtPrice^2 / 2^192 * 1e6
+            uint256 ratioX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
+            return FullMath.mulDiv(ratioX192, 1e6, 1 << 192);
+        } else {
+            // token1/token0 price = 2^192 / sqrtPrice^2 * 1e6
+            uint256 ratioX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
+            return FullMath.mulDiv(1 << 192, 1e6, ratioX192);
+        }
+    }
+
+    /// @notice Calculates average price between current and impacted price
+    /// @param currentSqrtPriceX96 Current sqrt price in X96 format
+    /// @param impactedSqrtPriceX96 Price after impact in X96 format
+    /// @param isToken0 Whether to calculate price for token0 or token1
+    /// @return price The average price in 1e6 (USDC) precision
+    function getAveragePriceFromImpact(uint160 currentSqrtPriceX96, uint160 impactedSqrtPriceX96, bool isToken0)
+        internal
+        pure
+        returns (uint256 price)
+    {
+        uint256 currentPrice = getPriceFromSqrtPrice(currentSqrtPriceX96, isToken0);
+        uint256 impactedPrice = getPriceFromSqrtPrice(impactedSqrtPriceX96, isToken0);
+        return (currentPrice + impactedPrice) / 2;
     }
 }
