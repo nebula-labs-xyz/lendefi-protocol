@@ -456,4 +456,13 @@ interface IASSETS {
      * @return Struct containing price, thresholds and decimals
      */
     function getAssetCalculationParams(address asset) external view returns (AssetCalculationParams memory);
+
+    /**
+     * @notice Checks if an amount exceeds pool liquidity limits
+     * @dev Only applicable for assets with active Uniswap oracle
+     * @param asset The asset address to check
+     * @param amount The amount to validate against pool liquidity
+     * @return Boolean - If amount exceeds 3% of the Uniswap v3 pool liquidity
+     */
+    function poolLiquidityLimit(address asset, uint256 amount) external view returns (bool);
 }
