@@ -389,6 +389,12 @@ interface IPROTOCOL {
      * @dev Used in operations that require an active debt position
      */
     error NoDebt();
+
+    /**
+     * @notice Thrown when a user tries to deposit a collateral asset amount greater than 3% of total uniswap pool liquidity
+     * @dev Used in operations that require positions to be liquidatable
+     */
+    error PoolLiquidityLimitReached();
     //////////////////////////////////////////////////
     // ---------------Core functions---------------//
     /////////////////////////////////////////////////
