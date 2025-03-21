@@ -35,31 +35,66 @@ contract LendefiAssets is
 
     // ==================== ROLES ====================
 
+    /// @notice Role that allows managing asset configurations and oracle settings
+    /// @dev Hash of "MANAGER_ROLE"
     bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
+
+    /// @notice Role that allows initiating and executing contract upgrades
+    /// @dev Hash of "UPGRADER_ROLE"
     bytes32 internal constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+
+    /// @notice Role that allows pausing and unpausing contract operations
+    /// @dev Hash of "PAUSER_ROLE"
     bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+
+    /// @notice Role that can activate or deactivate circuit breakers for assets
+    /// @dev Hash of "CIRCUIT_BREAKER_ROLE"
     bytes32 internal constant CIRCUIT_BREAKER_ROLE = keccak256("CIRCUIT_BREAKER_ROLE");
-    /// @notice Duration of the timelock for upgrade operations (3 days)
+
+    /// @notice Duration of the timelock for upgrade operations
+    /// @dev Set to 3 days to allow sufficient time for review
     uint256 public constant UPGRADE_TIMELOCK_DURATION = 3 days;
+
     // ==================== STATE VARIABLES ====================
-    // Core info
+
+    /// @notice Current version of the contract implementation
+    /// @dev Incremented on each upgrade
     uint8 public version;
+
+    /// @notice Address of the core protocol contract
+    /// @dev Used for cross-contract calls and validation
     address public coreAddress;
-    /// @notice Information about the currently pending upgrade
+
+    /// @notice Information about the currently pending upgrade request
+    /// @dev Stores implementation address and scheduling details
     UpgradeRequest public pendingUpgrade;
+
+    /// @notice Interface to interact with the core protocol
+    /// @dev Used to query protocol state and perform operations
     IPROTOCOL internal lendefiInstance;
 
-    // Asset management
+    /// @notice Set of all listed asset addresses
+    /// @dev Uses OpenZeppelin's EnumerableSet for efficient membership checks
     EnumerableSet.AddressSet internal listedAssets;
+
+    /// @notice Mapping of asset address to its configuration
+    /// @dev Stores complete asset settings including thresholds and oracle configs
     mapping(address => Asset) internal assetInfo;
 
-    // Tier configuration
+    /// @notice Configuration of rates for each collateral tier
+    /// @dev Maps tier enum to its associated rates struct
     mapping(CollateralTier => TierRates) public tierConfig;
 
-    // Oracle configuration
+    /// @notice Global oracle configuration parameters
+    /// @dev Controls oracle freshness, volatility checks, and circuit breaker thresholds
     MainOracleConfig public mainOracleConfig;
 
+    /// @notice Tracks whether circuit breaker is active for an asset
+    /// @dev True if price feed is considered unreliable
     mapping(address asset => bool broken) public circuitBroken;
+
+    /// @notice Reserved storage gap for future upgrades
+    /// @dev Required by OpenZeppelin's upgradeable contracts pattern
     uint256[22] private __gap;
 
     modifier onlyListedAsset(address asset) {
@@ -82,6 +117,24 @@ contract LendefiAssets is
         _disableInitializers();
     }
 
+    /**
+     * @notice Initializes the contract with core configuration and access control settings
+     * @dev This can only be called once through the proxy's initializer
+     * @param timelock Address of the timelock contract that will have admin privileges
+     * @param multisig Address of the multisig wallet for emergency controls
+     * @custom:security Sets up the initial access control roles:
+     * - DEFAULT_ADMIN_ROLE: timelock
+     * - MANAGER_ROLE: timelock
+     * - UPGRADER_ROLE: multisig, timelock
+     * - PAUSER_ROLE: multisig, timelock
+     * - CIRCUIT_BREAKER_ROLE: timelock, multisig
+     * @custom:oracle-config Initializes oracle configuration with the following defaults:
+     * - freshnessThreshold: 28800 (8 hours)
+     * - volatilityThreshold: 3600 (1 hour)
+     * - volatilityPercentage: 20%
+     * - circuitBreakerThreshold: 50%
+     * @custom:version Sets initial contract version to 1
+     */
     function initialize(address timelock, address multisig) external initializer {
         if (timelock == address(0) || multisig == address(0)) revert ZeroAddressNotAllowed();
 
@@ -167,8 +220,14 @@ contract LendefiAssets is
     }
 
     // ==================== OTHER FUNCTIONS ====================
-    // ==================== BATCH CONFIGURATION ====================
 
+    /**
+     * @notice Updates the global oracle configuration parameters
+     * @param freshness Maximum age allowed for oracle data (15m-24h)
+     * @param volatility Time window for volatility checks (5m-4h)
+     * @param volatilityPct Maximum allowed price change percentage (5-30%)
+     * @param circuitBreakerPct Price deviation to trigger circuit breaker (25-70%)
+     */
     function updateMainOracleConfig(uint80 freshness, uint80 volatility, uint40 volatilityPct, uint40 circuitBreakerPct)
         external
         onlyRole(MANAGER_ROLE)
@@ -206,6 +265,12 @@ contract LendefiAssets is
         emit CircuitBreakerThresholdUpdated(oldConfig.circuitBreakerThreshold, circuitBreakerPct);
     }
 
+    /**
+     * @notice Updates rate configuration for a collateral tier
+     * @param tier The collateral tier to update
+     * @param jumpRate New jump rate (max 0.25e6 = 25%)
+     * @param liquidationFee New liquidation fee (max 0.1e6 = 10%)
+     */
     function updateTierConfig(CollateralTier tier, uint256 jumpRate, uint256 liquidationFee)
         external
         onlyRole(MANAGER_ROLE)
@@ -222,6 +287,14 @@ contract LendefiAssets is
 
     // ==================== CORE FUNCTIONS ====================
 
+    /**
+     * @notice Updates the core protocol contract address
+     * @dev This function can only be called by the DEFAULT_ADMIN_ROLE when the contract is not paused
+     * @param newCore Address of the new core protocol contract
+     * @custom:security Validates that the new address is not zero
+     * @custom:access Restricted to DEFAULT_ADMIN_ROLE
+     * @custom:emits CoreAddressUpdated event with the new core address
+     */
     function setCoreAddress(address newCore)
         external
         nonZeroAddress(newCore)
@@ -233,16 +306,39 @@ contract LendefiAssets is
         emit CoreAddressUpdated(newCore);
     }
 
+    /**
+     * @notice Pauses all contract operations
+     * @dev This function can only be called by addresses with PAUSER_ROLE
+     * @custom:access Restricted to PAUSER_ROLE
+     * @custom:security Critical function that stops all state-changing operations
+     */
     function pause() external onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
+    /**
+     * @notice Unpauses all contract operations
+     * @dev This function can only be called by addresses with PAUSER_ROLE
+     * @custom:access Restricted to PAUSER_ROLE
+     * @custom:security Resumes normal contract operations
+     */
     function unpause() external onlyRole(PAUSER_ROLE) {
         _unpause();
     }
 
     // ==================== ASSET MANAGEMENT ====================
 
+    /**
+     * @notice Updates or adds a new asset configuration
+     * @dev Validates all configuration parameters before updating
+     * @param asset The address of the asset to configure
+     * @param config The complete asset configuration
+     * @custom:security Includes comprehensive parameter validation
+     * @custom:access Restricted to MANAGER_ROLE
+     * @custom:pausable Operation not allowed when contract is paused
+     * @custom:validation Asset address cannot be zero
+     * @custom:emits UpdateAssetConfig when configuration is updated
+     */
     function updateAssetConfig(address asset, Asset calldata config)
         external
         nonZeroAddress(asset)
@@ -261,6 +357,17 @@ contract LendefiAssets is
         emit UpdateAssetConfig(config);
     }
 
+    /**
+     * @notice Updates the collateral tier for an existing asset
+     * @dev Changes risk parameters associated with the asset
+     * @param asset The address of the listed asset to modify
+     * @param newTier The new collateral tier to assign
+     * @custom:security Only modifies tier assignment
+     * @custom:access Restricted to MANAGER_ROLE
+     * @custom:pausable Operation not allowed when contract is paused
+     * @custom:validation Asset must be previously listed
+     * @custom:emits AssetTierUpdated when tier is changed
+     */
     function updateAssetTier(address asset, CollateralTier newTier)
         external
         onlyListedAsset(asset)
@@ -273,20 +380,47 @@ contract LendefiAssets is
 
     // ==================== ORACLE MANAGEMENT ====================
 
+    /**
+     * @notice Sets the primary oracle type for an asset
+     * @dev Changes which oracle is used as the primary price source
+     * @param asset The asset to update
+     * @param oracleType The oracle type to set as primary
+     * @custom:access Restricted to MANAGER_ROLE
+     * @custom:pausable Operation not allowed when contract is paused
+     * @custom:validation Asset must be previously listed
+     * @custom:emits PrimaryOracleSet when primary oracle is changed
+     */
     function setPrimaryOracle(address asset, OracleType oracleType)
         external
         onlyListedAsset(asset)
         onlyRole(MANAGER_ROLE)
         whenNotPaused
     {
-        _setPrimaryOracleInternal(asset, oracleType);
+        assetInfo[asset].primaryOracleType = oracleType;
+        emit PrimaryOracleSet(asset, oracleType);
     }
 
+    /**
+     * @notice Activates the circuit breaker for an asset
+     * @dev Prevents price queries when activated
+     * @param asset The asset to trigger circuit breaker for
+     * @custom:access Restricted to CIRCUIT_BREAKER_ROLE
+     * @custom:security Emergency function to prevent using potentially manipulated prices
+     * @custom:emits CircuitBreakerTriggered when activated
+     */
     function triggerCircuitBreaker(address asset) external onlyRole(CIRCUIT_BREAKER_ROLE) {
         circuitBroken[asset] = true;
         emit CircuitBreakerTriggered(asset, 0, 0);
     }
 
+    /**
+     * @notice Deactivates the circuit breaker for an asset
+     * @dev Allows price queries to resume
+     * @param asset The asset to reset circuit breaker for
+     * @custom:access Restricted to CIRCUIT_BREAKER_ROLE
+     * @custom:security Should only be called after verifying price feed reliability
+     * @custom:emits CircuitBreakerReset when deactivated
+     */
     function resetCircuitBreaker(address asset) external onlyRole(CIRCUIT_BREAKER_ROLE) {
         circuitBroken[asset] = false;
         emit CircuitBreakerReset(asset);
@@ -400,6 +534,16 @@ contract LendefiAssets is
             : 0;
     }
 
+    /**
+     * @notice Retrieves detailed information about an asset
+     * @dev Combines multiple data points into a single view call
+     * @param asset The address of the asset to query
+     * @return price Current oracle price of the asset
+     * @return totalSupplied Total amount of asset supplied to protocol
+     * @return maxSupply Maximum supply threshold for the asset
+     * @return tier Collateral tier classification
+     * @custom:validation Asset must be listed
+     */
     function getAssetDetails(address asset)
         external
         view
@@ -417,6 +561,12 @@ contract LendefiAssets is
         totalSupplied = lendefiInstance.assetTVL(asset);
     }
 
+    /**
+     * @notice Retrieves rates configuration for all collateral tiers
+     * @dev Returns parallel arrays for jump rates and liquidation fees
+     * @return jumpRates Array of jump rates for each tier [STABLE, CROSS_A, CROSS_B, ISOLATED]
+     * @return liquidationFees Array of liquidation fees for each tier [STABLE, CROSS_A, CROSS_B, ISOLATED]
+     */
     function getTierRates() external view returns (uint256[4] memory jumpRates, uint256[4] memory liquidationFees) {
         jumpRates[0] = tierConfig[CollateralTier.STABLE].jumpRate;
         jumpRates[1] = tierConfig[CollateralTier.CROSS_A].jumpRate;
@@ -429,27 +579,81 @@ contract LendefiAssets is
         liquidationFees[3] = tierConfig[CollateralTier.ISOLATED].liquidationFee;
     }
 
+    /**
+     * @notice Gets the jump rate for a specific collateral tier
+     * @param tier The collateral tier to query
+     * @return The jump rate for the specified tier
+     */
     function getTierJumpRate(CollateralTier tier) external view returns (uint256) {
         return tierConfig[tier].jumpRate;
     }
 
+    /**
+     * @notice Checks if an asset is valid and active in the protocol
+     * @param asset The asset address to check
+     * @return true if the asset is listed and active, false otherwise
+     */
     function isAssetValid(address asset) external view returns (bool) {
         return listedAssets.contains(asset) && assetInfo[asset].active == 1;
     }
 
-    function isAssetAtCapacity(address asset, uint256 additionalAmount)
-        external
-        view
-        onlyListedAsset(asset)
-        returns (bool)
-    {
-        return lendefiInstance.assetTVL(asset) + additionalAmount > assetInfo[asset].maxSupplyThreshold;
+    /**
+     * @notice Checks if supplying an amount would exceed asset capacity
+     * @param asset The asset address to check
+     * @param amount The amount to be supplied
+     * @return true if supply would exceed maximum threshold
+     * @custom:validation Asset must be listed
+     */
+    function isAssetAtCapacity(address asset, uint256 amount) external view onlyListedAsset(asset) returns (bool) {
+        // Check standard supply cap
+        if (lendefiInstance.assetTVL(asset) + amount > assetInfo[asset].maxSupplyThreshold) {
+            return true;
+        }
+
+        return false;
     }
 
+    /**
+     * @notice Checks if an amount exceeds pool liquidity limits
+     * @dev Only applicable for assets with active Uniswap oracle
+     * @param asset The asset address to check
+     * @param amount The amount to validate
+     * @return limitReached true if amount exceeds 3% of pool liquidity
+     */
+    function poolLiquidityLimit(address asset, uint256 amount) external view returns (bool limitReached) {
+        // Check pool liquidity cap if Uniswap oracle is active
+        if (assetInfo[asset].poolConfig.active == 1) {
+            // Get asset price and pool liquidity
+            uint256 assetPrice = getAssetPrice(asset); // Use non-impacted price
+            uint128 poolLiquidity = IUniswapV3Pool(assetInfo[asset].poolConfig.pool).liquidity();
+
+            // Calculate USD value: amount * price * WAD / (10^decimals * 10^8)
+            uint256 valueUSD = (amount * assetPrice * 1e6) / (10 ** assetInfo[asset].decimals * 10 ** 8);
+
+            if (valueUSD >= (poolLiquidity * 0.03e6)) {
+                return true;
+            }
+        }
+    }
+
+    /**
+     * @notice Retrieves complete configuration for an asset
+     * @dev Returns full Asset struct from storage
+     * @param asset The address of the asset to query
+     * @return Complete Asset struct containing all configuration parameters
+     * @custom:validation Asset must be listed in protocol
+     */
     function getAssetInfo(address asset) external view onlyListedAsset(asset) returns (Asset memory) {
         return assetInfo[asset];
     }
 
+    /**
+     * @notice Retrieves array of all listed asset addresses
+     * @dev Converts EnumerableSet to memory array
+     * @return Array containing addresses of all listed assets
+     * @custom:complexity O(n) where n is number of listed assets
+     * @custom:gas-note May be expensive for large numbers of assets
+     */
     function getListedAssets() external view returns (address[] memory) {
         uint256 length = listedAssets.length();
         address[] memory assets = new address[](length);
@@ -459,26 +663,61 @@ contract LendefiAssets is
         return assets;
     }
 
+    /**
+     * @notice Gets the liquidation fee for a specific collateral tier
+     * @param tier The collateral tier to query
+     * @return The liquidation fee percentage (scaled by 1e6)
+     */
     function getLiquidationFee(CollateralTier tier) external view returns (uint256) {
         return tierConfig[tier].liquidationFee;
     }
 
+    /**
+     * @notice Gets the collateral tier assigned to an asset
+     * @param asset The asset address to query
+     * @return tier The collateral tier classification
+     * @custom:validation Asset must be listed
+     */
     function getAssetTier(address asset) external view onlyListedAsset(asset) returns (CollateralTier tier) {
         return assetInfo[asset].tier;
     }
 
+    /**
+     * @notice Gets the decimal precision of an asset
+     * @param asset The asset address to query
+     * @return The number of decimals (e.g., 18 for ETH)
+     * @custom:validation Asset must be listed
+     */
     function getAssetDecimals(address asset) external view onlyListedAsset(asset) returns (uint8) {
         return assetInfo[asset].decimals;
     }
 
+    /**
+     * @notice Gets the liquidation threshold for an asset
+     * @param asset The asset address to query
+     * @return The liquidation threshold percentage (scaled by 1e4)
+     * @custom:validation Asset must be listed
+     */
     function getAssetLiquidationThreshold(address asset) external view onlyListedAsset(asset) returns (uint16) {
         return assetInfo[asset].liquidationThreshold;
     }
 
+    /**
+     * @notice Gets the borrow threshold for an asset
+     * @param asset The asset address to query
+     * @return The borrow threshold percentage (scaled by 1e4)
+     * @custom:validation Asset must be listed
+     */
     function getAssetBorrowThreshold(address asset) external view onlyListedAsset(asset) returns (uint16) {
         return assetInfo[asset].borrowThreshold;
     }
 
+    /**
+     * @notice Gets the maximum allowed debt for an isolated asset
+     * @param asset The asset address to query
+     * @return The maximum debt cap in asset's native units
+     * @custom:validation Asset must be listed
+     */
     function getIsolationDebtCap(address asset) external view onlyListedAsset(asset) returns (uint256) {
         return assetInfo[asset].isolationDebtCap;
     }
@@ -503,6 +742,13 @@ contract LendefiAssets is
         });
     }
 
+    /**
+     * @notice Gets the number of active oracles for an asset
+     * @dev Returns sum of active Chainlink and Uniswap oracles (0-2)
+     * @param asset The asset address to check
+     * @return The total number of active oracle price feeds
+     * @custom:oracle-config Sum of chainlinkConfig.active and poolConfig.active
+     */
     function getOracleCount(address asset) external view returns (uint256) {
         return assetInfo[asset].chainlinkConfig.active + assetInfo[asset].poolConfig.active;
     }
@@ -519,8 +765,17 @@ contract LendefiAssets is
 
     // ==================== INTERNAL FUNCTIONS ====================
 
+    /**
+     * @notice Initializes default parameters for all collateral tiers
+     * @dev Called once during contract initialization
+     * @custom:rates Sets the following default rates:
+     * - STABLE: 5% jump rate, 1% liquidation fee
+     * - CROSS_A: 8% jump rate, 2% liquidation fee
+     * - CROSS_B: 12% jump rate, 3% liquidation fee
+     * - ISOLATED: 15% jump rate, 4% liquidation fee
+     * @custom:security All rates are scaled by 1e6 (100% = 1e6)
+     */
     function _initializeDefaultTierParameters() internal {
-        // This function should now initialize the tierConfig struct for each tier
         tierConfig[CollateralTier.STABLE] = TierRates({
             jumpRate: 0.05e6, // 5%
             liquidationFee: 0.01e6 // 1%
@@ -540,11 +795,6 @@ contract LendefiAssets is
             jumpRate: 0.15e6, // 15%
             liquidationFee: 0.04e6 // 4%
         });
-    }
-
-    function _setPrimaryOracleInternal(address asset, OracleType oracleType) internal {
-        assetInfo[asset].primaryOracleType = oracleType;
-        emit PrimaryOracleSet(asset, oracleType);
     }
 
     /**
@@ -722,6 +972,19 @@ contract LendefiAssets is
         return asset == token0;
     }
 
+    /**
+     * @notice Validates and authorizes contract upgrades
+     * @dev Internal function required by UUPSUpgradeable pattern
+     * @param newImplementation Address of the new implementation contract
+     * @custom:security Enforces timelock and validates implementation address
+     * @custom:access Restricted to UPGRADER_ROLE
+     * @custom:validation Requires:
+     * - Upgrade must be scheduled
+     * - Implementation must match scheduled upgrade
+     * - Timelock duration must have elapsed
+     * @custom:emits Upgrade event on successful authorization
+     * @custom:state-changes Increments version and clears pending upgrade
+     */
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {
         if (!pendingUpgrade.exists) revert UpgradeNotScheduled();
         if (pendingUpgrade.implementation != newImplementation) {
