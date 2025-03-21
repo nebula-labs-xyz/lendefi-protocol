@@ -5,6 +5,7 @@ import {IUniswapV3Pool} from "../../contracts/interfaces/IUniswapV3Pool.sol";
 
 contract MockUniswapV3Pool is IUniswapV3Pool {
     uint256 public mockPrice = 1100e8; // Default mock price
+    uint128 private _liquidity = 1_000_000e6; // Default 1M USDC liquidity
 
     address public override token0;
     address public override token1;
@@ -13,10 +14,6 @@ contract MockUniswapV3Pool is IUniswapV3Pool {
     int56[] internal tickCumulatives;
     uint160[] internal secondsPerLiquidityCumulativeX128s;
     bool internal observeSuccess;
-
-    function setMockPrice(uint256 price) external {
-        mockPrice = price;
-    }
 
     constructor(address _token0, address _token1, uint24 _fee) {
         token0 = _token0;
@@ -36,25 +33,36 @@ contract MockUniswapV3Pool is IUniswapV3Pool {
         secondsPerLiquidityCumulativeX128s[1] = 1100;
     }
 
-    // Core function needed by Uniswap TWAP oracle
+    function liquidity() external view override returns (uint128) {
+        return _liquidity;
+    }
+
+    function setLiquidity(uint128 newLiquidity) external {
+        require(newLiquidity > 0, "MockUniswapV3Pool: Invalid liquidity");
+        _liquidity = newLiquidity;
+    }
+
+    function setMockPrice(uint256 price) external {
+        mockPrice = price;
+    }
+
     function observe(uint32[] calldata) external view override returns (int56[] memory, uint160[] memory) {
-        require(observeSuccess, "Observation failed");
+        require(observeSuccess, "MockUniswapV3Pool: Observation failed");
         return (tickCumulatives, secondsPerLiquidityCumulativeX128s);
     }
 
-    // Helper functions to configure the mock for testing
     function setTokens(address _token0, address _token1) external {
         token0 = _token0;
         token1 = _token1;
     }
 
     function setTickCumulatives(int56[] memory _tickCumulatives) external {
-        require(_tickCumulatives.length == 2, "Need exactly 2 values");
+        require(_tickCumulatives.length == 2, "MockUniswapV3Pool: Need exactly 2 values");
         tickCumulatives = _tickCumulatives;
     }
 
     function setSecondsPerLiquidity(uint160[] memory _secondsPerLiquidityCumulativeX128s) external {
-        require(_secondsPerLiquidityCumulativeX128s.length == 2, "Need exactly 2 values");
+        require(_secondsPerLiquidityCumulativeX128s.length == 2, "MockUniswapV3Pool: Need exactly 2 values");
         secondsPerLiquidityCumulativeX128s = _secondsPerLiquidityCumulativeX128s;
     }
 
@@ -62,7 +70,6 @@ contract MockUniswapV3Pool is IUniswapV3Pool {
         observeSuccess = success;
     }
 
-    // Additional functions you might need for more complex testing
     function slot0()
         external
         pure
