@@ -381,16 +381,12 @@ contract OraclePriceExpandedTest is BasicDeploy {
 
     // Test 11: Uniswap pool failure
     function testRevert_UniswapPoolFailure() public {
-        //vm.startPrank(address(timelockInstance));
-
         // Make the Uniswap pool fail
         mockUniswapPool.setObserveSuccess(false);
 
         // Should still get price from Chainlink oracle
-        vm.expectRevert("Observation failed");
+        vm.expectRevert("MockUniswapV3Pool: Observation failed");
         assetsInstance.getAssetPrice(address(testAsset));
-
-        //vm.stopPrank();
     }
 
     function setupWorkingOracles() internal {
