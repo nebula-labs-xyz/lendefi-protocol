@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import "../BasicDeploy.sol";
-import {console2} from "forge-std/console2.sol";
+// import {console2} from "forge-std/console2.sol";
 import {IPROTOCOL} from "../../contracts/interfaces/IProtocol.sol";
 import {RWAPriceConsumerV3} from "../../contracts/mock/RWAOracle.sol";
 import {WETHPriceConsumerV3} from "../../contracts/mock/WETHOracle.sol";
@@ -56,7 +56,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
         mockOracle.setAnsweredInRound(1);
 
         // Deploy and configure Uniswap pool mock
-        mockUniswapPool = new MockUniswapV3Pool(address(testAsset), address(usdcInstance), 3000);
+        mockUniswapPool = new MockUniswapV3Pool(address(usdcInstance), address(testAsset), 3000);
 
         // Set up tick cumulatives for TWAP - price increasing over time
         int56[] memory tickCumulatives = new int56[](2);
@@ -89,19 +89,8 @@ contract OraclePriceExpandedTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracleInstance),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -118,19 +107,8 @@ contract OraclePriceExpandedTest is BasicDeploy {
                 assetMinimumOracles: 2, // Require 2 oracles for median calculation
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -138,9 +116,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
         assetsInstance.updateUniswapOracle(
             address(testAsset),
             address(mockUniswapPool),
-            address(usdcInstance),
             1800, // 30 minute TWAP
-            8, // 8 decimals result
             1 // active
         );
 
@@ -150,7 +126,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
     // Test 1: Get price from a single oracle
     function test_GetPrice() public {
         uint256 price = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(price, 2500e8, "WETH price should be 2500 USD");
+        assertEq(price, 2500e6, "WETH price should be 2500 USD");
     }
 
     // Test 3: Test invalid price (zero or negative)
@@ -193,7 +169,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
         // Instead, verify we can reset the Chainlink oracle and get its price
         mockOracle.setTimestamp(block.timestamp); // Fix the timestamp
         uint256 price = assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
-        assertEq(price, 1000e8, "Oracle should return correct price after timestamp fixed");
+        assertEq(price, 1000e6, "Oracle should return correct price after timestamp fixed");
     }
 
     // Test 6: Replace an oracle
@@ -222,17 +198,9 @@ contract OraclePriceExpandedTest is BasicDeploy {
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
                     oracleUSD: address(newOracle), //new oracle
-                    oracleDecimals: 8,
                     active: 1
                 }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
         // Verify the oracle was replaced
@@ -241,11 +209,11 @@ contract OraclePriceExpandedTest is BasicDeploy {
 
         // Verify the price directly from the new oracle (avoid median calculation)
         uint256 oraclePrice = assetsInstance.getAssetPrice(address(testAsset));
-        assertEq(oraclePrice, 1200e8, "New oracle price should be 1200e8");
+        assertEq(oraclePrice, 1200e6, "New oracle price should be 1200e6");
 
         // Verify by using getAssetPriceByType instead of getAssetPrice (which uses median)
         uint256 assetPrice = assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
-        assertEq(assetPrice, 1200e8, "Asset price by type should match new oracle price");
+        assertEq(assetPrice, 1200e6, "Asset price by type should match new oracle price");
 
         vm.stopPrank();
     }
@@ -266,28 +234,26 @@ contract OraclePriceExpandedTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
 
         // Deploy a new mock Uniswap pool for testing
-        MockUniswapV3Pool newPool = new MockUniswapV3Pool(address(testAsset), address(usdcInstance), 3000);
+        MockUniswapV3Pool newPool = new MockUniswapV3Pool(address(usdcInstance), address(testAsset), 3000);
         newPool.setObserveSuccess(true);
 
-        // Set tick cumulatives for TWAP calculation
-        int56[] memory tickCumulatives = new int56[](2);
-        tickCumulatives[0] = 0;
-        tickCumulatives[1] = 1800 * 500; // 30 minutes * tick 500
-        newPool.setTickCumulatives(tickCumulatives);
+        // // Set tick cumulatives for TWAP calculation
+        // int56[] memory tickCumulatives = new int56[](2);
+        // tickCumulatives[0] = 0;
+        // tickCumulatives[1] = 1800 * 500; // 30 minutes * tick 500
+        // newPool.setTickCumulatives(tickCumulatives);
 
-        // Set seconds per liquidity
-        uint160[] memory secondsPerLiquidityCumulatives = new uint160[](2);
-        secondsPerLiquidityCumulatives[0] = 1000;
-        secondsPerLiquidityCumulatives[1] = 2000;
-        newPool.setSecondsPerLiquidity(secondsPerLiquidityCumulatives);
+        // // Set seconds per liquidity
+        // uint160[] memory secondsPerLiquidityCumulatives = new uint160[](2);
+        // secondsPerLiquidityCumulatives[0] = 1000;
+        // secondsPerLiquidityCumulatives[1] = 2000;
+        // newPool.setSecondsPerLiquidity(secondsPerLiquidityCumulatives);
 
         // Update Uniswap oracle configuration
         assetsInstance.updateUniswapOracle(
             address(testAsset),
             address(newPool),
-            address(usdcInstance),
             1800, // 30 minute TWAP
-            8, // 8 decimals result
             1 // Set as active
         );
 
@@ -299,18 +265,16 @@ contract OraclePriceExpandedTest is BasicDeploy {
         // Get the updated asset config and verify pool config was updated
         IASSETS.Asset memory assetAfter = assetsInstance.getAssetInfo(address(testAsset));
         assertEq(assetAfter.poolConfig.pool, address(newPool), "Pool address should be updated");
-        assertEq(assetAfter.poolConfig.quoteToken, address(usdcInstance), "Quote token should be updated");
+
         assertEq(assetAfter.poolConfig.twapPeriod, 1800, "TWAP period should be updated");
-        assertEq(assetAfter.poolConfig.decimalsUniswap, 8, "Decimals should be updated");
+
         assertEq(assetAfter.poolConfig.active, 1, "Oracle should be active");
 
         // Now deactivate the Uniswap oracle
         assetsInstance.updateUniswapOracle(
             address(testAsset),
             address(newPool),
-            address(usdcInstance),
             1800,
-            8,
             0 // Set as inactive
         );
 
@@ -335,7 +299,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
 
         // Verify price works initially
         uint256 initialPrice = assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
-        assertEq(initialPrice, 1000e8, "Initial price should be correct");
+        assertEq(initialPrice, 1000e6, "Initial price should be correct");
 
         // Trigger circuit breaker
         vm.prank(address(gnosisSafe));
@@ -351,7 +315,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
 
         // Get price again using the Chainlink oracle directly rather than the median calculation
         uint256 resetPrice = assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
-        assertEq(resetPrice, 1000e8, "Price should be available after reset");
+        assertEq(resetPrice, 1000e6, "Price should be available after reset");
     }
 
     // Test 10: Test volatility check
@@ -362,14 +326,14 @@ contract OraclePriceExpandedTest is BasicDeploy {
         mockOracle.setPrice(1200e8);
 
         // Set historical data with >20% price change
-        mockOracle.setHistoricalRoundData(19, 700e8, block.timestamp - 4 hours, 19);
+        mockOracle.setHistoricalRoundData(19, 700e6, block.timestamp - 4 hours, 19);
 
         // Set timestamp to be recent
         mockOracle.setTimestamp(block.timestamp - 30 minutes);
 
         // Should still work because timestamp is recent
         uint256 price = assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
-        assertEq(price, 1200e8, "Price should be returned when timestamp is recent");
+        assertEq(price, 1200e6, "Price should be returned when timestamp is recent");
 
         // Now make the timestamp old
         mockOracle.setTimestamp(block.timestamp - 2 hours);
@@ -411,37 +375,19 @@ contract OraclePriceExpandedTest is BasicDeploy {
 
     // Test 15: Test median price calculation with both oracles
     function test_GetMedianPrice() public {
-        vm.prank(address(timelockInstance));
-
-        // Set the Chainlink oracle price
-        mockOracle.setPrice(1000e8);
+        // Set up Chainlink oracle price
+        mockOracle.setPrice(1000e8); // $1000
         mockOracle.setTimestamp(block.timestamp);
         mockOracle.setRoundId(1);
         mockOracle.setAnsweredInRound(1);
 
-        // We need to use a real Uniswap oracle, so we'll set up the mock Uniswap pool
-        // to return a specific price through its tick cumulatives
+        // Set up Uniswap oracle with a mock pool
+        MockUniswapV3Pool newPool = new MockUniswapV3Pool(address(usdcInstance), address(testAsset), 3000);
 
-        vm.startPrank(address(timelockInstance));
-
-        // First make sure our existing Uniswap pool is correctly configured
-        mockUniswapPool.setObserveSuccess(true);
-
-        // Set tick values for a 1100e8 price (roughly)
-        // Create a temporary price oracle for the second price
-        MockPriceOracle tempOracle = new MockPriceOracle();
-        tempOracle.setPrice(1100e8);
-
-        // We'll use the existing Uniswap oracle but configure the pool to give us
-        // a predictable price by manipulating the tick cumulatives
-
-        // Create a new mock Uniswap pool that will give us a predictable price
-        MockUniswapV3Pool newPool = new MockUniswapV3Pool(address(testAsset), address(usdcInstance), 3000);
-
-        // Set a high tick value to get a higher price
+        // Configure tick cumulatives for a predictable price
         int56[] memory tickCumulatives = new int56[](2);
         tickCumulatives[0] = 0;
-        tickCumulatives[1] = 73114 * 1800; // Much higher tick value
+        tickCumulatives[1] = -203200 * 1800; // Simulate a higher tick value ~$1500
         newPool.setTickCumulatives(tickCumulatives);
 
         uint160[] memory secondsPerLiquidityCumulatives = new uint160[](2);
@@ -449,48 +395,38 @@ contract OraclePriceExpandedTest is BasicDeploy {
         secondsPerLiquidityCumulatives[1] = 2000;
         newPool.setSecondsPerLiquidity(secondsPerLiquidityCumulatives);
         newPool.setObserveSuccess(true);
-        newPool.setMockPrice(1100e8);
 
-        // Replace the Uniswap oracle by removing the old one and adding a new one
-        // address existingUniswapOracle =
-        //     assetsInstance.getOracleByType(address(testAsset), IASSETS.OracleType.UNISWAP_V3_TWAP);
-
-        // Add our new Uniswap oracle through the proper function
+        // Update the Uniswap oracle for the test asset
+        vm.startPrank(address(timelockInstance));
         assetsInstance.updateUniswapOracle(
             address(testAsset),
             address(newPool),
-            address(usdcInstance),
-            1800, // 30 minute TWAP
-            8, // 8 decimals result
-            1
+            1800, // 30-minute TWAP
+            1 // Active
         );
-
         vm.stopPrank();
 
-        // Get the new Uniswap oracle address
-        address newUniswapOracle =
-            assetsInstance.getOracleByType(address(testAsset), IASSETS.OracleType.UNISWAP_V3_TWAP);
-        console2.log("New Uniswap oracle:", newUniswapOracle);
+        // Verify the Chainlink price
+        uint256 chainlinkPrice = assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
+        assertEq(chainlinkPrice, 1000e6, "Chainlink price should be $1000");
 
-        // Check if we can get prices directly
-        uint256 price1 = assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
+        // Verify the Uniswap price
+        uint256 uniswapPrice =
+            assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.UNISWAP_V3_TWAP);
+        assertTrue(uniswapPrice > 0, "Uniswap price should be greater than 0");
 
-        console2.log("Chainlink price:", price1);
-
-        // Skip checking Uniswap price directly since it's complex
-        console2.log("Testing median calculation using real Uniswap oracle");
-
-        // Try to get median price - if this fails, we'll use an alternative approach
-        //try assetsInstance.getAssetPrice(address(testAsset)) returns (uint256 medianPrice) {
+        // Calculate the median price
         uint256 medianPrice = assetsInstance.getAssetPrice(address(testAsset));
-        console2.log("Median price:", medianPrice);
-        assertTrue(medianPrice >= 1200e8 && medianPrice <= 1300e8, "Median price should be in a reasonable range");
+        // console2.log("Median price:", medianPrice);
+
+        // Assert the median price is within the expected range
+        assertTrue(medianPrice >= 1200e6 && medianPrice <= 1300e6, "Median price should be in a reasonable range");
     }
 
     // Test 16: We can't easily test this with the current constraints, so let's verify the circuit breaker manually
     function test_MedianPriceWithDeviation() public {
         // Skip the complex test and test circuit breaker directly
-        console2.log("Testing circuit breaker directly instead of through price deviation");
+        // console2.log("Testing circuit breaker directly instead of through price deviation");
 
         // Make sure Chainlink oracle works properly first
         mockOracle.setPrice(1000e8);
@@ -500,7 +436,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
 
         // Get price directly from the Chainlink oracle to avoid depending on the Uniswap oracle
         uint256 price = assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
-        assertEq(price, 1000e8, "Price should be available initially");
+        assertEq(price, 1000e6, "Price should be available initially");
 
         // Trigger circuit breaker manually
         vm.prank(address(gnosisSafe));
@@ -510,6 +446,6 @@ contract OraclePriceExpandedTest is BasicDeploy {
         vm.expectRevert();
         assetsInstance.getAssetPrice(address(testAsset));
 
-        console2.log("Circuit breaker test passed");
+        // console2.log("Circuit breaker test passed");
     }
 }
