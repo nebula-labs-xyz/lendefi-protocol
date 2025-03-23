@@ -62,16 +62,9 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(testOracle),
-                    oracleDecimals: ORACLE_DECIMALS,
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -93,16 +86,9 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(testOracle),
-                    oracleDecimals: ORACLE_DECIMALS,
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -137,19 +123,8 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(testOracle),
-                    oracleDecimals: ORACLE_DECIMALS,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -181,19 +156,8 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(testOracle),
-                    oracleDecimals: ORACLE_DECIMALS,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -203,7 +167,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
         // Verify all parameters
         assertEq(assetInfo.active, ASSET_ACTIVE, "Active status not stored correctly");
         assertEq(assetInfo.chainlinkConfig.oracleUSD, address(testOracle), "Oracle address not stored correctly");
-        assertEq(assetInfo.chainlinkConfig.oracleDecimals, ORACLE_DECIMALS, "Oracle decimals not stored correctly");
+
         assertEq(assetInfo.decimals, ASSET_DECIMALS, "Asset decimals not stored correctly");
         assertEq(assetInfo.borrowThreshold, BORROW_THRESHOLD, "Borrow threshold not stored correctly");
         assertEq(assetInfo.liquidationThreshold, LIQUIDATION_THRESHOLD, "Liquidation threshold not stored correctly");
@@ -228,19 +192,8 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(testOracle),
-                    oracleDecimals: ORACLE_DECIMALS,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -263,19 +216,8 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: newTier,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(testOracle),
-                    oracleDecimals: ORACLE_DECIMALS,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -300,19 +242,8 @@ contract UpdateAssetConfigTest is BasicDeploy {
             assetMinimumOracles: 1,
             primaryOracleType: IASSETS.OracleType.CHAINLINK,
             tier: IASSETS.CollateralTier.CROSS_A,
-            chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                oracleUSD: address(testOracle),
-                oracleDecimals: ORACLE_DECIMALS,
-                active: 1
-            }),
-            poolConfig: IASSETS.UniswapPoolConfig({
-                pool: address(0),
-                quoteToken: address(0),
-                isToken0: false,
-                decimalsUniswap: 0,
-                twapPeriod: 0,
-                active: 0
-            })
+            chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
+            poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
         });
 
         vm.expectEmit(true, false, false, false);
@@ -337,19 +268,8 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(testOracle),
-                    oracleDecimals: ORACLE_DECIMALS,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -375,19 +295,8 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(testOracle),
-                    oracleDecimals: ORACLE_DECIMALS,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
