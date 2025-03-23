@@ -87,16 +87,9 @@ contract InterPositionalTransferTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -115,16 +108,9 @@ contract InterPositionalTransferTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(rwaOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(rwaOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -143,16 +129,9 @@ contract InterPositionalTransferTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B, // Changed from STABLE to CROSS_B to allow transfers
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(stableOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -356,16 +335,9 @@ contract InterPositionalTransferTest is BasicDeploy {
                     assetMinimumOracles: 1, // Need at least 1 oracle
                     primaryOracleType: IASSETS.OracleType.CHAINLINK,
                     tier: IASSETS.CollateralTier.CROSS_B,
-                    chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                        oracleUSD: address(oracle_),
-                        oracleDecimals: 8, // Standardized to 8 decimals
-                        active: 1
-                    }),
+                    chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(oracle_), active: 1}),
                     poolConfig: IASSETS.UniswapPoolConfig({
                         pool: address(0), // No Uniswap pool
-                        quoteToken: address(0),
-                        isToken0: false,
-                        decimalsUniswap: 0,
                         twapPeriod: 0,
                         active: 0
                     })
@@ -403,16 +375,9 @@ contract InterPositionalTransferTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(oracle),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(oracle), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -560,16 +525,9 @@ contract InterPositionalTransferTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B, // Non-isolated tier
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(crossOracle),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(crossOracle), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -648,16 +606,9 @@ contract InterPositionalTransferTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(otherOracle),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(otherOracle), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
