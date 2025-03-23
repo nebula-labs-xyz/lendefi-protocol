@@ -466,24 +466,29 @@ contract LendefiAssetsV2 is
      * @return price The current price of the asset
      */
     function getAssetPrice(address asset) public view onlyListedAsset(asset) returns (uint256) {
-        // When circuit breaker is active, we can't retrieve prices
         if (circuitBroken[asset]) {
             revert CircuitBreakerActive(asset);
         }
 
-        // Direct storage access instead of copying entire struct to memory
-        uint8 chainlinkActive = assetInfo[asset].chainlinkConfig.active;
-        uint8 uniswapActive = assetInfo[asset].poolConfig.active;
-        uint8 totalActive = chainlinkActive + uniswapActive;
+        // Load into memory once
+        Asset storage info = assetInfo[asset];
+        uint8 chainlinkActive = info.chainlinkConfig.active;
+        uint8 uniswapActive = info.poolConfig.active;
 
-        // Use early returns for clearer control flow
-        if (totalActive == 1) {
-            return chainlinkActive == 1 ? _getChainlinkPrice(asset) : _getUniswapTWAPPrice(asset);
+        // Early returns for single oracle
+        if (chainlinkActive == 1 && uniswapActive == 0) {
+            return _getChainlinkPrice(asset);
+        }
+        if (uniswapActive == 1 && chainlinkActive == 0) {
+            return _getUniswapTWAPPrice(asset);
         }
 
-        // If two oracles are active, calculate median
-        (uint256 price,) = _calculateMedianPrice(asset);
-        return price;
+        // Dual-oracle case (implicitly totalActive == 2)
+        uint256 price1 = _getChainlinkPrice(asset);
+        uint256 price2 = _getUniswapTWAPPrice(asset);
+        uint256 median = (price1 + price2) >> 1; // Bit shift instead of division
+
+        return median;
     }
 
     /**
@@ -756,7 +761,27 @@ contract LendefiAssetsV2 is
      * @return Whether the asset has a large price deviation
      */
     function checkPriceDeviation(address asset) external view returns (bool, uint256) {
-        (, uint256 deviation) = _calculateMedianPrice(asset);
+        // Load asset info into memory once
+        Asset storage info = assetInfo[asset];
+        uint8 chainlinkActive = info.chainlinkConfig.active;
+        uint8 uniswapActive = info.poolConfig.active;
+
+        // Check if both oracles are active (must be 2)
+        if (chainlinkActive + uniswapActive != 2) {
+            revert NotEnoughValidOracles(asset, 2, chainlinkActive + uniswapActive);
+        }
+
+        // Fetch prices
+        uint256 price1 = _getChainlinkPrice(asset);
+        uint256 price2 = _getUniswapTWAPPrice(asset);
+
+        // Calculate deviation
+        uint256 minPrice = price1 < price2 ? price1 : price2;
+        uint256 maxPrice = price1 > price2 ? price1 : price2;
+        uint256 priceDelta = maxPrice - minPrice;
+        uint256 deviation = (priceDelta * 100) / minPrice;
+
+        // Compare with circuit breaker threshold
         return (deviation >= mainOracleConfig.circuitBreakerThreshold, deviation);
     }
 
@@ -792,34 +817,6 @@ contract LendefiAssetsV2 is
             jumpRate: 0.15e6, // 15%
             liquidationFee: 0.04e6 // 4%
         });
-    }
-
-    /**
-     * @notice Calculate median price from oracles without modifying state
-     * @param asset The asset to get price for
-     * @return median The median price across all valid oracles
-     * @return deviation Maximum deviation between any two prices (instead of vs stored price)
-     */
-    function _calculateMedianPrice(address asset) internal view returns (uint256 median, uint256 deviation) {
-        uint8 active = assetInfo[asset].chainlinkConfig.active + assetInfo[asset].poolConfig.active;
-        if (active != 2) {
-            revert NotEnoughValidOracles(asset, 2, active);
-        }
-
-        // Get prices directly - will revert if either fails
-        uint256 price1 = _getChainlinkPrice(asset);
-        uint256 price2 = _getUniswapTWAPPrice(asset);
-
-        // Calculate median (average of two prices)
-        median = (price1 + price2) / 2;
-
-        // Calculate deviation with guaranteed non-zero minPrice
-        uint256 minPrice = price1 < price2 ? price1 : price2;
-        uint256 maxPrice = price1 > price2 ? price1 : price2;
-        uint256 priceDelta = maxPrice - minPrice;
-        deviation = (priceDelta * 100) / minPrice;
-
-        return (median, deviation);
     }
 
     // ==================== INTERNAL FUNCTIONS ====================
@@ -953,12 +950,11 @@ contract LendefiAssetsV2 is
         (bool isToken0, uint8 assetDecimals, bool isUsdcPool) = getOptimalUniswapConfig(token, pool);
 
         // Phase 2: Get raw price
-        uint256 rawPrice;
         if (isUsdcPool) {
             tokenPriceInUSD = UniswapTickMath.getRawPrice(pool, isToken0, 10 ** assetDecimals, twapPeriod);
         } else {
             // Get raw price in ETH
-            rawPrice = UniswapTickMath.getRawPrice(pool, isToken0, 10 ** assetDecimals, twapPeriod);
+            uint256 rawPrice = UniswapTickMath.getRawPrice(pool, isToken0, 10 ** assetDecimals, twapPeriod);
 
             IUniswapV3Pool ethUSDCPool = IUniswapV3Pool(ethUsdcPool);
             // ETH is token1 in USDC/ETH pool
