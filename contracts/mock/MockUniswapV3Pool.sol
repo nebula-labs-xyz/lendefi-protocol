@@ -4,7 +4,6 @@ pragma solidity ^0.8.23;
 import {IUniswapV3Pool} from "../../contracts/interfaces/IUniswapV3Pool.sol";
 
 contract MockUniswapV3Pool is IUniswapV3Pool {
-    uint256 public mockPrice = 1100e8; // Default mock price
     uint128 private _liquidity = 1_000_000e6; // Default 1M USDC liquidity
 
     address public override token0;
@@ -15,9 +14,15 @@ contract MockUniswapV3Pool is IUniswapV3Pool {
     uint160[] internal secondsPerLiquidityCumulativeX128s;
     bool internal observeSuccess;
 
-    constructor(address _token0, address _token1, uint24 _fee) {
-        token0 = _token0;
-        token1 = _token1;
+    constructor(address _tokenA, address _tokenB, uint24 _fee) {
+        // Assign token0 and token1 based on lexicographical order
+        if (_tokenA < _tokenB) {
+            token0 = _tokenA;
+            token1 = _tokenB;
+        } else {
+            token0 = _tokenB;
+            token1 = _tokenA;
+        }
         fee = _fee;
         observeSuccess = true;
 
@@ -40,10 +45,6 @@ contract MockUniswapV3Pool is IUniswapV3Pool {
     function setLiquidity(uint128 newLiquidity) external {
         require(newLiquidity > 0, "MockUniswapV3Pool: Invalid liquidity");
         _liquidity = newLiquidity;
-    }
-
-    function setMockPrice(uint256 price) external {
-        mockPrice = price;
     }
 
     function observe(uint32[] calldata) external view override returns (int56[] memory, uint160[] memory) {
