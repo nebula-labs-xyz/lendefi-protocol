@@ -57,19 +57,8 @@ contract UpdateAssetTierTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -85,16 +74,9 @@ contract UpdateAssetTierTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(usdcOracle),
-                    oracleDecimals: 8,
-                    active: 0
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(usdcOracle), active: 0}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0),
-                    quoteToken: address(usdcInstance),
-                    isToken0: true,
-                    decimalsUniswap: 8,
                     twapPeriod: 1800,
                     active: 0 // Set to inactive to trigger the error
                 })
