@@ -24,9 +24,6 @@ interface IASSETS {
      */
     struct UniswapPoolConfig {
         address pool;
-        address quoteToken;
-        bool isToken0;
-        uint8 decimalsUniswap;
         uint32 twapPeriod;
         uint8 active;
     }
@@ -36,7 +33,6 @@ interface IASSETS {
      */
     struct ChainlinkOracleConfig {
         address oracleUSD;
-        uint8 oracleDecimals;
         uint8 active;
     }
 
@@ -126,7 +122,7 @@ interface IASSETS {
     error ZeroAddressNotAllowed();
     error AssetNotListed(address asset);
     error AssetNotInUniswapPool(address asset, address pool);
-    error TokenNotInUniswapPool(address token, address pool);
+
     error CircuitBreakerActive(address asset);
     error InvalidParameter(string param, uint256 value);
     error InvalidThreshold(string param, uint256 value, uint256 min, uint256 max);
@@ -149,36 +145,27 @@ interface IASSETS {
     /**
      * @notice Initialize the contract
      * @param timelock Address with manager role
-     * @param guardian Address with admin roles
+     * @param multisig Address with admin roles
+     * @param usdc USDC address
      */
-    function initialize(address timelock, address guardian) external;
+    function initialize(address timelock, address multisig, address usdc) external;
 
     /**
      * @notice Register a Uniswap V3 pool as an oracle for an asset
      * @param asset The asset to register the oracle for
      * @param uniswapPool The Uniswap V3 pool address (must contain the asset)
-     * @param quoteToken The quote token (usually a stable or WETH)
      * @param twapPeriod The TWAP period in seconds
-     * @param resultDecimals The expected decimals for the price result
      * @param active Whether this oracle is active (0 = inactive, 1 = active)
      */
-    function updateUniswapOracle(
-        address asset,
-        address uniswapPool,
-        address quoteToken,
-        uint32 twapPeriod,
-        uint8 resultDecimals,
-        uint8 active
-    ) external;
+    function updateUniswapOracle(address asset, address uniswapPool, uint32 twapPeriod, uint8 active) external;
 
     /**
      * @notice Add a Chainlink oracle for an asset
      * @param asset The asset to add the oracle for
      * @param oracle The oracle address
-     * @param decimals The oracle decimals
      * @param active Whether this oracle is active (0 = inactive, 1 = active)
      */
-    function updateChainlinkOracle(address asset, address oracle, uint8 decimals, uint8 active) external;
+    function updateChainlinkOracle(address asset, address oracle, uint8 active) external;
 
     /**
      * @notice Update main oracle configuration parameters
