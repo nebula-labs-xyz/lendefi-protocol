@@ -61,16 +61,9 @@ contract IsLiquidatableTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -90,16 +83,9 @@ contract IsLiquidatableTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(stableOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
