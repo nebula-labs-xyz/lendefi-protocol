@@ -170,9 +170,12 @@ contract LendefiAssets is
     {
         // Validate the pool contains both tokens
         _validatePool(asset, uniswapPool);
-
+        if (active == 0 && assetInfo[asset].chainlinkConfig.active == 0 && assetInfo[asset].assetMinimumOracles >= 1) {
+            revert NotEnoughValidOracles(asset, assetInfo[asset].assetMinimumOracles, 0);
+        }
         // Asset storage item = assetInfo[asset];
         assetInfo[asset].poolConfig = UniswapPoolConfig({pool: uniswapPool, twapPeriod: twapPeriod, active: active});
+        emit UniswapOracleUpdated(asset, uniswapPool, active);
     }
 
     /**
@@ -187,6 +190,9 @@ contract LendefiAssets is
         onlyRole(LendefiConstants.MANAGER_ROLE)
         whenNotPaused
     {
+        if (active == 0 && assetInfo[asset].poolConfig.active == 0 && assetInfo[asset].assetMinimumOracles >= 1) {
+            revert NotEnoughValidOracles(asset, assetInfo[asset].assetMinimumOracles, 0);
+        }
         assetInfo[asset].chainlinkConfig = ChainlinkOracleConfig({oracleUSD: oracle, active: active});
 
         emit ChainlinkOracleUpdated(asset, oracle, active);
@@ -319,7 +325,11 @@ contract LendefiAssets is
         whenNotPaused
     {
         // Validate the entire config in one go
-        _validateAssetConfig(config);
+        _validateAssetConfig(asset, config);
+
+        if (config.poolConfig.active == 1) {
+            _validatePool(asset, config.poolConfig.pool);
+        }
 
         bool newAsset = !listedAssets.contains(asset);
         if (newAsset) {
@@ -327,7 +337,7 @@ contract LendefiAssets is
         }
 
         assetInfo[asset] = config;
-        emit UpdateAssetConfig(config);
+        emit UpdateAssetConfig(asset, config);
     }
 
     /**
@@ -803,10 +813,15 @@ contract LendefiAssets is
      * @dev Centralized validation to ensure consistent checks across all configuration updates
      * @param config The asset configuration to validate
      */
-    function _validateAssetConfig(Asset calldata config) internal pure {
+    function _validateAssetConfig(address asset, Asset calldata config) internal pure {
         // Basic validation
         if (config.chainlinkConfig.oracleUSD == address(0)) revert ZeroAddressNotAllowed();
 
+        if (config.chainlinkConfig.active + config.poolConfig.active < config.assetMinimumOracles) {
+            revert NotEnoughValidOracles(
+                asset, config.assetMinimumOracles, config.chainlinkConfig.active + config.poolConfig.active
+            );
+        }
         // Threshold validations
         if (config.liquidationThreshold > 990) {
             revert InvalidLiquidationThreshold(config.liquidationThreshold);
