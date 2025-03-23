@@ -81,14 +81,10 @@ contract GetLPInfoTest is BasicDeploy {
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
                     oracleUSD: address(wethOracleInstance), // Use the oracle
-                    oracleDecimals: 8, // Standardized to 8 decimals
                     active: 1
                 }),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
