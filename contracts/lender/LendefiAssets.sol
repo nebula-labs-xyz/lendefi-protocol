@@ -21,9 +21,10 @@ import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/acce
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {AggregatorV3Interface} from "../vendor/@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {IUniswapV3Pool} from "../interfaces/IUniswapV3Pool.sol";
 import {UniswapTickMath} from "./lib/UniswapTickMath.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {LendefiConstants} from "./lib/LendefiConstants.sol";
 
 /// @custom:oz-upgrades
 contract LendefiAssets is
@@ -34,33 +35,9 @@ contract LendefiAssets is
     PausableUpgradeable,
     UUPSUpgradeable
 {
+    using LendefiConstants for *;
     using UniswapTickMath for int24;
     using EnumerableSet for EnumerableSet.AddressSet;
-
-    // ==================== ROLES ====================
-    address public constant USDC_ETH_POOL = 0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640; // USDC/ETH 0.05% fee tier
-
-    /// @notice Role that allows managing asset configurations and oracle settings
-    /// @dev Hash of "MANAGER_ROLE"
-    bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
-
-    /// @notice Role that allows initiating and executing contract upgrades
-    /// @dev Hash of "UPGRADER_ROLE"
-    bytes32 internal constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-
-    /// @notice Role that allows pausing and unpausing contract operations
-    /// @dev Hash of "PAUSER_ROLE"
-    bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-
-    /// @notice Role that can activate or deactivate circuit breakers for assets
-    /// @dev Hash of "CIRCUIT_BREAKER_ROLE"
-    bytes32 internal constant CIRCUIT_BREAKER_ROLE = keccak256("CIRCUIT_BREAKER_ROLE");
-
-    /// @notice Duration of the timelock for upgrade operations
-    /// @dev Set to 3 days to allow sufficient time for review
-    uint256 public constant UPGRADE_TIMELOCK_DURATION = 3 days;
-
-    // uint32 public constant TWAP_PERIOD = 1800; // 30 minutes
 
     // ==================== STATE VARIABLES ====================
 
@@ -153,13 +130,13 @@ contract LendefiAssets is
         __UUPSUpgradeable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, timelock);
-        _grantRole(MANAGER_ROLE, timelock);
-        _grantRole(UPGRADER_ROLE, multisig);
-        _grantRole(UPGRADER_ROLE, timelock);
-        _grantRole(PAUSER_ROLE, multisig);
-        _grantRole(PAUSER_ROLE, timelock);
-        _grantRole(CIRCUIT_BREAKER_ROLE, timelock);
-        _grantRole(CIRCUIT_BREAKER_ROLE, multisig);
+        _grantRole(LendefiConstants.MANAGER_ROLE, timelock);
+        _grantRole(LendefiConstants.UPGRADER_ROLE, multisig);
+        _grantRole(LendefiConstants.UPGRADER_ROLE, timelock);
+        _grantRole(LendefiConstants.PAUSER_ROLE, multisig);
+        _grantRole(LendefiConstants.PAUSER_ROLE, timelock);
+        _grantRole(LendefiConstants.CIRCUIT_BREAKER_ROLE, timelock);
+        _grantRole(LendefiConstants.CIRCUIT_BREAKER_ROLE, multisig);
 
         // Initialize oracle config
         mainOracleConfig = MainOracleConfig({
@@ -188,7 +165,7 @@ contract LendefiAssets is
         public
         nonZeroAddress(uniswapPool)
         onlyListedAsset(asset)
-        onlyRole(MANAGER_ROLE)
+        onlyRole(LendefiConstants.MANAGER_ROLE)
         whenNotPaused
     {
         // Validate the pool contains both tokens
@@ -207,7 +184,7 @@ contract LendefiAssets is
         external
         nonZeroAddress(oracle)
         onlyListedAsset(asset)
-        onlyRole(MANAGER_ROLE)
+        onlyRole(LendefiConstants.MANAGER_ROLE)
         whenNotPaused
     {
         assetInfo[asset].chainlinkConfig = ChainlinkOracleConfig({oracleUSD: oracle, active: active});
@@ -226,7 +203,7 @@ contract LendefiAssets is
      */
     function updateMainOracleConfig(uint80 freshness, uint80 volatility, uint40 volatilityPct, uint40 circuitBreakerPct)
         external
-        onlyRole(MANAGER_ROLE)
+        onlyRole(LendefiConstants.MANAGER_ROLE)
         whenNotPaused
     {
         // Validate parameters
@@ -269,7 +246,7 @@ contract LendefiAssets is
      */
     function updateTierConfig(CollateralTier tier, uint256 jumpRate, uint256 liquidationFee)
         external
-        onlyRole(MANAGER_ROLE)
+        onlyRole(LendefiConstants.MANAGER_ROLE)
         whenNotPaused
     {
         if (jumpRate > 0.25e6) revert RateTooHigh(jumpRate, 0.25e6);
@@ -304,21 +281,21 @@ contract LendefiAssets is
 
     /**
      * @notice Pauses all contract operations
-     * @dev This function can only be called by addresses with PAUSER_ROLE
-     * @custom:access Restricted to PAUSER_ROLE
+     * @dev This function can only be called by addresses with LendefiConstants.PAUSER_ROLE
+     * @custom:access Restricted to LendefiConstants.PAUSER_ROLE
      * @custom:security Critical function that stops all state-changing operations
      */
-    function pause() external onlyRole(PAUSER_ROLE) {
+    function pause() external onlyRole(LendefiConstants.PAUSER_ROLE) {
         _pause();
     }
 
     /**
      * @notice Unpauses all contract operations
-     * @dev This function can only be called by addresses with PAUSER_ROLE
-     * @custom:access Restricted to PAUSER_ROLE
+     * @dev This function can only be called by addresses with LendefiConstants.PAUSER_ROLE
+     * @custom:access Restricted to LendefiConstants.PAUSER_ROLE
      * @custom:security Resumes normal contract operations
      */
-    function unpause() external onlyRole(PAUSER_ROLE) {
+    function unpause() external onlyRole(LendefiConstants.PAUSER_ROLE) {
         _unpause();
     }
 
@@ -330,7 +307,7 @@ contract LendefiAssets is
      * @param asset The address of the asset to configure
      * @param config The complete asset configuration
      * @custom:security Includes comprehensive parameter validation
-     * @custom:access Restricted to MANAGER_ROLE
+     * @custom:access Restricted to LendefiConstants.MANAGER_ROLE
      * @custom:pausable Operation not allowed when contract is paused
      * @custom:validation Asset address cannot be zero
      * @custom:emits UpdateAssetConfig when configuration is updated
@@ -338,7 +315,7 @@ contract LendefiAssets is
     function updateAssetConfig(address asset, Asset calldata config)
         external
         nonZeroAddress(asset)
-        onlyRole(MANAGER_ROLE)
+        onlyRole(LendefiConstants.MANAGER_ROLE)
         whenNotPaused
     {
         // Validate the entire config in one go
@@ -359,7 +336,7 @@ contract LendefiAssets is
      * @param asset The address of the listed asset to modify
      * @param newTier The new collateral tier to assign
      * @custom:security Only modifies tier assignment
-     * @custom:access Restricted to MANAGER_ROLE
+     * @custom:access Restricted to LendefiConstants.MANAGER_ROLE
      * @custom:pausable Operation not allowed when contract is paused
      * @custom:validation Asset must be previously listed
      * @custom:emits AssetTierUpdated when tier is changed
@@ -367,7 +344,7 @@ contract LendefiAssets is
     function updateAssetTier(address asset, CollateralTier newTier)
         external
         onlyListedAsset(asset)
-        onlyRole(MANAGER_ROLE)
+        onlyRole(LendefiConstants.MANAGER_ROLE)
         whenNotPaused
     {
         assetInfo[asset].tier = newTier;
@@ -381,7 +358,7 @@ contract LendefiAssets is
      * @dev Changes which oracle is used as the primary price source
      * @param asset The asset to update
      * @param oracleType The oracle type to set as primary
-     * @custom:access Restricted to MANAGER_ROLE
+     * @custom:access Restricted to LendefiConstants.MANAGER_ROLE
      * @custom:pausable Operation not allowed when contract is paused
      * @custom:validation Asset must be previously listed
      * @custom:emits PrimaryOracleSet when primary oracle is changed
@@ -389,7 +366,7 @@ contract LendefiAssets is
     function setPrimaryOracle(address asset, OracleType oracleType)
         external
         onlyListedAsset(asset)
-        onlyRole(MANAGER_ROLE)
+        onlyRole(LendefiConstants.MANAGER_ROLE)
         whenNotPaused
     {
         assetInfo[asset].primaryOracleType = oracleType;
@@ -400,11 +377,11 @@ contract LendefiAssets is
      * @notice Activates the circuit breaker for an asset
      * @dev Prevents price queries when activated
      * @param asset The asset to trigger circuit breaker for
-     * @custom:access Restricted to CIRCUIT_BREAKER_ROLE
+     * @custom:access Restricted to LendefiConstants.CIRCUIT_BREAKER_ROLE
      * @custom:security Emergency function to prevent using potentially manipulated prices
      * @custom:emits CircuitBreakerTriggered when activated
      */
-    function triggerCircuitBreaker(address asset) external onlyRole(CIRCUIT_BREAKER_ROLE) {
+    function triggerCircuitBreaker(address asset) external onlyRole(LendefiConstants.CIRCUIT_BREAKER_ROLE) {
         circuitBroken[asset] = true;
         emit CircuitBreakerTriggered(asset, 0, 0);
     }
@@ -413,11 +390,11 @@ contract LendefiAssets is
      * @notice Deactivates the circuit breaker for an asset
      * @dev Allows price queries to resume
      * @param asset The asset to reset circuit breaker for
-     * @custom:access Restricted to CIRCUIT_BREAKER_ROLE
+     * @custom:access Restricted to LendefiConstants.CIRCUIT_BREAKER_ROLE
      * @custom:security Should only be called after verifying price feed reliability
      * @custom:emits CircuitBreakerReset when deactivated
      */
-    function resetCircuitBreaker(address asset) external onlyRole(CIRCUIT_BREAKER_ROLE) {
+    function resetCircuitBreaker(address asset) external onlyRole(LendefiConstants.CIRCUIT_BREAKER_ROLE) {
         circuitBroken[asset] = false;
         emit CircuitBreakerReset(asset);
     }
@@ -493,16 +470,16 @@ contract LendefiAssets is
 
     /**
      * @notice Schedules an upgrade to a new implementation with timelock
-     * @dev Only callable by addresses with UPGRADER_ROLE
+     * @dev Only callable by addresses with LendefiConstants.UPGRADER_ROLE
      * @param newImplementation Address of the new implementation contract
      */
     function scheduleUpgrade(address newImplementation)
         external
         nonZeroAddress(newImplementation)
-        onlyRole(UPGRADER_ROLE)
+        onlyRole(LendefiConstants.UPGRADER_ROLE)
     {
         uint64 currentTime = uint64(block.timestamp);
-        uint64 effectiveTime = currentTime + uint64(UPGRADE_TIMELOCK_DURATION);
+        uint64 effectiveTime = currentTime + uint64(LendefiConstants.UPGRADE_TIMELOCK_DURATION);
 
         pendingUpgrade = UpgradeRequest({implementation: newImplementation, scheduledTime: currentTime, exists: true});
 
@@ -511,9 +488,9 @@ contract LendefiAssets is
 
     /**
      * @notice Cancels a previously scheduled upgrade
-     * @dev Only callable by addresses with UPGRADER_ROLE
+     * @dev Only callable by addresses with LendefiConstants.UPGRADER_ROLE
      */
-    function cancelUpgrade() external onlyRole(UPGRADER_ROLE) {
+    function cancelUpgrade() external onlyRole(LendefiConstants.UPGRADER_ROLE) {
         if (!pendingUpgrade.exists) {
             revert UpgradeNotScheduled();
         }
@@ -530,8 +507,9 @@ contract LendefiAssets is
      * @return timeRemaining The time remaining in seconds
      */
     function upgradeTimelockRemaining() external view returns (uint256) {
-        return pendingUpgrade.exists && block.timestamp < pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION
-            ? pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION - block.timestamp
+        return pendingUpgrade.exists
+            && block.timestamp < pendingUpgrade.scheduledTime + LendefiConstants.UPGRADE_TIMELOCK_DURATION
+            ? pendingUpgrade.scheduledTime + LendefiConstants.UPGRADE_TIMELOCK_DURATION - block.timestamp
             : 0;
     }
 
@@ -920,7 +898,8 @@ contract LendefiAssets is
             revert InvalidUniswapConfig(asset);
         }
 
-        tokenPriceInUSD = getAnyPoolTokenPriceInUSD(config.pool, asset, USDC_ETH_POOL, config.twapPeriod); // Price on 1e6 scale, USDC
+        tokenPriceInUSD =
+            getAnyPoolTokenPriceInUSD(config.pool, asset, LendefiConstants.USDC_ETH_POOL, config.twapPeriod); // Price on 1e6 scale, USDC
 
         if (tokenPriceInUSD <= 0) {
             revert OracleInvalidPrice(config.pool, int256(tokenPriceInUSD));
@@ -1020,7 +999,7 @@ contract LendefiAssets is
      * @dev Internal function required by UUPSUpgradeable pattern
      * @param newImplementation Address of the new implementation contract
      * @custom:security Enforces timelock and validates implementation address
-     * @custom:access Restricted to UPGRADER_ROLE
+     * @custom:access Restricted to LendefiConstants.UPGRADER_ROLE
      * @custom:validation Requires:
      * - Upgrade must be scheduled
      * - Implementation must match scheduled upgrade
@@ -1028,13 +1007,15 @@ contract LendefiAssets is
      * @custom:emits Upgrade event on successful authorization
      * @custom:state-changes Increments version and clears pending upgrade
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(LendefiConstants.UPGRADER_ROLE) {
         if (!pendingUpgrade.exists) revert UpgradeNotScheduled();
         if (pendingUpgrade.implementation != newImplementation) {
             revert ImplementationMismatch(pendingUpgrade.implementation, newImplementation);
         }
-        if (block.timestamp - pendingUpgrade.scheduledTime < UPGRADE_TIMELOCK_DURATION) {
-            revert UpgradeTimelockActive(UPGRADE_TIMELOCK_DURATION - (block.timestamp - pendingUpgrade.scheduledTime));
+        if (block.timestamp - pendingUpgrade.scheduledTime < LendefiConstants.UPGRADE_TIMELOCK_DURATION) {
+            revert UpgradeTimelockActive(
+                LendefiConstants.UPGRADE_TIMELOCK_DURATION - (block.timestamp - pendingUpgrade.scheduledTime)
+            );
         }
 
         delete pendingUpgrade;
