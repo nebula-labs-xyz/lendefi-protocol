@@ -239,7 +239,7 @@ contract LendefiAssetsTest is BasicDeploy {
 
         // Expect the event emission correctly
         vm.expectEmit(true, false, false, false);
-        emit IASSETS.UpdateAssetConfig(wethConfig);
+        emit IASSETS.UpdateAssetConfig(address(wethInstance), wethConfig);
 
         // Re-add WETH with modified config for testing
         assetsInstance.updateAssetConfig(address(wethInstance), wethConfig);
@@ -276,7 +276,7 @@ contract LendefiAssetsTest is BasicDeploy {
 
         // Expect the new event emission
         vm.expectEmit(true, false, false, false);
-        emit IASSETS.UpdateAssetConfig(usdcConfig);
+        emit IASSETS.UpdateAssetConfig(address(usdcInstance), usdcConfig);
 
         // Update the asset config
         assetsInstance.updateAssetConfig(address(usdcInstance), usdcConfig);
@@ -577,7 +577,7 @@ contract LendefiAssetsTest is BasicDeploy {
                 liquidationThreshold: 850,
                 maxSupplyThreshold: 2_000_000 ether,
                 isolationDebtCap: 1_000_000 ether, // isolation debt cap
-                assetMinimumOracles: 2,
+                assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracle), active: 1}),
@@ -607,7 +607,7 @@ contract LendefiAssetsTest is BasicDeploy {
         // Update with same config - should work fine
         vm.prank(address(timelockInstance));
         vm.expectEmit(true, false, false, false);
-        emit IASSETS.UpdateAssetConfig(item);
+        emit IASSETS.UpdateAssetConfig(address(wethInstance), item);
         assetsInstance.updateAssetConfig(address(wethInstance), item);
 
         // Verify asset is still properly configured
