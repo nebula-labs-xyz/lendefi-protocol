@@ -28,7 +28,7 @@ contract AssetsInitializeTest is BasicDeploy {
         timelockAddr = address(timelockInstance);
 
         // Create initialization data
-        initData = abi.encodeCall(LendefiAssets.initialize, (timelockAddr, gnosisSafe));
+        initData = abi.encodeCall(LendefiAssets.initialize, (timelockAddr, gnosisSafe, address(usdcInstance)));
     }
 
     function test_InitializeSuccess() public {
@@ -78,11 +78,11 @@ contract AssetsInitializeTest is BasicDeploy {
 
         // Test with zero address for timelock
         vm.expectRevert(abi.encodeWithSignature("ZeroAddressNotAllowed()"));
-        assetsModule.initialize(address(0), gnosisSafe);
+        assetsModule.initialize(address(0), gnosisSafe, address(usdcInstance));
 
         // Test with zero address for gnosisSafe
         vm.expectRevert(abi.encodeWithSignature("ZeroAddressNotAllowed()"));
-        assetsModule.initialize(timelockAddr, address(0));
+        assetsModule.initialize(timelockAddr, address(0), address(usdcInstance));
     }
 
     function test_PreventReinitialization() public {
@@ -92,7 +92,7 @@ contract AssetsInitializeTest is BasicDeploy {
 
         // Try to initialize again
         vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
-        assetsContract.initialize(timelockAddr, gnosisSafe);
+        assetsContract.initialize(timelockAddr, gnosisSafe, address(usdcInstance));
     }
 
     function test_RoleExclusivity() public {
@@ -211,7 +211,8 @@ contract AssetsInitializeTest is BasicDeploy {
 
     function test_PauseStateAfterInit() public {
         // Deploy with initialization using explicit gnosisSafe address
-        bytes memory localInitData = abi.encodeCall(LendefiAssets.initialize, (timelockAddr, gnosisSafe));
+        bytes memory localInitData =
+            abi.encodeCall(LendefiAssets.initialize, (timelockAddr, gnosisSafe, address(usdcInstance)));
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", localInitData));
         LendefiAssets assetsContract = LendefiAssets(proxy);
 
@@ -232,15 +233,8 @@ contract AssetsInitializeTest is BasicDeploy {
             assetMinimumOracles: 1,
             primaryOracleType: IASSETS.OracleType.CHAINLINK,
             tier: IASSETS.CollateralTier.CROSS_A,
-            chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockPriceFeed), oracleDecimals: 8, active: 1}),
-            poolConfig: IASSETS.UniswapPoolConfig({
-                pool: address(0),
-                quoteToken: address(0),
-                isToken0: false,
-                decimalsUniswap: 0,
-                twapPeriod: 0,
-                active: 0
-            })
+            chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockPriceFeed), active: 1}),
+            poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
         });
 
         // Update asset config on the newly deployed contract (not the global instance)
