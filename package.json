@@ -26,7 +26,7 @@
     "solhint": "./node_modules/.bin/solhint -f table contracts/**/*.sol",
     "test": "forge clean && forge build && forge test -vvv --ffi",
     "test:integration": "forge test --match-contract Integration -vvv",
-    "test:unit": "forge test --match-contract LendefiAssetsTest -vvv --ffi",
+    "test:unit": "forge test --match-contract LendefiTest -vvv --ffi",
     "test:unit:deep": "FOUNDRY_FUZZ_RUNS=5000 npm run test:unit",
     "unit:lcov": "forge coverage --match-path 'test/lender/LendefiBasicTest.t.sol' --report lcov --ffi"
   },
