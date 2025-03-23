@@ -76,14 +76,10 @@ contract LendefiTest is BasicDeploy {
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
                     oracleUSD: address(rwaOracleInstance),
-                    oracleDecimals: 8, // Oracle decimals
                     active: 1 // Chainlink oracle is active
                 }),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0 // Uniswap oracle is inactive
                 })
@@ -105,14 +101,10 @@ contract LendefiTest is BasicDeploy {
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
                     oracleUSD: address(wethassetsInstance),
-                    oracleDecimals: 8,
                     active: 1 // Chainlink oracle is active
                 }),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0 // Uniswap oracle is inactive
                 })
@@ -148,14 +140,10 @@ contract LendefiTest is BasicDeploy {
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
                     oracleUSD: address(rwaOracleInstance),
-                    oracleDecimals: 8, // Oracle decimals
                     active: 1 // Chainlink oracle is active
                 }),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0 // Uniswap oracle is inactive
                 })
@@ -241,14 +229,10 @@ contract LendefiTest is BasicDeploy {
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
                     oracleUSD: address(rwaOracleInstance),
-                    oracleDecimals: 8, // Oracle decimals
                     active: 1 // Chainlink oracle is active
                 }),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0 // Uniswap oracle is inactive
                 })
@@ -313,7 +297,7 @@ contract LendefiTest is BasicDeploy {
         // Calculation:
         // 100 ether (10^18) * $1000 (10^8) * 650 / (1000 * 10^18 * 10^8) = 65_000_000_000 (65M USDC with 6 decimals)
         uint256 expected = (100 ether * price * 650) / (1000 * 10 ** asset.decimals);
-        expected = expected / 10 ** asset.chainlinkConfig.oracleDecimals * 1e6; // Convert to USDC decimals
+        expected = expected / 10 ** 6 * 1e6; // Convert to USDC decimals
         console2.log("Expected Credit Limit:", expected);
 
         assertEq(creditLimit, expected);
