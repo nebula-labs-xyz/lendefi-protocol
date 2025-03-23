@@ -116,19 +116,8 @@ contract AssetModuleOracleTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockOracle1),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockOracle1), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -145,19 +134,8 @@ contract AssetModuleOracleTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockOracle2),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockOracle2), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -174,19 +152,8 @@ contract AssetModuleOracleTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockOracle3),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockOracle3), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -350,7 +317,7 @@ contract AssetModuleOracleTest is BasicDeploy {
         vm.startPrank(address(timelockInstance));
         // Get price
         uint256 price = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(price, 2010e8, "Should return correct price");
+        assertEq(price, 2010e6, "Should return correct price");
 
         vm.stopPrank();
     }
@@ -411,7 +378,7 @@ contract AssetModuleOracleTest is BasicDeploy {
         mockOracle1.setTimestamp(block.timestamp - 2 hours); // Older than volatility threshold (1 hour)
 
         // Set previous round data with large price difference
-        mockOracle1.setHistoricalRoundData(1, 2000e8, block.timestamp - 3 hours, 1);
+        mockOracle1.setHistoricalRoundData(1, 2000e6, block.timestamp - 3 hours, 1);
 
         //assetsInstance.addOracle(address(wethInstance), address(mockOracle1), 8, IASSETS.OracleType.CHAINLINK);
 
@@ -424,7 +391,7 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         // This should succeed
         uint256 price = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(price, 2400e8, "Should allow volatile price if timestamp is fresh");
+        assertEq(price, 2400e6, "Should allow volatile price if timestamp is fresh");
 
         vm.stopPrank();
     }
@@ -434,7 +401,7 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         // Get median price (with single oracle, should return that oracle's price)
         uint256 price = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(price, 2010e8, "Single oracle should return its price"); //price from setUp()
+        assertEq(price, 2010e6, "Single oracle should return its price"); //price from setUp()
 
         vm.stopPrank();
     }
@@ -493,9 +460,9 @@ contract AssetModuleOracleTest is BasicDeploy {
         uint256 rwaPrice = assetsInstance.getAssetPrice(address(rwaToken));
         uint256 stablePrice = assetsInstance.getAssetPrice(address(stableToken));
 
-        assertEq(wethPrice, 2010e8, "WETH price should be correct");
-        assertEq(rwaPrice, 1990e8, "RWA price should be correct");
-        assertEq(stablePrice, 2020e8, "Stable price should be correct");
+        assertEq(wethPrice, 2010e6, "WETH price should be correct");
+        assertEq(rwaPrice, 1990e6, "RWA price should be correct");
+        assertEq(stablePrice, 2020e6, "Stable price should be correct");
 
         // Now update one price and verify only that one changes
         mockOracle1.setPrice(2500e8);
@@ -503,8 +470,8 @@ contract AssetModuleOracleTest is BasicDeploy {
         uint256 newWethPrice = assetsInstance.getAssetPrice(address(wethInstance));
         uint256 sameRwaPrice = assetsInstance.getAssetPrice(address(rwaToken));
 
-        assertEq(newWethPrice, 2500e8, "WETH price should be updated");
-        assertEq(sameRwaPrice, 1990e8, "RWA price should remain the same");
+        assertEq(newWethPrice, 2500e6, "WETH price should be updated");
+        assertEq(sameRwaPrice, 1990e6, "RWA price should remain the same");
 
         vm.stopPrank();
     }
@@ -514,7 +481,7 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         // Get initial price
         uint256 initialPrice = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(initialPrice, 2010e8, "Initial price should be correct"); // price from setup
+        assertEq(initialPrice, 2010e6, "Initial price should be correct"); // price from setup
 
         // Use MockPriceOracle instead of WETHPriceConsumerV3 for testing timestamp behavior
         MockPriceOracle testOracle = new MockPriceOracle();
@@ -524,11 +491,11 @@ contract AssetModuleOracleTest is BasicDeploy {
         testOracle.setAnsweredInRound(1);
 
         // Use replaceOracle to switch the CHAINLINK oracle
-        assetsInstance.updateChainlinkOracle(address(wethInstance), address(testOracle), 8, 1);
+        assetsInstance.updateChainlinkOracle(address(wethInstance), address(testOracle), 1);
 
         // Should now get price from the new oracle
         uint256 newPrice = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(newPrice, 2200e8, "Should get price from the new oracle");
+        assertEq(newPrice, 2200e6, "Should get price from the new oracle");
 
         vm.stopPrank();
     }
@@ -553,19 +520,8 @@ contract AssetModuleOracleTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracleInstance),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(uniswapPool),
-                    quoteToken: address(usdcInstance),
-                    isToken0: true,
-                    decimalsUniswap: 8,
-                    twapPeriod: 1800,
-                    active: 1
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(uniswapPool), twapPeriod: 1800, active: 1})
             })
         );
 
@@ -621,17 +577,9 @@ contract AssetModuleOracleTest is BasicDeploy {
                 tier: IASSETS.CollateralTier.CROSS_B,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
                     oracleUSD: address(rwaOracle), // Use the new oracle
-                    oracleDecimals: 8,
                     active: 1
                 }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -642,7 +590,7 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         // Verify we can get the price before triggering circuit breaker
         uint256 initialPrice = assetsInstance.getAssetPrice(address(rwaToken));
-        assertEq(initialPrice, 1000e8, "Should return correct price before circuit breaker");
+        assertEq(initialPrice, 1000e6, "Should return correct price before circuit breaker");
 
         // Trigger circuit breaker for RWA token
         assetsInstance.triggerCircuitBreaker(address(rwaToken));
@@ -662,7 +610,7 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         // Now price check should work again
         uint256 price = assetsInstance.getAssetPrice(address(rwaToken));
-        assertEq(price, 1000e8, "Should return a valid price after circuit breaker reset");
+        assertEq(price, 1000e6, "Should return a valid price after circuit breaker reset");
 
         vm.stopPrank();
     }
@@ -671,13 +619,13 @@ contract AssetModuleOracleTest is BasicDeploy {
         // Deploy a mock Uniswap pool
         MockUniswapV3Pool uniswapPool = new MockUniswapV3Pool(address(rwaToken), address(usdcInstance), 3000);
 
-        // IMPORTANT: Set up tick values that will produce a price of 1500e8
+        // IMPORTANT: Set up tick values that will produce a price of 1500e6
         int56[] memory tickCumulatives = new int56[](2);
         // At index 0: OLDER timestamp (1800 seconds ago)
         tickCumulatives[0] = 0;
         // At index 1: NEWER timestamp (now)
-        tickCumulatives[1] = 40650 * 1800; // 7,299,000
-        uniswapPool.setTickCumulatives(tickCumulatives);
+        tickCumulatives[1] = -203200 * 1800; // 7,299,000
+        uniswapPool.setTickCumulatives(tickCumulatives); // $1500
 
         // Set up seconds per liquidity (values don't matter much, just can't be 0)
         uint160[] memory secondsPerLiquidityCumulatives = new uint160[](2);
@@ -691,9 +639,7 @@ contract AssetModuleOracleTest is BasicDeploy {
         assetsInstance.updateUniswapOracle(
             address(rwaToken),
             address(uniswapPool),
-            address(usdcInstance),
             1800, // 30 minute TWAP
-            8, // 8 decimals result
             1 //active
         );
         vm.stopPrank();
@@ -705,13 +651,13 @@ contract AssetModuleOracleTest is BasicDeploy {
         console2.log("Uniswap Oracle Price:", price);
 
         // Make sure we got a non-zero price
-        assertGt(price, 57e6, "Uniswap price should be greater than zero");
+        assertTrue(price > 1480e6 && price < 1520e6, "Uniswap price should be ~$1500");
     }
 
     function test_CheckPriceDeviation() public {
         // Deploy a Chainlink oracle (first oracle)
         MockPriceOracle testOracle = new MockPriceOracle();
-        testOracle.setPrice(1000e8);
+        testOracle.setPrice(1000e8); // $1000
         testOracle.setTimestamp(block.timestamp);
         testOracle.setRoundId(1);
         testOracle.setAnsweredInRound(1);
@@ -719,10 +665,10 @@ contract AssetModuleOracleTest is BasicDeploy {
         // Deploy a mock Uniswap pool (second oracle)
         MockUniswapV3Pool uniswapPool = new MockUniswapV3Pool(address(rwaToken), address(usdcInstance), 3000);
 
-        // Create tick cumulatives for ~1500e8 price
+        // Set tick values to produce a valid price close to $1500
         int56[] memory tickCumulatives = new int56[](2);
         tickCumulatives[0] = 0;
-        tickCumulatives[1] = 73140 * 1800;
+        tickCumulatives[1] = -203200 * 1800; // Adjusted tick value for ~$1500 price
         uniswapPool.setTickCumulatives(tickCumulatives);
 
         // Setup liquidity data
@@ -736,12 +682,13 @@ contract AssetModuleOracleTest is BasicDeploy {
 
         // Set circuit breaker threshold
         assetsInstance.updateMainOracleConfig(
-            uint80(28800),
-            uint80(3600),
-            uint40(20),
-            uint40(40) // 40% threshold
+            uint80(28800), // Freshness threshold
+            uint80(3600), // Volatility threshold
+            uint40(20), // Volatility percentage
+            uint40(40) // Circuit breaker threshold (40%)
         );
 
+        // Update asset configuration to include both Chainlink and Uniswap oracles
         assetsInstance.updateAssetConfig(
             address(rwaToken),
             IASSETS.Asset({
@@ -751,22 +698,11 @@ contract AssetModuleOracleTest is BasicDeploy {
                 liquidationThreshold: 850,
                 maxSupplyThreshold: 500_000e18,
                 isolationDebtCap: 0,
-                assetMinimumOracles: 1,
+                assetMinimumOracles: 2, // Require both oracles
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(testOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(uniswapPool),
-                    quoteToken: address(usdcInstance),
-                    isToken0: true,
-                    decimalsUniswap: 8,
-                    twapPeriod: 1800,
-                    active: 1
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(uniswapPool), twapPeriod: 1800, active: 1})
             })
         );
 
@@ -779,11 +715,13 @@ contract AssetModuleOracleTest is BasicDeploy {
         console2.log("Chainlink Price:", chainlinkPrice);
         console2.log("Uniswap Price:", uniswapPrice);
 
+        // Check for price deviation
         (bool hasDeviation, uint256 deviationAmount) = assetsInstance.checkPriceDeviation(address(rwaToken));
 
         console2.log("Has Deviation:", hasDeviation);
         console2.log("Deviation Amount:", deviationAmount);
 
+        // Assertions
         assertTrue(hasDeviation, "Should detect price deviation");
         assertGt(deviationAmount, 40, "Deviation should be at least 40%");
         assertLt(deviationAmount, 60, "Deviation should be at most 60%");
