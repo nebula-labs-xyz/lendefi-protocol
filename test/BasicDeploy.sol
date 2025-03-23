@@ -84,12 +84,12 @@ contract BasicDeploy is Test {
     Treasury internal treasuryInstance;
     InvestmentManager internal managerInstance;
     TeamManager internal tmInstance;
-    USDC internal usdcInstance; // mock usdc
     WETH9 internal wethInstance;
     Lendefi internal LendefiInstance;
     LendefiYieldToken internal yieldTokenInstance;
     LendefiAssets internal assetsInstance;
-    IERC20 usdc = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+    USDC internal usdcInstance;
+    // IERC20 usdcInstance = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); //real usdc ethereum for fork testing
 
     function deployTokenUpgrade() internal {
         if (address(timelockInstance) == address(0)) {
@@ -664,7 +664,8 @@ contract BasicDeploy is Test {
             _deployTimelock();
         }
         // Protocol Oracle deploy (combined Oracle + Assets)
-        bytes memory data = abi.encodeCall(LendefiAssets.initialize, (address(timelockInstance), gnosisSafe));
+        bytes memory data =
+            abi.encodeCall(LendefiAssets.initialize, (address(timelockInstance), gnosisSafe, address(usdcInstance)));
 
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", data));
 
@@ -673,13 +674,6 @@ contract BasicDeploy is Test {
 
         address implementation = Upgrades.getImplementationAddress(proxy);
         assertFalse(address(assetsInstance) == implementation);
-
-        // Grant necessary roles
-        // vm.startPrank(guardian);
-        // assetsInstance.grantRole(MANAGER_ROLE, address(timelockInstance));
-        // assetsInstance.grantRole(CIRCUIT_BREAKER_ROLE, address(timelockInstance));
-        // assetsInstance.grantRole(PAUSER_ROLE, guardian);
-        // vm.stopPrank();
     }
     /**
      * @notice Upgrades the LendefiAssets implementation
@@ -805,8 +799,8 @@ contract BasicDeploy is Test {
         vm.warp(365 days);
         // Deploy mock tokens for testing
         usdcInstance = new USDC();
-        _deployToken();
         _deployTimelock();
+        _deployToken();
         _deployEcosystem();
         _deployTreasury();
         _deployGovernor();
