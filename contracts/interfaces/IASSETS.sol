@@ -100,10 +100,9 @@ interface IASSETS {
 
     // ==================== EVENTS ====================
     event CoreAddressUpdated(address indexed newCore);
-    event UpdateAssetConfig(Asset config);
+    event UpdateAssetConfig(address indexed asset, Asset config);
     event AssetTierUpdated(address indexed asset, CollateralTier tier);
     event PrimaryOracleSet(address indexed asset, OracleType oracleType);
-    event AssetMinimumOraclesUpdated(address indexed asset, uint256 oldValue, uint256 newValue);
     event CircuitBreakerTriggered(address indexed asset, uint256 oldPrice, uint256 newPrice);
     event CircuitBreakerReset(address indexed asset);
     event FreshnessThresholdUpdated(uint256 oldValue, uint256 newValue);
@@ -117,8 +116,9 @@ interface IASSETS {
     event UpgradeCancelled(address indexed sender, address indexed implementation);
     event Upgrade(address indexed sender, address indexed implementation);
     event ChainlinkOracleUpdated(address indexed asset, address indexed oracle, uint8 active);
-
+    event UniswapOracleUpdated(address indexed asset, address indexed pool, uint8 active);
     // ==================== ERRORS ====================
+
     error ZeroAddressNotAllowed();
     error AssetNotListed(address asset);
     error AssetNotInUniswapPool(address asset, address pool);
@@ -221,13 +221,6 @@ interface IASSETS {
      * @param oracleType The oracle type to set as primary
      */
     function setPrimaryOracle(address asset, OracleType oracleType) external;
-
-    /**
-     * @notice Update the minimum oracle count for an asset
-     * @param asset The asset address
-     * @param minimum The minimum number of oracles required
-     */
-    // function updateMinimumOracles(address asset, uint8 minimum) external;
 
     /**
      * @notice Trigger circuit breaker for an asset (suspend price feeds)
@@ -410,25 +403,6 @@ interface IASSETS {
      * @return Whether the circuit breaker is active
      */
     function circuitBroken(address asset) external view returns (bool);
-
-    /**
-     * @notice Get tier configuration for a specific collateral tier
-     * @param tier The collateral tier to query
-     * @return The tier rates configuration
-     */
-    // function tierConfig(CollateralTier tier) external view returns (TierRates memory);
-
-    /**
-     * @notice Get information about a pending upgrade
-     * @return The pending upgrade request
-     */
-    // function pendingUpgrade() external view returns (UpgradeRequest memory);
-
-    /**
-     * @notice Get the main oracle configuration
-     * @return The current oracle configuration
-     */
-    // function mainOracleConfig() external view returns (MainOracleConfig memory);
 
     /**
      * @notice Gets all parameters needed for collateral calculations in a single call
