@@ -65,19 +65,8 @@ contract OraclePriceTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracleInstance),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -94,19 +83,8 @@ contract OraclePriceTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(rwaOracleInstance),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(rwaOracleInstance), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -123,19 +101,8 @@ contract OraclePriceTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(stableOracleInstance),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -152,19 +119,8 @@ contract OraclePriceTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -176,7 +132,7 @@ contract OraclePriceTest is BasicDeploy {
 
     // Test 1: Happy Path - Successfully get price
     function test_GetAssetPrice_Success() public {
-        uint256 expectedPrice = 2500e8;
+        uint256 expectedPrice = 2500e6;
 
         // Test through the Asset module
         uint256 price2 = assetsInstance.getAssetPrice(address(wethInstance));
@@ -202,14 +158,14 @@ contract OraclePriceTest is BasicDeploy {
     // Test 6: Edge Case - answeredInRound equal to roundId
     function test_GetAssetPriceOracle_EqualRounds() public {
         // Set previous round data with >20% price difference
-        mockOracle.setHistoricalRoundData(19, 1002e8, block.timestamp - 4 hours, 19);
+        mockOracle.setHistoricalRoundData(19, 1002e6, block.timestamp - 4 hours, 19);
         // Set roundId equal to answeredInRound
         mockOracle.setRoundId(20);
         mockOracle.setAnsweredInRound(20);
 
         // Should succeed - use getAssetPriceByType instead of getSingleOraclePrice
         uint256 price = assetsInstance.getAssetPriceByType(address(0x3), IASSETS.OracleType.CHAINLINK);
-        assertEq(price, 1000e8, "Should return price when roundId equals answeredInRound");
+        assertEq(price, 1000e6, "Should return price when roundId equals answeredInRound");
     }
 
     // Test 7: Fuzz Test - Different positive prices
@@ -224,36 +180,36 @@ contract OraclePriceTest is BasicDeploy {
         uint256 returnedPrice = assetsInstance.getAssetPriceByType(address(0x3), IASSETS.OracleType.CHAINLINK);
 
         // Verify the result
-        assertEq(returnedPrice, uint256(testPrice), "Should return the exact price set");
+        assertEq(returnedPrice, uint256(testPrice) / 1e2, "Should return the exact price set");
     }
 
     // Test 8: Multiple Oracle Types
     function test_GetAssetPrice_MultipleOracleTypes() public {
         // Check prices by directly getting them through the asset address
         uint256 wethPrice = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(wethPrice, 2500e8, "WETH price should be correct");
+        assertEq(wethPrice, 2500e6, "WETH price should be correct");
 
         // Check RWA price
         uint256 rwaPrice = assetsInstance.getAssetPrice(address(0x1));
-        assertEq(rwaPrice, 1000e8, "RWA price should be correct");
+        assertEq(rwaPrice, 1000e6, "RWA price should be correct");
 
         // Check Stable price
         uint256 stablePrice = assetsInstance.getAssetPrice(address(0x2));
-        assertEq(stablePrice, 1e8, "Stable price should be correct");
+        assertEq(stablePrice, 1e6, "Stable price should be correct");
     }
 
     // Test 9: Price Changes
     function test_GetAssetPriceOracle_PriceChanges() public {
         // Get initial price
         uint256 initialPrice = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(initialPrice, 2500e8, "Initial price should be correct");
+        assertEq(initialPrice, 2500e6, "Initial price should be correct");
 
         // Change price
         wethOracleInstance.setPrice(3000e8);
 
         // Get updated price
         uint256 updatedPrice = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(updatedPrice, 3000e8, "Updated price should reflect the change");
+        assertEq(updatedPrice, 3000e6, "Updated price should reflect the change");
     }
 
     // Test 10: Integration with Asset Config
@@ -272,26 +228,15 @@ contract OraclePriceTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracleInstance),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
         vm.stopPrank();
 
         // Use the oracle from asset config
         uint256 price = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(price, 2500e8, "Should get correct price from asset-configured oracle");
+        assertEq(price, 2500e6, "Should get correct price from asset-configured oracle");
     }
 
     // Test 11: Oracle price volatility check
@@ -307,7 +252,7 @@ contract OraclePriceTest is BasicDeploy {
 
         // This should pass since timestamp is recent (< 1 hour)
         uint256 price = assetsInstance.getAssetPrice(address(0x3));
-        assertEq(price, 1200e8);
+        assertEq(price, 1200e6);
 
         // Now set timestamp to be stale for volatility check (>= 1 hour)
         mockOracle.setTimestamp(block.timestamp - 2 hours);
