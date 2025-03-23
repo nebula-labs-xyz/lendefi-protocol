@@ -72,6 +72,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {LendefiConstants} from "../lender/lib/LendefiConstants.sol";
 import {LendefiRates} from "../lender/lib/LendefiRates.sol";
 
 /// @custom:oz-upgrades-from contracts/lender/Lendefi.sol:Lendefi
@@ -82,37 +83,9 @@ contract LendefiV2 is
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable
 {
-    /**
-     * @dev Utility for set operations on address collections
-     */
+    using LendefiRates for *;
+    using LendefiConstants for *;
     using EnumerableMap for EnumerableMap.AddressToUintMap;
-
-    // Constants
-    /**
-     * @dev Standard decimals for percentage calculations (1e6 = 100%)
-     */
-    uint256 internal constant WAD = 1e6;
-
-    /**
-     * @dev Role identifier for users authorized to pause/unpause the protocol
-     */
-    bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-
-    /**
-     * @dev Role identifier for users authorized to manage protocol parameters
-     */
-    bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
-
-    /**
-     * @dev Role identifier for users authorized to upgrade the contract
-     */
-    bytes32 internal constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-
-    /**
-     * @notice Duration of the timelock for upgrade operations (3 days)
-     * @dev Provides time for users to review and react to scheduled upgrades
-     */
-    uint256 public constant UPGRADE_TIMELOCK_DURATION = 3 days;
 
     // State variables
     /**
@@ -282,11 +255,11 @@ contract LendefiV2 is
         __ReentrancyGuard_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, timelock_);
-        _grantRole(MANAGER_ROLE, timelock_);
-        _grantRole(PAUSER_ROLE, timelock_);
-        _grantRole(PAUSER_ROLE, multisig);
-        _grantRole(UPGRADER_ROLE, timelock_);
-        _grantRole(UPGRADER_ROLE, multisig);
+        _grantRole(LendefiConstants.MANAGER_ROLE, timelock_);
+        _grantRole(LendefiConstants.PAUSER_ROLE, timelock_);
+        _grantRole(LendefiConstants.PAUSER_ROLE, multisig);
+        _grantRole(LendefiConstants.UPGRADER_ROLE, timelock_);
+        _grantRole(LendefiConstants.UPGRADER_ROLE, multisig);
 
         usdcInstance = IERC20(usdc);
         tokenInstance = IERC20(govToken);
@@ -301,7 +274,7 @@ contract LendefiV2 is
             borrowRate: 0.06e6, // 6%
             rewardAmount: 2_000 ether, // 2,000 tokens
             rewardInterval: 180 days, // 180 days
-            rewardableSupply: 100_000 * WAD, // 100,000 USDC
+            rewardableSupply: 100_000 * LendefiConstants.WAD, // 100,000 USDC
             liquidatorThreshold: 20_000 ether, // 20,000 tokens
             flashLoanFee: 9 // 9 basis points (0.09%)
         });
@@ -313,20 +286,20 @@ contract LendefiV2 is
     /**
      * @notice Pauses the protocol in an emergency situation
      * @dev When paused, all state-changing functions will revert
-     * @custom:access-control Restricted to PAUSER_ROLE
+     * @custom:access-control Restricted to LendefiConstants.PAUSER_ROLE
      * @custom:events Emits a Paused event from PausableUpgradeable
      */
-    function pause() external override onlyRole(PAUSER_ROLE) {
+    function pause() external override onlyRole(LendefiConstants.PAUSER_ROLE) {
         _pause();
     }
 
     /**
      * @notice Unpauses the protocol after an emergency is resolved
      * @dev Restores full functionality to all state-changing functions
-     * @custom:access-control Restricted to PAUSER_ROLE
+     * @custom:access-control Restricted to LendefiConstants.PAUSER_ROLE
      * @custom:events Emits an Unpaused event from PausableUpgradeable
      */
-    function unpause() external override onlyRole(PAUSER_ROLE) {
+    function unpause() external override onlyRole(LendefiConstants.PAUSER_ROLE) {
         _unpause();
     }
 
@@ -440,7 +413,7 @@ contract LendefiV2 is
     function supplyLiquidity(uint256 amount) external validAmount(amount) nonReentrant whenNotPaused {
         uint256 total = usdcInstance.balanceOf(address(this)) + totalBorrow;
         uint256 supply = yieldTokenInstance.totalSupply();
-        uint256 value = (amount * supply) / (total > 0 ? total : WAD);
+        uint256 value = (amount * supply) / (total > 0 ? total : LendefiConstants.WAD);
         uint256 utilization = getUtilization();
         if (supply == 0 || utilization == 0) value = amount;
 
@@ -498,7 +471,7 @@ contract LendefiV2 is
         uint256 baseAmount = (amount * totalSuppliedLiquidity) / supply;
         uint256 total = usdcInstance.balanceOf(address(this)) + totalBorrow;
 
-        uint256 target = (baseAmount * mainConfig.profitTargetRate) / WAD;
+        uint256 target = (baseAmount * mainConfig.profitTargetRate) / LendefiConstants.WAD;
         if (total >= totalSuppliedLiquidity + target) {
             yieldTokenInstance.mint(treasury, target);
         }
@@ -955,7 +928,7 @@ contract LendefiV2 is
         totalAccruedBorrowerInterest += interestAccrued;
 
         uint256 liquidationFee = getPositionLiquidationFee(user, positionId);
-        uint256 fee = ((debtWithInterest * liquidationFee) / WAD);
+        uint256 fee = ((debtWithInterest * liquidationFee) / LendefiConstants.WAD);
 
         totalBorrow -= position.debtAmount;
         position.debtAmount = 0;
@@ -1016,7 +989,7 @@ contract LendefiV2 is
      * @notice Updates protocol parameters from a configuration struct
      * @dev Validates all parameters against minimum/maximum constraints before applying
      * @param config The new protocol configuration to apply
-     * @custom:access-control Restricted to MANAGER_ROLE
+     * @custom:access-control Restricted to LendefiConstants.MANAGER_ROLE
      * @custom:events Emits a ProtocolConfigUpdated event
      * @custom:error-cases
      *   - InvalidProfitTarget: Thrown when profit target rate is below minimum
@@ -1027,13 +1000,13 @@ contract LendefiV2 is
      *   - InvalidLiquidatorThreshold: Thrown when liquidator threshold is below minimum
      *   - InvalidFee: Thrown when flash loan fee exceeds maximum
      */
-    function loadProtocolConfig(ProtocolConfig calldata config) external onlyRole(MANAGER_ROLE) {
+    function loadProtocolConfig(ProtocolConfig calldata config) external onlyRole(LendefiConstants.MANAGER_ROLE) {
         // Validate all parameters
         if (config.profitTargetRate < 0.0025e6) revert InvalidProfitTarget();
         if (config.borrowRate < 0.01e6) revert InvalidBorrowRate();
         if (config.rewardAmount > 10_000 ether) revert InvalidRewardAmount();
         if (config.rewardInterval < 90 days) revert InvalidInterval();
-        if (config.rewardableSupply < 20_000 * WAD) revert InvalidSupplyAmount();
+        if (config.rewardableSupply < 20_000 * LendefiConstants.WAD) revert InvalidSupplyAmount();
         if (config.liquidatorThreshold < 10 ether) revert InvalidLiquidatorThreshold();
         if (config.flashLoanFee > 100 || config.flashLoanFee < 1) revert InvalidFee(); // Maximum 1% (100 basis points)
 
@@ -1055,17 +1028,17 @@ contract LendefiV2 is
     /**
      * @notice Resets protocol parameters to default values
      * @dev Reverts all configuration parameters to conservative default values
-     * @custom:access-control Restricted to MANAGER_ROLE
+     * @custom:access-control Restricted to LendefiConstants.MANAGER_ROLE
      * @custom:events Emits a ProtocolConfigReset event
      */
-    function resetProtocolConfig() external onlyRole(MANAGER_ROLE) {
+    function resetProtocolConfig() external onlyRole(LendefiConstants.MANAGER_ROLE) {
         // Set default values in mainConfig
         mainConfig = ProtocolConfig({
             profitTargetRate: 0.01e6, // 1%
             borrowRate: 0.06e6, // 6%
             rewardAmount: 2_000 ether, // 2,000 tokens
             rewardInterval: 180 days, // 180 days
-            rewardableSupply: 100_000 * WAD, // 100,000 USDC
+            rewardableSupply: 100_000 * LendefiConstants.WAD, // 100,000 USDC
             liquidatorThreshold: 20_000 ether, // 20,000 tokens
             flashLoanFee: 9 // 9 basis points (0.09%)
         });
@@ -1084,14 +1057,14 @@ contract LendefiV2 is
 
     /**
      * @notice Schedules an upgrade to a new implementation with timelock
-     * @dev Only callable by addresses with UPGRADER_ROLE
+     * @dev Only callable by addresses with LendefiConstants.UPGRADER_ROLE
      * @param newImplementation Address of the new implementation contract
      */
-    function scheduleUpgrade(address newImplementation) external onlyRole(UPGRADER_ROLE) {
+    function scheduleUpgrade(address newImplementation) external onlyRole(LendefiConstants.UPGRADER_ROLE) {
         if (newImplementation == address(0)) revert ZeroAddressNotAllowed();
 
         uint64 currentTime = uint64(block.timestamp);
-        uint64 effectiveTime = currentTime + uint64(UPGRADE_TIMELOCK_DURATION);
+        uint64 effectiveTime = currentTime + uint64(LendefiConstants.UPGRADE_TIMELOCK_DURATION);
 
         pendingUpgrade = UpgradeRequest({implementation: newImplementation, scheduledTime: currentTime, exists: true});
 
@@ -1100,9 +1073,9 @@ contract LendefiV2 is
 
     /**
      * @notice Cancels a previously scheduled upgrade
-     * @dev Only callable by addresses with UPGRADER_ROLE
+     * @dev Only callable by addresses with LendefiConstants.UPGRADER_ROLE
      */
-    function cancelUpgrade() external onlyRole(UPGRADER_ROLE) {
+    function cancelUpgrade() external onlyRole(LendefiConstants.UPGRADER_ROLE) {
         if (!pendingUpgrade.exists) {
             revert UpgradeNotScheduled();
         }
@@ -1117,8 +1090,9 @@ contract LendefiV2 is
      * @return timeRemaining The time remaining in seconds
      */
     function upgradeTimelockRemaining() external view returns (uint256) {
-        return pendingUpgrade.exists && block.timestamp < pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION
-            ? pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION - block.timestamp
+        return pendingUpgrade.exists
+            && block.timestamp < pendingUpgrade.scheduledTime + LendefiConstants.UPGRADE_TIMELOCK_DURATION
+            ? pendingUpgrade.scheduledTime + LendefiConstants.UPGRADE_TIMELOCK_DURATION - block.timestamp
             : 0;
     }
 
@@ -1242,7 +1216,7 @@ contract LendefiV2 is
      * @dev Based on the highest risk tier among the position's collateral assets
      * @param user Address of the position owner
      * @param positionId ID of the position to query
-     * @return The liquidation fee percentage in WAD format (e.g., 0.05e6 = 5%)
+     * @return The liquidation fee percentage in LendefiConstants.WAD format (e.g., 0.05e6 = 5%)
      */
     function getPositionLiquidationFee(address user, uint256 positionId)
         public
@@ -1279,8 +1253,7 @@ contract LendefiV2 is
                 // Get all parameters in a single call
                 IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
 
-                credit +=
-                    (amount * params.price * params.borrowThreshold * WAD) / (10 ** params.decimals * 1000 * 10 ** 6);
+                credit += (amount * params.price * params.borrowThreshold) / (10 ** params.decimals * 1000);
             }
         }
     }
@@ -1307,7 +1280,7 @@ contract LendefiV2 is
 
             if (amount > 0) {
                 IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
-                value += (amount * params.price * WAD) / (10 ** params.decimals * 10 ** 6);
+                value += (amount * params.price) / (10 ** params.decimals);
             }
         }
     }
@@ -1332,8 +1305,8 @@ contract LendefiV2 is
         // Health factor < 1.0 means position is undercollateralized based on liquidation parameters
         uint256 healthFactorValue = healthFactor(user, positionId);
 
-        // Compare against WAD (1.0 in fixed-point representation)
-        return healthFactorValue < WAD;
+        // Compare against LendefiConstants.WAD (1.0 in fixed-point representation)
+        return healthFactorValue < LendefiConstants.WAD;
     }
 
     /**
@@ -1341,7 +1314,7 @@ contract LendefiV2 is
      * @dev Health factor is the ratio of weighted collateral to debt, below 1.0 is liquidatable
      * @param user Address of the position owner
      * @param positionId ID of the position to calculate health for
-     * @return The position's health factor in WAD format (1.0 = 1e6)
+     * @return The position's health factor in LendefiConstants.WAD format (1.0 = 1e6)
      * @custom:error-cases
      *   - InvalidPosition: Thrown when position doesn't exist
      */
@@ -1365,27 +1338,28 @@ contract LendefiV2 is
                 // Get all parameters in a single call
                 IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
 
-                liqLevel += (amount * params.price * params.liquidationThreshold * WAD)
-                    / (10 ** params.decimals * 1000 * 10 ** 6);
+                liqLevel += (amount * params.price * params.liquidationThreshold) / (10 ** params.decimals * 1000);
             }
         }
 
-        return (liqLevel * WAD) / debt;
+        return (liqLevel * LendefiConstants.WAD) / debt;
     }
 
     /**
      * @notice Calculates the current protocol utilization rate
-     * @dev Utilization = totalBorrow / totalSuppliedLiquidity, in WAD format
+     * @dev Utilization = totalBorrow / totalSuppliedLiquidity, in LendefiConstants.WAD format
      * @return u The protocol's current utilization rate (0-1e6)
      */
     function getUtilization() public view returns (uint256 u) {
-        (totalSuppliedLiquidity == 0 || totalBorrow == 0) ? u = 0 : u = (WAD * totalBorrow) / totalSuppliedLiquidity;
+        (totalSuppliedLiquidity == 0 || totalBorrow == 0)
+            ? u = 0
+            : u = (LendefiConstants.WAD * totalBorrow) / totalSuppliedLiquidity;
     }
 
     /**
      * @notice Calculates the current supply interest rate for liquidity providers
      * @dev Based on utilization, protocol fees, and available liquidity
-     * @return The current annual supply interest rate in WAD format
+     * @return The current annual supply interest rate in LendefiConstants.WAD format
      */
     function getSupplyRate() public view returns (uint256) {
         return LendefiRates.getSupplyRate(
@@ -1401,7 +1375,7 @@ contract LendefiV2 is
      * @notice Calculates the current borrow interest rate for a specific collateral tier
      * @dev Based on utilization, base rate, supply rate, and tier-specific jump rate
      * @param tier The collateral tier to calculate the borrow rate for
-     * @return The current annual borrow interest rate in WAD format
+     * @return The current annual borrow interest rate in LendefiConstants.WAD format
      */
     function getBorrowRate(IASSETS.CollateralTier tier) public view returns (uint256) {
         return LendefiRates.getBorrowRate(
@@ -1708,7 +1682,7 @@ contract LendefiV2 is
      * @dev Implements the upgrade verification and authorization logic
      * @param newImplementation Address of new implementation contract
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(LendefiConstants.UPGRADER_ROLE) {
         if (!pendingUpgrade.exists) {
             revert UpgradeNotScheduled();
         }
@@ -1718,8 +1692,8 @@ contract LendefiV2 is
         }
 
         uint256 timeElapsed = block.timestamp - pendingUpgrade.scheduledTime;
-        if (timeElapsed < UPGRADE_TIMELOCK_DURATION) {
-            revert UpgradeTimelockActive(UPGRADE_TIMELOCK_DURATION - timeElapsed);
+        if (timeElapsed < LendefiConstants.UPGRADE_TIMELOCK_DURATION) {
+            revert UpgradeTimelockActive(LendefiConstants.UPGRADE_TIMELOCK_DURATION - timeElapsed);
         }
 
         // Clear the scheduled upgrade
