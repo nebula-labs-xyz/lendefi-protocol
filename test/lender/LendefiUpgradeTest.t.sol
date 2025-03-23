@@ -6,6 +6,7 @@ import {console2} from "forge-std/console2.sol";
 import {Lendefi} from "../../contracts/lender/Lendefi.sol";
 import {IPROTOCOL} from "../../contracts/interfaces/IProtocol.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {LendefiConstants} from "../../contracts/lender/lib/LendefiConstants.sol";
 
 contract LendefiUpgradeTest is BasicDeploy {
     // Events
@@ -57,7 +58,7 @@ contract LendefiUpgradeTest is BasicDeploy {
     function test_ScheduleUpgrade() public {
         // Get current time for event verification
         uint64 currentTime = uint64(block.timestamp);
-        uint64 effectiveTime = currentTime + uint64(LendefiInstance.UPGRADE_TIMELOCK_DURATION());
+        uint64 effectiveTime = currentTime + uint64(LendefiConstants.UPGRADE_TIMELOCK_DURATION);
 
         // Schedule upgrade
         vm.prank(gnosisSafe);
