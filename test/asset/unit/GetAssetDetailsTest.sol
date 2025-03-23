@@ -79,16 +79,9 @@ contract GetAssetDetailsTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -108,16 +101,9 @@ contract GetAssetDetailsTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(stableOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -137,16 +123,9 @@ contract GetAssetDetailsTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(linkOracle),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(linkOracle), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -166,16 +145,9 @@ contract GetAssetDetailsTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(uniOracle),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(uniOracle), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -234,7 +206,7 @@ contract GetAssetDetailsTest is BasicDeploy {
         console2.log("WETH Tier:", uint256(tier));
 
         // Verify returned values
-        assertEq(price, ETH_PRICE, "WETH price should match oracle price");
+        assertEq(price, 2500e6, "WETH price should match oracle price");
         assertEq(totalSupplied, 0, "WETH total supplied should be 0");
         assertEq(maxSupply, 1_000_000 ether, "WETH max supply incorrect");
 
@@ -315,7 +287,7 @@ contract GetAssetDetailsTest is BasicDeploy {
         uint256 newBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
 
         // Verify price changed but other values remain the same
-        assertEq(newPrice, 3000e8, "Price should update to new oracle value");
+        assertEq(newPrice, 3000e6, "Price should update to new oracle value");
         assertEq(newSupplied, initialSupplied, "Supplied amount shouldn't change with price");
         assertEq(newMaxSupply, initialMaxSupply, "Max supply shouldn't change with price");
 
@@ -380,16 +352,9 @@ contract GetAssetDetailsTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
