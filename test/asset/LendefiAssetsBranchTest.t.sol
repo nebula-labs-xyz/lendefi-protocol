@@ -77,19 +77,8 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockChainlinkOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
         vm.stopPrank();
@@ -158,7 +147,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
 
         vm.prank(address(timelockInstance)); // Changed from gnosisSafe to timelockInstance
         vm.expectRevert(abi.encodeWithSelector(AssetNotListed.selector, invalidAsset));
-        assetsInstance.updateUniswapOracle(invalidAsset, address(mockUniswapPool), address(usdcInstance), 1800, 8, 1);
+        assetsInstance.updateUniswapOracle(invalidAsset, address(mockUniswapPool), 1800, 1);
     }
 
     function test_updateUniswapOracleAssetNotInPool() public {
@@ -180,19 +169,8 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockChainlinkOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -200,16 +178,8 @@ contract LendefiAssetsBranchTest is BasicDeploy {
         vm.expectRevert(
             abi.encodeWithSelector(AssetNotInUniswapPool.selector, tokenNotInPool, address(mockUniswapPool))
         );
-        assetsInstance.updateUniswapOracle(tokenNotInPool, address(mockUniswapPool), address(usdcInstance), 1800, 8, 1);
+        assetsInstance.updateUniswapOracle(tokenNotInPool, address(mockUniswapPool), 1800, 1);
         vm.stopPrank();
-    }
-
-    function test_updateUniswapOracleQuoteTokenNotInPool() public {
-        address invalidQuote = address(0xEEEE);
-
-        vm.prank(address(timelockInstance)); // Changed from gnosisSafe to timelockInstance
-        vm.expectRevert(abi.encodeWithSelector(TokenNotInUniswapPool.selector, invalidQuote, address(mockUniswapPool)));
-        assetsInstance.updateUniswapOracle(address(wethInstance), address(mockUniswapPool), invalidQuote, 1800, 8, 1);
     }
 
     // ======== 3. Configuration Tests ========
@@ -299,19 +269,8 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockChainlinkOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -427,16 +386,9 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.UNISWAP_V3_TWAP,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockChainlinkOracle),
-                    oracleDecimals: 8,
-                    active: 0
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 0}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: virtualOracle,
-                    quoteToken: address(usdcInstance),
-                    isToken0: true,
-                    decimalsUniswap: 8,
                     twapPeriod: 1800,
                     active: 0 // Set to inactive to trigger the error
                 })
@@ -454,7 +406,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
         // Current round data is already set in setUp(), but we need previous round
         mockChainlinkOracle.setHistoricalRoundData(
             9, // Previous round ID
-            2400e8, // Previous price
+            2400e6, // Previous price
             block.timestamp - 1 hours, // Previous timestamp
             9 // Previous answeredInRound
         );
@@ -514,19 +466,8 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockChainlinkOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -546,19 +487,8 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockChainlinkOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
