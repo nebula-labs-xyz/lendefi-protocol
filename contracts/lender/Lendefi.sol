@@ -1280,7 +1280,7 @@ contract Lendefi is
                 IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
 
                 credit +=
-                    (amount * params.price * params.borrowThreshold * WAD) / (10 ** params.decimals * 1000 * 10 ** 8);
+                    (amount * params.price * params.borrowThreshold * WAD) / (10 ** params.decimals * 1000 * 10 ** 6);
             }
         }
     }
@@ -1307,7 +1307,7 @@ contract Lendefi is
 
             if (amount > 0) {
                 IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
-                value += (amount * params.price * WAD) / (10 ** params.decimals * 10 ** 8);
+                value += (amount * params.price * WAD) / (10 ** params.decimals * 10 ** 6);
             }
         }
     }
@@ -1366,7 +1366,7 @@ contract Lendefi is
                 IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
 
                 liqLevel += (amount * params.price * params.liquidationThreshold * WAD)
-                    / (10 ** params.decimals * 1000 * 10 ** 8);
+                    / (10 ** params.decimals * 1000 * 10 ** 6);
             }
         }
 
