@@ -74,19 +74,8 @@ contract GetListedAssetsTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -103,19 +92,8 @@ contract GetListedAssetsTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.UNISWAP_V3_TWAP,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(usdcOracle),
-                    oracleDecimals: 8,
-                    active: 0
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0x123),
-                    quoteToken: address(usdcInstance),
-                    isToken0: true,
-                    decimalsUniswap: 6,
-                    twapPeriod: 1800,
-                    active: 1
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(usdcOracle), active: 0}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0x123), twapPeriod: 1800, active: 1})
             })
         );
 
@@ -161,19 +139,8 @@ contract GetListedAssetsTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -190,19 +157,8 @@ contract GetListedAssetsTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(usdcOracle),
-                    oracleDecimals: 8,
-                    active: 0
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0x123),
-                    quoteToken: address(usdcInstance),
-                    isToken0: true,
-                    decimalsUniswap: 6,
-                    twapPeriod: 1800,
-                    active: 1
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(usdcOracle), active: 0}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0x123), twapPeriod: 1800, active: 1})
             })
         );
 
@@ -219,19 +175,8 @@ contract GetListedAssetsTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(usdcOracle),
-                    oracleDecimals: 8,
-                    active: 0
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(usdcOracle), active: 0}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -248,19 +193,8 @@ contract GetListedAssetsTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(linkOracleInstance),
-                    oracleDecimals: 8,
-                    active: 0
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(linkOracleInstance), active: 0}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
 
@@ -312,19 +246,8 @@ contract GetListedAssetsTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
         vm.stopPrank();
@@ -348,19 +271,8 @@ contract GetListedAssetsTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracle),
-                    oracleDecimals: 8,
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(0),
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
-                    twapPeriod: 0,
-                    active: 0
-                })
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
             })
         );
         vm.stopPrank();
