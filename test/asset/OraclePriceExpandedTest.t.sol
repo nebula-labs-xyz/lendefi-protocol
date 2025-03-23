@@ -108,16 +108,8 @@ contract OraclePriceExpandedTest is BasicDeploy {
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockOracle), active: 1}),
-                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(mockUniswapPool), twapPeriod: 1800, active: 1})
             })
-        );
-
-        // Add Uniswap oracle using the updateUniswapOracle method
-        assetsInstance.updateUniswapOracle(
-            address(testAsset),
-            address(mockUniswapPool),
-            1800, // 30 minute TWAP
-            1 // active
         );
 
         vm.stopPrank();
@@ -183,26 +175,14 @@ contract OraclePriceExpandedTest is BasicDeploy {
         newOracle.setRoundId(1);
         newOracle.setAnsweredInRound(1);
 
+        IASSETS.Asset memory item = assetsInstance.getAssetInfo(address(wethInstance));
+        item.chainlinkConfig = IASSETS.ChainlinkOracleConfig({
+            oracleUSD: address(newOracle), //new oracle
+            active: 1
+        });
+
         // Replace the Chainlink oracle
-        assetsInstance.updateAssetConfig(
-            address(testAsset),
-            IASSETS.Asset({
-                active: 1,
-                decimals: 18,
-                borrowThreshold: 800,
-                liquidationThreshold: 850,
-                maxSupplyThreshold: 1_000_000 ether,
-                isolationDebtCap: 0,
-                assetMinimumOracles: 2, // Require 2 oracles for median calculation
-                primaryOracleType: IASSETS.OracleType.CHAINLINK,
-                tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(newOracle), //new oracle
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
-            })
-        );
+        assetsInstance.updateAssetConfig(address(testAsset), item);
         // Verify the oracle was replaced
         address oracleAddress = assetsInstance.getOracleByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
         assertEq(oracleAddress, address(newOracle), "Oracle should be replaced");
@@ -214,6 +194,29 @@ contract OraclePriceExpandedTest is BasicDeploy {
         // Verify by using getAssetPriceByType instead of getAssetPrice (which uses median)
         uint256 assetPrice = assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
         assertEq(assetPrice, 1200e6, "Asset price by type should match new oracle price");
+
+        vm.stopPrank();
+    }
+
+    function test_DeleteUniswapOracle() public {
+        vm.startPrank(address(timelockInstance));
+
+        IASSETS.Asset memory item = assetsInstance.getAssetInfo(address(wethInstance));
+        item.poolConfig = IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0});
+        item.assetMinimumOracles = 1;
+        // Delete the Uniswap oracle
+        assetsInstance.updateAssetConfig(address(testAsset), item);
+        // Verify the oracle was replaced
+        address oracleAddress = assetsInstance.getOracleByType(address(testAsset), IASSETS.OracleType.UNISWAP_V3_TWAP);
+        assertEq(oracleAddress, address(0), "Oracle should be deleted");
+
+        // Verify the price directly from the new oracle (avoid median calculation)
+        uint256 oraclePrice = assetsInstance.getAssetPrice(address(testAsset));
+        assertEq(oraclePrice, 2500e6, "New oracle price should be 2500e6");
+
+        // Verify by using getAssetPriceByType instead of getAssetPrice (which uses median)
+        uint256 assetPrice = assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
+        assertEq(assetPrice, 2500e6, "Asset price by type should match new oracle price");
 
         vm.stopPrank();
     }
@@ -237,18 +240,6 @@ contract OraclePriceExpandedTest is BasicDeploy {
         MockUniswapV3Pool newPool = new MockUniswapV3Pool(address(usdcInstance), address(testAsset), 3000);
         newPool.setObserveSuccess(true);
 
-        // // Set tick cumulatives for TWAP calculation
-        // int56[] memory tickCumulatives = new int56[](2);
-        // tickCumulatives[0] = 0;
-        // tickCumulatives[1] = 1800 * 500; // 30 minutes * tick 500
-        // newPool.setTickCumulatives(tickCumulatives);
-
-        // // Set seconds per liquidity
-        // uint160[] memory secondsPerLiquidityCumulatives = new uint160[](2);
-        // secondsPerLiquidityCumulatives[0] = 1000;
-        // secondsPerLiquidityCumulatives[1] = 2000;
-        // newPool.setSecondsPerLiquidity(secondsPerLiquidityCumulatives);
-
         // Update Uniswap oracle configuration
         assetsInstance.updateUniswapOracle(
             address(testAsset),
@@ -269,18 +260,6 @@ contract OraclePriceExpandedTest is BasicDeploy {
         assertEq(assetAfter.poolConfig.twapPeriod, 1800, "TWAP period should be updated");
 
         assertEq(assetAfter.poolConfig.active, 1, "Oracle should be active");
-
-        // Now deactivate the Uniswap oracle
-        assetsInstance.updateUniswapOracle(
-            address(testAsset),
-            address(newPool),
-            1800,
-            0 // Set as inactive
-        );
-
-        // Verify the oracle was deactivated
-        IASSETS.Asset memory assetAfterDeactivation = assetsInstance.getAssetInfo(address(testAsset));
-        assertEq(assetAfterDeactivation.poolConfig.active, 0, "Oracle should be inactive");
 
         // The Chainlink oracle should remain unchanged throughout
         address chainlinkOracle = assetsInstance.getOracleByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
