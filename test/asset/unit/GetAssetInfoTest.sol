@@ -59,16 +59,9 @@ contract GetAssetInfoTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -88,16 +81,9 @@ contract GetAssetInfoTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(stableOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -113,7 +99,6 @@ contract GetAssetInfoTest is BasicDeploy {
 
         assertEq(asset.active, 1, "WETH should be active");
         assertEq(asset.chainlinkConfig.oracleUSD, address(wethOracleInstance), "Oracle address mismatch");
-        assertEq(asset.chainlinkConfig.oracleDecimals, 8, "Oracle decimals mismatch");
         assertEq(asset.decimals, 18, "Asset decimals mismatch");
         assertEq(asset.borrowThreshold, 800, "Borrow threshold mismatch");
         assertEq(asset.liquidationThreshold, 850, "Liquidation threshold mismatch");
@@ -129,7 +114,7 @@ contract GetAssetInfoTest is BasicDeploy {
 
         assertEq(asset.active, 1, "USDC should be active");
         assertEq(asset.chainlinkConfig.oracleUSD, address(stableOracleInstance), "Oracle address mismatch");
-        assertEq(asset.chainlinkConfig.oracleDecimals, 8, "Oracle decimals mismatch");
+
         assertEq(asset.decimals, 6, "Asset decimals mismatch");
         assertEq(asset.borrowThreshold, 900, "Borrow threshold mismatch");
         assertEq(asset.liquidationThreshold, 950, "Liquidation threshold mismatch");
@@ -164,16 +149,9 @@ contract GetAssetInfoTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B, // Change tier
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
