@@ -74,7 +74,7 @@ contract UpdateAssetTierTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(usdcOracle), active: 0}),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(usdcOracle), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0),
                     twapPeriod: 1800,
