@@ -65,16 +65,9 @@ contract GetAssetPriceTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wethOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -89,21 +82,14 @@ contract GetAssetPriceTest is BasicDeploy {
                 decimals: 8, // WBTC has 8 decimals
                 borrowThreshold: 800, // 80% borrow threshold
                 liquidationThreshold: 850, // 85% liquidation threshold
-                maxSupplyThreshold: 1_000 * 1e8, // Supply limit
+                maxSupplyThreshold: 1_000 * 1e6, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(wbtcOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wbtcOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -123,16 +109,9 @@ contract GetAssetPriceTest is BasicDeploy {
                 assetMinimumOracles: 1, // Need at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(stableOracleInstance),
-                    oracleDecimals: 8, // Standardized to 8 decimals
-                    active: 1
-                }),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: address(0), // No Uniswap pool
-                    quoteToken: address(0),
-                    isToken0: false,
-                    decimalsUniswap: 0,
                     twapPeriod: 0,
                     active: 0
                 })
@@ -144,19 +123,19 @@ contract GetAssetPriceTest is BasicDeploy {
     function test_GetAssetPrice_WETH() public {
         // UPDATED: Use assetsInstance instead of LendefiInstance
         uint256 price = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(price, 2500e8, "WETH price should be $2500");
+        assertEq(price, 2500e6, "WETH price should be $2500");
     }
 
     function test_GetAssetPrice_WBTC() public {
         // UPDATED: Use assetsInstance instead of LendefiInstance
         uint256 price = assetsInstance.getAssetPrice(address(wbtcToken));
-        assertEq(price, 60000e8, "WBTC price should be $60,000");
+        assertEq(price, 60000e6, "WBTC price should be $60,000");
     }
 
     function test_GetAssetPrice_USDC() public {
         // UPDATED: Use assetsInstance instead of LendefiInstance
         uint256 price = assetsInstance.getAssetPrice(address(usdcInstance));
-        assertEq(price, 1e8, "USDC price should be $1");
+        assertEq(price, 1e6, "USDC price should be $1");
     }
 
     function test_GetAssetPrice_AfterPriceChange() public {
@@ -165,7 +144,7 @@ contract GetAssetPriceTest is BasicDeploy {
 
         // UPDATED: Use assetsInstance instead of LendefiInstance
         uint256 price = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(price, 3000e8, "WETH price should be updated to $3000");
+        assertEq(price, 3000e6, "WETH price should be updated to $3000");
     }
 
     function test_GetAssetPrice_UnlistedAsset() public {
@@ -183,9 +162,9 @@ contract GetAssetPriceTest is BasicDeploy {
         uint256 wbtcPrice = assetsInstance.getAssetPrice(address(wbtcToken));
         uint256 usdcPrice = assetsInstance.getAssetPrice(address(usdcInstance));
 
-        assertEq(wethPrice, 2500e8, "WETH price should be $2500");
-        assertEq(wbtcPrice, 60000e8, "WBTC price should be $60,000");
-        assertEq(usdcPrice, 1e8, "USDC price should be $1");
+        assertEq(wethPrice, 2500e6, "WETH price should be $2500");
+        assertEq(wbtcPrice, 60000e6, "WBTC price should be $60,000");
+        assertEq(usdcPrice, 1e6, "USDC price should be $1");
 
         // Check the ratio of BTC to ETH
         assertEq(wbtcPrice / wethPrice, 24, "WBTC should be worth 24 times more than WETH");
@@ -195,6 +174,6 @@ contract GetAssetPriceTest is BasicDeploy {
     function test_GetAssetPriceOracle_Direct() public {
         // UPDATED: Use getAssetPriceOracle which now exists on assetsInstance
         uint256 wethPrice = assetsInstance.getAssetPrice(address(wethInstance));
-        assertEq(wethPrice, 2500e8, "Direct Oracle WETH price should be $2500");
+        assertEq(wethPrice, 2500e6, "Direct Oracle WETH price should be $2500");
     }
 }
