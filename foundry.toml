@@ -12,8 +12,12 @@ optimizer_runs = 8
 runs = 1000
 
 [rpc_endpoints]
-mainnet = "${MAINNET_RPC}"
+mainnet = "https://eth-mainnet.alchemyapi.io/v2/${ALCHEMY_API_KEY}"
 sepolia = "${SEPOLIA_RPC}"
+
+[profile.rpc_storage_caching]
+chains = "all"  # or specific chain IDs
+endpoints = "all"  # or specific URLs
 
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}", chain = "mainnet" }
