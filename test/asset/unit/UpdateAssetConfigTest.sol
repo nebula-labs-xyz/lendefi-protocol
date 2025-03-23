@@ -10,7 +10,7 @@ import {RWAPriceConsumerV3} from "../../../contracts/mock/RWAOracle.sol";
 
 contract UpdateAssetConfigTest is BasicDeploy {
     // Event comes from the assets contract now
-    event UpdateAssetConfig(IASSETS.Asset config);
+    event UpdateAssetConfig(address indexed asset, IASSETS.Asset config);
 
     MockRWA internal testToken;
     RWAPriceConsumerV3 internal testOracle;
@@ -247,7 +247,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
         });
 
         vm.expectEmit(true, false, false, false);
-        emit UpdateAssetConfig(item);
+        emit UpdateAssetConfig(address(testToken), item);
         vm.prank(address(timelockInstance));
         assetsInstance.updateAssetConfig(address(testToken), item);
     }
