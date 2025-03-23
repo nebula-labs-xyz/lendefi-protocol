@@ -11,6 +11,9 @@ pragma solidity 0.8.23;
 
 import {IASSETS} from "../interfaces/IASSETS.sol";
 import {IPROTOCOL} from "../interfaces/IProtocol.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -20,6 +23,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {AggregatorV3Interface} from "../vendor/@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import {IUniswapV3Pool} from "../interfaces/IUniswapV3Pool.sol";
 import {UniswapTickMath} from "./lib/UniswapTickMath.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 /// @custom:oz-upgrades
 contract LendefiAssets is
@@ -34,6 +38,7 @@ contract LendefiAssets is
     using EnumerableSet for EnumerableSet.AddressSet;
 
     // ==================== ROLES ====================
+    address public constant USDC_ETH_POOL = 0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640; // USDC/ETH 0.05% fee tier
 
     /// @notice Role that allows managing asset configurations and oracle settings
     /// @dev Hash of "MANAGER_ROLE"
@@ -55,6 +60,8 @@ contract LendefiAssets is
     /// @dev Set to 3 days to allow sufficient time for review
     uint256 public constant UPGRADE_TIMELOCK_DURATION = 3 days;
 
+    // uint32 public constant TWAP_PERIOD = 1800; // 30 minutes
+
     // ==================== STATE VARIABLES ====================
 
     /// @notice Current version of the contract implementation
@@ -64,6 +71,8 @@ contract LendefiAssets is
     /// @notice Address of the core protocol contract
     /// @dev Used for cross-contract calls and validation
     address public coreAddress;
+    /// @notice Address of the usdc contract
+    address internal usdc;
 
     /// @notice Information about the currently pending upgrade request
     /// @dev Stores implementation address and scheduling details
@@ -135,7 +144,7 @@ contract LendefiAssets is
      * - circuitBreakerThreshold: 50%
      * @custom:version Sets initial contract version to 1
      */
-    function initialize(address timelock, address multisig) external initializer {
+    function initialize(address timelock, address multisig, address usdc_) external initializer {
         if (timelock == address(0) || multisig == address(0)) revert ZeroAddressNotAllowed();
 
         __AccessControl_init();
@@ -162,6 +171,7 @@ contract LendefiAssets is
 
         _initializeDefaultTierParameters();
 
+        usdc = usdc_;
         version = 1;
     }
 
@@ -171,50 +181,36 @@ contract LendefiAssets is
      * @notice Register a Uniswap V3 pool as an oracle for an asset
      * @param asset The asset to register the oracle for
      * @param uniswapPool The Uniswap V3 pool address (must contain the asset)
-     * @param quoteToken The quote token (usually a stable or WETH)
      * @param twapPeriod The TWAP period in seconds
-     * @param resultDecimals The expected decimals for the price result
+     * @param active isActive flag
      */
-    function updateUniswapOracle(
-        address asset,
-        address uniswapPool,
-        address quoteToken,
-        uint32 twapPeriod,
-        uint8 resultDecimals,
-        uint8 active
-    ) public nonZeroAddress(uniswapPool) onlyListedAsset(asset) onlyRole(MANAGER_ROLE) whenNotPaused {
+    function updateUniswapOracle(address asset, address uniswapPool, uint32 twapPeriod, uint8 active)
+        public
+        nonZeroAddress(uniswapPool)
+        onlyListedAsset(asset)
+        onlyRole(MANAGER_ROLE)
+        whenNotPaused
+    {
         // Validate the pool contains both tokens
-        bool isToken0 = _validatePool(asset, quoteToken, uniswapPool);
+        _validatePool(asset, uniswapPool);
 
         // Asset storage item = assetInfo[asset];
-        assetInfo[asset].poolConfig = UniswapPoolConfig({
-            pool: uniswapPool,
-            quoteToken: quoteToken,
-            isToken0: isToken0,
-            decimalsUniswap: resultDecimals == 8 ? resultDecimals : 8, //enforce
-            twapPeriod: twapPeriod,
-            active: active
-        });
+        assetInfo[asset].poolConfig = UniswapPoolConfig({pool: uniswapPool, twapPeriod: twapPeriod, active: active});
     }
 
     /**
      * @notice Add an oracle with type specification
      * @param asset The asset to add the oracle for
      * @param oracle The oracle address
-     * @param decimals The oracle decimals
      */
-    function updateChainlinkOracle(address asset, address oracle, uint8 decimals, uint8 active)
+    function updateChainlinkOracle(address asset, address oracle, uint8 active)
         external
         nonZeroAddress(oracle)
         onlyListedAsset(asset)
         onlyRole(MANAGER_ROLE)
         whenNotPaused
     {
-        assetInfo[asset].chainlinkConfig = ChainlinkOracleConfig({
-            oracleUSD: oracle,
-            oracleDecimals: decimals, // Always enforce 8 decimals
-            active: active
-        });
+        assetInfo[asset].chainlinkConfig = ChainlinkOracleConfig({oracleUSD: oracle, active: active});
 
         emit ChainlinkOracleUpdated(asset, oracle, active);
     }
@@ -623,17 +619,18 @@ contract LendefiAssets is
     function poolLiquidityLimit(address asset, uint256 amount) external view returns (bool limitReached) {
         // Check pool liquidity cap if Uniswap oracle is active
         if (assetInfo[asset].poolConfig.active == 1) {
-            // Get asset price and pool liquidity
-            uint256 assetPrice = getAssetPrice(asset); // Use non-impacted price
-            uint128 poolLiquidity = IUniswapV3Pool(assetInfo[asset].poolConfig.pool).liquidity();
+            address pool = assetInfo[asset].poolConfig.pool;
 
-            // Calculate USD value: amount * price * WAD / (10^decimals * 10^8)
-            uint256 valueUSD = (amount * assetPrice * 1e6) / (10 ** assetInfo[asset].decimals * 10 ** 8);
+            // Get the actual token balance in the pool
+            uint256 assetBalance = IERC20(asset).balanceOf(pool);
 
-            if (valueUSD >= (poolLiquidity * 0.03e6)) {
+            // If amount is more than 3% of the available assets in pool, revert
+            if (amount > (assetBalance * 3) / 100) {
                 return true;
             }
         }
+
+        return false;
     }
 
     /**
@@ -844,11 +841,6 @@ contract LendefiAssets is
             revert InvalidBorrowThreshold(config.borrowThreshold);
         }
 
-        // Decimal validations
-        if (config.chainlinkConfig.oracleDecimals != 8) {
-            revert InvalidParameter("oracleDecimals", config.chainlinkConfig.oracleDecimals);
-        }
-
         if (config.decimals == 0 || config.decimals > 18) {
             revert InvalidParameter("assetDecimals", config.decimals);
         }
@@ -913,63 +905,118 @@ contract LendefiAssets is
             }
         }
 
-        return uint256(price);
+        return uint256(price) / 1e2; //normalize to 1e6 to match Uniswap
     }
 
     /**
-     * @notice Get time-weighted average price from Uniswap V3
-     * @param asset The virtual oracle address
-     * @return price The TWAP price with the specified decimals
+     * @notice Retrieves the Time-Weighted Average Price (TWAP) of an asset in USD using Uniswap V3
+     * @dev Validates the Uniswap pool configuration and fetches the price using the TWAP period
+     * @param asset The address of the asset to fetch the price for
+     * @return tokenPriceInUSD The price of the asset in USD (scaled to 1e6)
+     * @custom:oracle Uses Uniswap V3 TWAP oracle
+     * @custom:reverts InvalidUniswapConfig if the pool is not configured or inactive
+     * @custom:reverts OracleInvalidPrice if the price is invalid or zero
      */
-    function _getUniswapTWAPPrice(address asset) internal view returns (uint256 price) {
+    function _getUniswapTWAPPrice(address asset) internal view returns (uint256 tokenPriceInUSD) {
         UniswapPoolConfig memory config = assetInfo[asset].poolConfig;
-
         if (config.pool == address(0) || config.active == 0) {
             revert InvalidUniswapConfig(asset);
         }
 
-        // Prepare observation timestamps
-        uint32[] memory secondsAgos = new uint32[](2);
-        secondsAgos[0] = config.twapPeriod; // e.g., 1800 seconds ago (30 min)
-        secondsAgos[1] = 0; // now
+        tokenPriceInUSD = getAnyPoolTokenPriceInUSD(config.pool, asset, USDC_ETH_POOL, config.twapPeriod); // Price on 1e6 scale, USDC
 
-        // Get tick cumulative data from Uniswap
-        (int56[] memory tickCumulatives,) = IUniswapV3Pool(config.pool).observe(secondsAgos);
-        int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
-        int24 timeWeightedAverageTick = int24(tickCumulativesDelta / int56(uint56(config.twapPeriod)));
+        if (tokenPriceInUSD <= 0) {
+            revert OracleInvalidPrice(config.pool, int256(tokenPriceInUSD));
+        }
+    }
 
-        // Convert tick to price based on whether asset is token0 or token1
-        price = config.isToken0
-            ? UniswapTickMath.getQuoteAtTick(timeWeightedAverageTick)
-            : UniswapTickMath.getQuoteAtTick(-timeWeightedAverageTick);
+    /**
+     * @notice Retrieves the price of a token in USD from any Uniswap V3 pool
+     * @dev Supports both USDC-based pools and ETH-based pools with USDC as a reference
+     * @param poolAddress The address of the Uniswap V3 pool
+     * @param token The address of the token to fetch the price for
+     * @param ethUsdcPool The address of the ETH/USDC Uniswap V3 pool
+     * @param twapPeriod The TWAP period in seconds
+     * @return tokenPriceInUSD The price of the token in USD (scaled to 1e6)
+     * @custom:oracle Uses Uniswap V3 TWAP oracle
+     * @custom:reverts OracleInvalidPrice if the price is invalid or zero
+     */
+    function getAnyPoolTokenPriceInUSD(address poolAddress, address token, address ethUsdcPool, uint32 twapPeriod)
+        internal
+        view
+        returns (uint256 tokenPriceInUSD)
+    {
+        // Get the pool instance
+        IUniswapV3Pool pool = IUniswapV3Pool(poolAddress);
 
-        if (price <= 0) revert OracleInvalidPrice(config.pool, int256(price));
+        // Phase 1: Get pool configuration
+        (bool isToken0, uint8 assetDecimals, bool isUsdcPool) = getOptimalUniswapConfig(token, pool);
+
+        // Phase 2: Get raw price
+        uint256 rawPrice;
+        if (isUsdcPool) {
+            tokenPriceInUSD = UniswapTickMath.getRawPrice(pool, isToken0, 10 ** assetDecimals, twapPeriod);
+        } else {
+            // Get raw price in ETH
+            rawPrice = UniswapTickMath.getRawPrice(pool, isToken0, 10 ** assetDecimals, twapPeriod);
+
+            IUniswapV3Pool ethUSDCPool = IUniswapV3Pool(ethUsdcPool);
+            // ETH is token1 in USDC/ETH pool
+            uint256 ethPriceInUSD = UniswapTickMath.getRawPrice(ethUSDCPool, false, 1e18, twapPeriod);
+
+            // Adjust token/ETH price to account for token decimals
+            uint256 adjustedPrice = rawPrice / (10 ** (18 - assetDecimals)); // Scale to 1e6 precision
+
+            // Dynamically normalize the final price based on token decimals
+            uint256 normalizationFactor = 10 ** assetDecimals;
+            tokenPriceInUSD = FullMath.mulDiv(adjustedPrice, ethPriceInUSD, normalizationFactor);
+        }
+    }
+
+    /**
+     * @notice Determines the optimal configuration for a Uniswap V3 pool
+     * @dev Identifies whether the asset is token0, its decimals, and if the pool is USDC-based
+     * @param asset The address of the asset to configure
+     * @param pool The Uniswap V3 pool instance
+     * @return isToken0 True if the asset is token0 in the pool
+     * @return assetDecimals The number of decimals for the asset
+     * @return isUsdcPool True if the pool is USDC-based
+     * @custom:validation Ensures the asset is part of the pool
+     * @custom:reverts "Asset not in pool" if the asset is not in the pool
+     */
+    function getOptimalUniswapConfig(address asset, IUniswapV3Pool pool)
+        internal
+        view
+        returns (bool isToken0, uint8 assetDecimals, bool isUsdcPool)
+    {
+        // Get pool tokens
+        address token0 = pool.token0();
+        address token1 = pool.token1();
+
+        // Verify the asset is in the pool
+        if (asset != token0 && asset != token1) revert AssetNotInUniswapPool(asset, address(pool));
+
+        // Determine if asset is token0
+        isToken0 = (asset == token0);
+
+        // Check if the pool is USDC-based
+        isUsdcPool = (token0 == usdc || token1 == usdc);
+        assetDecimals = IERC20Metadata(asset).decimals();
     }
 
     /**
      * @notice Validates that both asset and quote token are present in a Uniswap V3 pool
      * @param asset The asset token address to validate
-     * @param quoteToken The quote token address to validate
      * @param uniswapPool The Uniswap V3 pool address
-     * @return isToken0 Whether the asset is token0 in the pool
      */
-    function _validatePool(address asset, address quoteToken, address uniswapPool)
-        internal
-        view
-        returns (bool isToken0)
-    {
-        address token0 = IUniswapV3Pool(uniswapPool).token0();
-        address token1 = IUniswapV3Pool(uniswapPool).token1();
+    function _validatePool(address asset, address uniswapPool) internal view {
+        IUniswapV3Pool pool = IUniswapV3Pool(uniswapPool);
+        address token0 = pool.token0();
+        address token1 = pool.token1();
 
         if (asset != token0 && asset != token1) {
             revert AssetNotInUniswapPool(asset, uniswapPool);
         }
-
-        if (quoteToken != token0 && quoteToken != token1) {
-            revert TokenNotInUniswapPool(quoteToken, uniswapPool);
-        }
-
-        return asset == token0;
     }
 
     /**
