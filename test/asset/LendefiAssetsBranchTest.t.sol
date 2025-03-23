@@ -386,7 +386,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.UNISWAP_V3_TWAP,
                 tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 0}),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({
                     pool: virtualOracle,
                     twapPeriod: 1800,
@@ -402,29 +402,17 @@ contract LendefiAssetsBranchTest is BasicDeploy {
     }
 
     function testRevert_NotEnoughValidOracles() public {
-        // First make sure oracle has both current and previous round data
-        // Current round data is already set in setUp(), but we need previous round
-        mockChainlinkOracle.setHistoricalRoundData(
-            9, // Previous round ID
-            2400e6, // Previous price
-            block.timestamp - 1 hours, // Previous timestamp
-            9 // Previous answeredInRound
-        );
-
         // Update asset to require 2 oracles
         vm.startPrank(address(timelockInstance));
 
         // Also update the asset's specific minimum oracle count
         IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
-        asset.assetMinimumOracles = 2; // Ensure the asset specifically requires 2 oracles
+        // try to set minOracles to 2 in config will revert, because only one oracle is active
+        asset.assetMinimumOracles = 2;
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.NotEnoughValidOracles.selector, address(wethInstance), 2, 1));
         assetsInstance.updateAssetConfig(address(wethInstance), asset);
 
         vm.stopPrank();
-
-        // Now we should get the NotEnoughValidOracles error
-        // The asset requires 2 oracles but only has 1 valid one (Chainlink)
-        vm.expectRevert(abi.encodeWithSelector(IASSETS.NotEnoughValidOracles.selector, address(wethInstance), 2, 1));
-        assetsInstance.checkPriceDeviation(address(wethInstance));
     }
 
     function test_IsAssetAtCapacity() public {
