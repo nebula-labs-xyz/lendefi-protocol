@@ -419,12 +419,6 @@ interface IASSETS {
     // function tierConfig(CollateralTier tier) external view returns (TierRates memory);
 
     /**
-     * @notice Get the current upgrade timelock duration
-     * @return The timelock duration in seconds
-     */
-    function UPGRADE_TIMELOCK_DURATION() external view returns (uint256);
-
-    /**
      * @notice Get information about a pending upgrade
      * @return The pending upgrade request
      */
