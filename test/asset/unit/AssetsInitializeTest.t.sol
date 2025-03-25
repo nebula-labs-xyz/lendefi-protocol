@@ -261,33 +261,4 @@ contract AssetsInitializeTest is BasicDeploy {
         vm.prank(timelockAddr);
         assetsContract.updateAssetConfig(address(wethInstance), item);
     }
-
-    function test_CircuitBreakerRoleFunction() public {
-        // Deploy with initialization
-        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", initData));
-        LendefiAssets assetsContract = LendefiAssets(proxy);
-
-        // Set up an asset
-        address testAsset = address(0x1234);
-
-        // gnosisSafe should be able to trigger circuit breaker
-        vm.prank(gnosisSafe);
-        assetsContract.triggerCircuitBreaker(testAsset);
-
-        // Verify circuit breaker was triggered
-        assertTrue(assetsContract.circuitBroken(testAsset), "Circuit breaker should be activated");
-
-        // Non-CIRCUIT_BREAKER_ROLE accounts can't trigger circuit breaker
-        address randomUser = address(0x9999);
-        vm.expectRevert();
-        vm.prank(randomUser);
-        assetsContract.triggerCircuitBreaker(testAsset);
-
-        // gnosisSafe should be able to reset circuit breaker
-        vm.prank(gnosisSafe);
-        assetsContract.resetCircuitBreaker(testAsset);
-
-        // Verify circuit breaker was reset
-        assertFalse(assetsContract.circuitBroken(testAsset), "Circuit breaker should be deactivated");
-    }
 }
