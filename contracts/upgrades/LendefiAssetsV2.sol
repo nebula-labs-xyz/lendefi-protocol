@@ -309,8 +309,10 @@ contract LendefiAssetsV2 is
         // Validate the entire config in one go
         _validateAssetConfig(asset, config);
 
+        // If Uniswap oracle is active, validate pool configuration
         if (config.poolConfig.active == 1) {
-            _validatePool(asset, config.poolConfig.pool);
+            // Use the full validation with all parameters
+            _validatePool(asset, config.poolConfig.pool, config.poolConfig.twapPeriod, config.poolConfig.active);
         }
 
         bool newAsset = !listedAssets.contains(asset);
@@ -705,14 +707,13 @@ contract LendefiAssetsV2 is
         return assetInfo[asset].chainlinkConfig.active + assetInfo[asset].poolConfig.active;
     }
 
-    // ==================== ORACLE MANAGEMENT ====================
-
     /**
      * @notice Register a Uniswap V3 pool as an oracle for an asset
      * @param asset The asset to register the oracle for
-     * @param uniswapPool The Uniswap V3 pool address (must contain the asset)
-     * @param twapPeriod The TWAP period in seconds
-     * @param active isActive flag
+     * @param uniswapPool The Uniswap V3 pool address
+     * @param twapPeriod The TWAP period in seconds (15min-24h)
+     * @param active isActive flag (0 or 1)
+     * @custom:validation Performed by _validatePool function
      */
     function updateUniswapOracle(address asset, address uniswapPool, uint32 twapPeriod, uint8 active)
         public
@@ -721,12 +722,10 @@ contract LendefiAssetsV2 is
         onlyRole(LendefiConstants.MANAGER_ROLE)
         whenNotPaused
     {
-        // Validate the pool contains both tokens
-        _validatePool(asset, uniswapPool);
-        if (active == 0 && assetInfo[asset].chainlinkConfig.active == 0 && assetInfo[asset].assetMinimumOracles >= 1) {
-            revert NotEnoughValidOracles(asset, assetInfo[asset].assetMinimumOracles, 0);
-        }
-        // Asset storage item = assetInfo[asset];
+        // Comprehensive validation
+        _validatePool(asset, uniswapPool, twapPeriod, active);
+
+        // Update configuration
         assetInfo[asset].poolConfig = UniswapPoolConfig({pool: uniswapPool, twapPeriod: twapPeriod, active: active});
         emit UniswapOracleUpdated(asset, uniswapPool, active);
     }
@@ -775,9 +774,9 @@ contract LendefiAssetsV2 is
      */
     function checkPriceDeviation(address asset) public view returns (bool isDeviated, uint256 deviation) {
         // Load asset info into memory once
-        Asset storage info = assetInfo[asset];
-        uint8 chainlinkActive = info.chainlinkConfig.active;
-        uint8 uniswapActive = info.poolConfig.active;
+
+        uint8 chainlinkActive = assetInfo[asset].chainlinkConfig.active;
+        uint8 uniswapActive = assetInfo[asset].poolConfig.active;
 
         // Check if both oracles are active (must be 2)
         if (chainlinkActive + uniswapActive != 2) {
@@ -922,14 +921,18 @@ contract LendefiAssetsV2 is
 
     /**
      * @notice Retrieves the price of a token in USD from any Uniswap V3 pool
-     * @dev Supports both USDC-based pools and ETH-based pools with USDC as a reference
-     * @param poolAddress The address of the Uniswap V3 pool
+     * @dev Handles both direct USDC pairs and ETH-denominated pairs with additional conversion
+     * @param poolAddress The address of the Uniswap V3 pool containing the token
      * @param token The address of the token to fetch the price for
-     * @param ethUsdcPool The address of the ETH/USDC Uniswap V3 pool
-     * @param twapPeriod The TWAP period in seconds
-     * @return tokenPriceInUSD The price of the token in USD (scaled to 1e6)
-     * @custom:oracle Uses Uniswap V3 TWAP oracle
-     * @custom:reverts OracleInvalidPrice if the price is invalid or zero
+     * @param ethUsdcPool The address of the ETH/USDC Uniswap V3 pool for reference pricing
+     * @param twapPeriod The time window in seconds for the TWAP calculation (15min-24h)
+     * @return tokenPriceInUSD The price of the token in USD (normalized to 1e6 scale)
+     * @custom:oracle Uses Uniswap V3 TWAP oracle with manipulation resistance
+     * @custom:path-1 Direct pricing: token/USDC → USD price
+     * @custom:path-2 Indirect pricing: token/ETH → ETH/USDC → USD price
+     * @custom:decimals Normalizes all prices to 1e6 precision regardless of token decimals
+     * @custom:reverts OracleInvalidPrice if the calculated price is invalid or zero
+     * @custom:reverts AssetNotInUniswapPool if token is not in the specified pool
      */
     function getAnyPoolTokenPriceInUSD(address poolAddress, address token, address ethUsdcPool, uint32 twapPeriod)
         internal
@@ -964,14 +967,15 @@ contract LendefiAssetsV2 is
 
     /**
      * @notice Determines the optimal configuration for a Uniswap V3 pool
-     * @dev Identifies whether the asset is token0, its decimals, and if the pool is USDC-based
+     * @dev Identifies token positions, decimals, and pool type for accurate price calculations
      * @param asset The address of the asset to configure
      * @param pool The Uniswap V3 pool instance
-     * @return isToken0 True if the asset is token0 in the pool
-     * @return assetDecimals The number of decimals for the asset
-     * @return isUsdcPool True if the pool is USDC-based
-     * @custom:validation Ensures the asset is part of the pool
-     * @custom:reverts "Asset not in pool" if the asset is not in the pool
+     * @return isToken0 True if the asset is token0 in the pool, false if token1
+     * @return assetDecimals The number of decimal places for the asset (e.g., 18 for ETH)
+     * @return isUsdcPool True if the pool directly pairs with USDC, false otherwise
+     * @custom:validation Ensures the asset is part of the pool, reverts otherwise
+     * @custom:pricing-impact Token position affects price calculation direction (token0/token1 vs token1/token0)
+     * @custom:reverts AssetNotInUniswapPool if the asset is not present in the pool
      */
     function getOptimalUniswapConfig(address asset, IUniswapV3Pool pool)
         internal
@@ -994,11 +998,25 @@ contract LendefiAssetsV2 is
     }
 
     /**
-     * @notice Validates that both asset and quote token are present in a Uniswap V3 pool
+     * @notice Validates a Uniswap V3 pool configuration for an asset
+     * @dev Performs comprehensive validation to ensure safe and reliable oracle configuration
      * @param asset The asset token address to validate
      * @param uniswapPool The Uniswap V3 pool address
+     * @param twapPeriod The TWAP period in seconds (must be 15min-24h)
+     * @param active Whether the oracle should be active (must be 0 or 1)
+     * @custom:validation Performs the following checks:
+     * - Asset must be present in the Uniswap pool (token0 or token1)
+     * - TWAP period must be between 15 minutes and 24 hours for optimal security
+     * - Active parameter must be valid (0=inactive or 1=active)
+     * - If deactivating, ensures minimum oracle requirements are still met
+     * @custom:security Prevents configuration of invalid pools or unsafe TWAP periods
+     * @custom:reverts AssetNotInUniswapPool if asset is not in the pool
+     * @custom:reverts InvalidThreshold if TWAP period is outside allowed range
+     * @custom:reverts InvalidParameter if active parameter is not 0 or 1
+     * @custom:reverts NotEnoughValidOracles if deactivation would violate minimum oracle requirement
      */
-    function _validatePool(address asset, address uniswapPool) internal view {
+    function _validatePool(address asset, address uniswapPool, uint32 twapPeriod, uint8 active) internal view {
+        // Validate that the asset is in the pool
         IUniswapV3Pool pool = IUniswapV3Pool(uniswapPool);
         address token0 = pool.token0();
         address token1 = pool.token1();
@@ -1006,15 +1024,33 @@ contract LendefiAssetsV2 is
         if (asset != token0 && asset != token1) {
             revert AssetNotInUniswapPool(asset, uniswapPool);
         }
+
+        // Validate TWAP period (between 15 minutes and 30 minutes)
+        if (twapPeriod < 900 || twapPeriod > 1800) {
+            revert InvalidThreshold("twapPeriod", twapPeriod, 900, 1800);
+        }
+
+        // Validate active parameter (must be 0 or 1)
+        if (active > 1) {
+            revert InvalidParameter("active", active);
+        }
+
+        // Check minimum oracle requirements if we're deactivating this oracle
+        if (active == 0 && assetInfo[asset].chainlinkConfig.active == 0 && assetInfo[asset].assetMinimumOracles >= 1) {
+            revert NotEnoughValidOracles(asset, assetInfo[asset].assetMinimumOracles, 0);
+        }
     }
 
     /**
      * @notice Calculates price volatility between current and previous Chainlink oracle rounds
-     * @dev Returns the percentage change between current and previous price rounds
+     * @dev Compares the current price with the previous round price to detect significant changes
      * @param asset The asset address to check volatility for
-     * @return The percentage change between current and previous price (0-100+)
+     * @return volatilityPct The percentage change between current and previous price (0-100+)
      * @custom:returns 0 if previous round data is invalid or unavailable
      * @custom:calculation (abs(currentPrice - previousPrice) * 100) / previousPrice
+     * @custom:security Used to detect abnormal price movements in Chainlink feeds
+     * @custom:example If current price is $1200 and previous was $1000:
+     *                 volatilityPct = (|1200 - 1000| * 100) / 1000 = 20%
      */
     function _getChainlinkVolatility(address asset) internal view returns (uint256) {
         address oracle = assetInfo[asset].chainlinkConfig.oracleUSD;
@@ -1027,14 +1063,34 @@ contract LendefiAssetsV2 is
     }
 
     /**
-     * @notice Validate asset configuration parameters
-     * @dev Centralized validation to ensure consistent checks across all configuration updates
+     * @notice Validates asset configuration parameters
+     * @dev Centralized validation logic for all asset configurations
      * @param asset The address of the asset being configured
-     * @param config The asset configuration to validate
+     * @param config The complete asset configuration to validate
+     * @custom:validation Performs comprehensive checks including:
+     * - Oracle address validity (non-zero)
+     * - Oracle activity flags validity (0 or 1)
+     * - Minimum oracle requirement satisfaction
+     * - Primary oracle type activation
+     * - Threshold values (liquidation threshold ≤ 990)
+     * - Threshold ordering (borrow threshold ≤ liquidation threshold - 10)
+     * - Decimal precision (1-18)
+     * - Activity flag validity (0 or 1)
+     * - Supply limit validity (non-zero)
+     * - Isolation debt cap for isolated assets (non-zero)
+     * @custom:security Guards against misconfiguration that could lead to:
+     * - Unreliable price data
+     * - Unsafe collateralization ratios
+     * - Economic attacks on the lending protocol
+     * @custom:reverts Multiple error types based on the specific validation failure
      */
     function _validateAssetConfig(address asset, Asset calldata config) internal pure {
         // Basic validation
         if (config.chainlinkConfig.oracleUSD == address(0)) revert ZeroAddressNotAllowed();
+        // Validate active parameter (must be 0 or 1)
+        if (config.chainlinkConfig.active > 1) {
+            revert InvalidParameter("chainlink active", config.chainlinkConfig.active);
+        }
 
         if (config.chainlinkConfig.active + config.poolConfig.active < config.assetMinimumOracles) {
             revert NotEnoughValidOracles(
@@ -1056,11 +1112,11 @@ contract LendefiAssetsV2 is
         }
 
         // Threshold validations
-        if (config.liquidationThreshold > 990) {
+        if (config.liquidationThreshold > LendefiConstants.MAX_LIQUIDATION_THRESHOLD) {
             revert InvalidLiquidationThreshold(config.liquidationThreshold);
         }
 
-        if (config.borrowThreshold > config.liquidationThreshold - 10) {
+        if (config.borrowThreshold > config.liquidationThreshold - LendefiConstants.MIN_LIQUIDATION_THRESHOLD) {
             revert InvalidBorrowThreshold(config.borrowThreshold);
         }
 
