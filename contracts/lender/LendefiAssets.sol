@@ -322,6 +322,9 @@ contract LendefiAssets is
 
         bool newAsset = !listedAssets.contains(asset);
         if (newAsset) {
+            if (listedAssets.length() > uint256(LendefiConstants.MAX_ASSETS)) {
+                revert AssetListTooLarge(LendefiConstants.MAX_ASSETS);
+            }
             require(listedAssets.add(asset), "ADDING_ASSET");
         }
 
@@ -614,12 +617,7 @@ contract LendefiAssets is
      * @custom:gas-note May be expensive for large numbers of assets
      */
     function getListedAssets() external view returns (address[] memory) {
-        uint256 length = listedAssets.length();
-        address[] memory assets = new address[](length);
-        for (uint256 i = 0; i < length; i++) {
-            assets[i] = listedAssets.at(i);
-        }
-        return assets;
+        return listedAssets.values();
     }
 
     /**
@@ -1095,7 +1093,7 @@ contract LendefiAssets is
         (, int256 previousPrice,, uint256 previousTimestamp,) = AggregatorV3Interface(oracle).getRoundData(roundId - 1);
         if (previousPrice <= 0 || previousTimestamp == 0) return 0;
         uint256 priceDelta = uint256(price > previousPrice ? price - previousPrice : previousPrice - price);
-        return (priceDelta * 100) / uint256(previousPrice);
+        return FullMath.mulDiv(priceDelta, 100, uint256(previousPrice));
     }
 
     /**
