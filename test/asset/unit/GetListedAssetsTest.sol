@@ -183,7 +183,7 @@ contract GetListedAssetsTest is BasicDeploy {
                 assetMinimumOracles: 1,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(usdcOracle), active: 0}),
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(usdcOracle), active: 1}),
                 poolConfig: IASSETS.UniswapPoolConfig({pool: address(usdcDaiPool), twapPeriod: 1800, active: 1})
             })
         );
