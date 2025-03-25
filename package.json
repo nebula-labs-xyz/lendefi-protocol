@@ -13,7 +13,7 @@
     "build": "forge clean && forge build",
     "build:optimized": "FOUNDRY_PROFILE=optimized forge build",
     "coverage": "forge coverage --report lcov --ffi",
-    "coverage:html": "genhtml lcov.info -o coverage-report",
+    "coverage:html": "genhtml lcov.info -o coverage-report --ignore-errors inconsistent,corrupt",
     "deploy:mainnet": "bash -c 'source .env && forge script Deploy --broadcast --chain mainnet --private-key $MAINNET_DEPLOYER_PK'",
     "deploy:sepolia": "bash -c 'source .env && forge script Deploy --broadcast --chain sepolia --private-key $SEPOLIA_DEPLOYER_PK'",
     "lint:check": "npm run lint:sol-logic && forge fmt --check",
