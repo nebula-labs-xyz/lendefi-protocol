@@ -920,19 +920,40 @@ contract LendefiAssets is
     }
 
     /**
-     * @notice Retrieves the price of a token in USD from any Uniswap V3 pool
-     * @dev Handles both direct USDC pairs and ETH-denominated pairs with additional conversion
-     * @param poolAddress The address of the Uniswap V3 pool containing the token
-     * @param token The address of the token to fetch the price for
-     * @param ethUsdcPool The address of the ETH/USDC Uniswap V3 pool for reference pricing
-     * @param twapPeriod The time window in seconds for the TWAP calculation (15min-24h)
-     * @return tokenPriceInUSD The price of the token in USD (normalized to 1e6 scale)
-     * @custom:oracle Uses Uniswap V3 TWAP oracle with manipulation resistance
-     * @custom:path-1 Direct pricing: token/USDC → USD price
-     * @custom:path-2 Indirect pricing: token/ETH → ETH/USDC → USD price
-     * @custom:decimals Normalizes all prices to 1e6 precision regardless of token decimals
-     * @custom:reverts OracleInvalidPrice if the calculated price is invalid or zero
-     * @custom:reverts AssetNotInUniswapPool if token is not in the specified pool
+     * @notice Retrieves the USD price of any token from a Uniswap V3 pool using TWAP
+     * @dev Supports both direct USDC pairs and indirect ETH-denominated pairs
+     * @param poolAddress Address of the Uniswap V3 pool to query
+     * @param token Address of the token to get the price for
+     * @param ethUsdcPool Address of the ETH/USDC pool used for ETH-denominated price conversion
+     * @param twapPeriod Time period in seconds for the TWAP calculation (900-1800)
+     * @return tokenPriceInUSD Price in USD normalized to 1e6 precision
+     * @custom:oracle-path For direct USDC pairs:
+     *   - Fetches token/USDC price directly from pool
+     *   - Normalizes to 1e6 precision based on token decimals
+     * @custom:oracle-path For ETH pairs:
+     *   - Gets token/ETH price from pool
+     *   - Gets ETH/USDC price from reference pool
+     *   - Combines prices with proper decimal handling
+     * @custom:decimals Input token can have any decimal precision (1-18)
+     *   - Output is always normalized to 1e6 (USDC precision)
+     *   - Internal calculations handle decimal conversion
+     * @custom:validation Performs the following checks:
+     *   - Token must be present in the specified pool
+     *   - Resulting price must be greater than zero
+     *   - Pool must be properly configured
+     * @custom:security Features:
+     *   - Uses TWAP for manipulation resistance
+     *   - Handles decimal normalization safely
+     *   - Validates pool configuration
+     * @custom:reverts OracleInvalidPrice - If calculated price is zero or invalid
+     * @custom:reverts AssetNotInUniswapPool - If token not found in pool
+     * @custom:example For a token with 18 decimals in a token/USDC pool:
+     *   - Raw pool price: 1200.123456 (token/USDC)
+     *   - Returned price: 1200123456 (1200.123456 * 1e6)
+     * @custom:example For a token with 18 decimals in a token/ETH pool:
+     *   - Raw pool price: 0.5 ETH per token
+     *   - ETH/USDC price: 2000.00 USD per ETH
+     *   - Returned price: 1000000000 (1000.00 * 1e6)
      */
     function getAnyPoolTokenPriceInUSD(address poolAddress, address token, address ethUsdcPool, uint32 twapPeriod)
         internal
@@ -1116,7 +1137,7 @@ contract LendefiAssets is
             revert InvalidLiquidationThreshold(config.liquidationThreshold);
         }
 
-        if (config.borrowThreshold > config.liquidationThreshold - LendefiConstants.MIN_LIQUIDATION_THRESHOLD) {
+        if (config.borrowThreshold > config.liquidationThreshold - LendefiConstants.MIN_THRESHOLD_SPREAD) {
             revert InvalidBorrowThreshold(config.borrowThreshold);
         }
 
