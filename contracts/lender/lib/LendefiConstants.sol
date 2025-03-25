@@ -34,4 +34,7 @@ library LendefiConstants {
 
     /// @notice Min liquidation threshold, percentage on a 1000 scale
     uint16 internal constant MIN_THRESHOLD_SPREAD = 10;
+
+    /// @notice Max assets supported by platform
+    uint32 internal constant MAX_ASSETS = 3000;
 }
