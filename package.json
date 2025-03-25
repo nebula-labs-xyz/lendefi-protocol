@@ -24,7 +24,7 @@
     "prepare": "husky",
     "slither:check": "slither contracts/lender/Lendefi.sol --solc-remaps @openzeppelin/=$(pwd)/node_modules/@openzeppelin/ --filter-paths '@openzeppelin'",
     "solhint": "./node_modules/.bin/solhint -f table contracts/**/*.sol",
-    "test": "forge clean && forge build && forge test -vvv --ffi",
+    "test": "forge clean && forge build && forge test -v --ffi",
     "test:integration": "forge test --match-contract Integration -vvv",
     "test:unit": "forge test --match-contract LendefiTest -vvv --ffi",
     "test:unit:deep": "FOUNDRY_FUZZ_RUNS=5000 npm run test:unit",
