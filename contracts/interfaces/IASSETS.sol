@@ -120,13 +120,6 @@ interface IASSETS {
     event AssetTierUpdated(address indexed asset, CollateralTier tier);
 
     /**
-     * @notice Emitted when an asset's primary oracle type is set
-     * @param asset Address of the affected asset
-     * @param oracleType The selected primary oracle type
-     */
-    event PrimaryOracleSet(address indexed asset, OracleType oracleType);
-
-    /**
      * @notice Emitted when the circuit breaker is triggered for an asset
      * @param asset Address of the affected asset
      * @param deviationPct Percentage deviation that triggered the circuit breaker
