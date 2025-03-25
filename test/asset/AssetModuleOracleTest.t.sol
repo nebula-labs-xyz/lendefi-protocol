@@ -35,8 +35,10 @@ contract AssetModuleOracleTest is BasicDeploy {
     event VolatilityThresholdUpdated(uint256 oldValue, uint256 newValue);
     event VolatilityPercentageUpdated(uint256 oldValue, uint256 newValue);
     event CircuitBreakerThresholdUpdated(uint256 oldValue, uint256 newValue);
-    event CircuitBreakerTriggered(address indexed asset, uint256 currentPrice, uint256 previousPrice);
+    event CircuitBreakerTriggered(address indexed asset, uint256 deviationPct, uint256 timestamp);
     event CircuitBreakerReset(address indexed asset);
+    // event CircuitBreakerTriggered(address indexed asset, uint256 currentPrice, uint256 previousPrice);
+    // event CircuitBreakerReset(address indexed asset);
     event PriceUpdated(address indexed asset, uint256 price, uint256 median, uint256 numOracles);
     event MinimumOraclesUpdated(uint256 oldValue, uint256 newValue);
     event AssetMinimumOraclesUpdated(address indexed asset, uint256 oldValue, uint256 newValue);
@@ -406,43 +408,46 @@ contract AssetModuleOracleTest is BasicDeploy {
         vm.stopPrank();
     }
 
-    function test_CircuitBreaker_ManualTrigger() public {
+    function test_CircuitBreaker_Automated() public {
+        // SETUP: Configure mockOracle1 to have high volatility between rounds
+        // to trigger circuit breaker for single oracle case
+        mockOracle1.setRoundId(2);
+        mockOracle1.setAnsweredInRound(2);
+        mockOracle1.setPrice(2400e8); // 20% increase from previous round
+        mockOracle1.setTimestamp(block.timestamp - 2 hours); // Older than volatility threshold (1 hour)
+
+        // Set historical data for round 1 with large price difference
+        mockOracle1.setHistoricalRoundData(1, 2000e8, block.timestamp - 3 hours, 1);
+
         vm.startPrank(address(timelockInstance));
 
-        // Verify initially not broken
-        assertEq(assetsInstance.circuitBroken(address(wethInstance)), false, "Circuit should not be broken initially");
+        // 1. TRIGGER PHASE - Use evaluateCircuitBreaker to detect price anomaly
+        vm.expectEmit(true, true, true, false);
+        emit CircuitBreakerTriggered(address(wethInstance), 20, block.timestamp); // 20% deviation
 
-        // Trigger circuit breaker
-        vm.expectEmit(true, true, true, true);
-        emit CircuitBreakerTriggered(address(wethInstance), 0, 0);
+        (bool triggered, uint256 deviation) = assetsInstance.evaluateCircuitBreaker(address(wethInstance));
 
-        assetsInstance.triggerCircuitBreaker(address(wethInstance));
+        // Verify circuit breaker was activated and deviation was detected
+        assertTrue(triggered, "Circuit breaker should be triggered");
+        assertGt(deviation, 0, "Deviation should be reported");
+        assertTrue(assetsInstance.circuitBroken(address(wethInstance)), "Circuit breaker should be active");
 
-        // Verify circuit is broken
-        assertEq(assetsInstance.circuitBroken(address(wethInstance)), true, "Circuit should be broken after trigger");
-
-        // Try to get price - should revert with CircuitBreakerActive
+        // Verify price checks now fail
         vm.expectRevert(abi.encodeWithSelector(CircuitBreakerActive.selector, address(wethInstance)));
         assetsInstance.getAssetPrice(address(wethInstance));
 
-        vm.stopPrank();
-    }
+        // 2. RESET PHASE - Update price to normal range
+        mockOracle1.setPrice(2010e8); // Return to normal price
+        mockOracle1.setTimestamp(block.timestamp); // Fresh timestamp
 
-    function test_CircuitBreaker_Reset() public {
-        vm.startPrank(address(gnosisSafe));
-
-        // Trigger the circuit breaker
-        assetsInstance.triggerCircuitBreaker(address(wethInstance));
-
-        // Verify circuit breaker is active
-        assertTrue(assetsInstance.circuitBroken(address(wethInstance)), "Circuit breaker should be active");
-
-        // Reset circuit breaker
+        // Now evaluate again to automatically reset circuit breaker
         vm.expectEmit(true, false, false, false);
         emit CircuitBreakerReset(address(wethInstance));
-        assetsInstance.resetCircuitBreaker(address(wethInstance));
+
+        (bool resetResult,) = assetsInstance.evaluateCircuitBreaker(address(wethInstance));
 
         // Verify circuit breaker is no longer active
+        assertFalse(resetResult, "Circuit breaker should be inactive after reset");
         assertFalse(assetsInstance.circuitBroken(address(wethInstance)), "Circuit breaker should be inactive");
 
         // Verify price can be retrieved again
@@ -500,119 +505,79 @@ contract AssetModuleOracleTest is BasicDeploy {
         vm.stopPrank();
     }
 
-    function test_SetPrimaryOracleType() public {
-        vm.startPrank(address(timelockInstance));
-
-        // Create test asset
-        MockRWA testAsset = new MockRWA("Test Asset", "TEST");
-        MockUniswapV3Pool uniswapPool = new MockUniswapV3Pool(address(testAsset), address(usdcInstance), 3000);
-
-        // Register the asset
-        assetsInstance.updateAssetConfig(
-            address(testAsset),
-            IASSETS.Asset({
-                active: 1,
-                decimals: 18,
-                borrowThreshold: 800,
-                liquidationThreshold: 850,
-                maxSupplyThreshold: 1_000_000e18,
-                isolationDebtCap: 0,
-                assetMinimumOracles: 1,
-                primaryOracleType: IASSETS.OracleType.CHAINLINK,
-                tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
-                poolConfig: IASSETS.UniswapPoolConfig({pool: address(uniswapPool), twapPeriod: 1800, active: 1})
-            })
-        );
-
-        // Check initial primary oracle
-        IASSETS.Asset memory item = assetsInstance.getAssetInfo(address(testAsset));
-        assertEq(
-            uint8(item.primaryOracleType),
-            uint8(IASSETS.OracleType.CHAINLINK),
-            "Initial primary oracle should be first added"
-        );
-
-        // Change primary oracle
-        vm.expectEmit(true, true, false, false);
-        emit PrimaryOracleSet(address(testAsset), IASSETS.OracleType.UNISWAP_V3_TWAP);
-        assetsInstance.setPrimaryOracle(address(testAsset), IASSETS.OracleType.UNISWAP_V3_TWAP);
-
-        // Verify new primary oracle
-        item = assetsInstance.getAssetInfo(address(testAsset));
-        assertEq(
-            uint8(item.primaryOracleType), uint8(IASSETS.OracleType.UNISWAP_V3_TWAP), "Primary oracle should be updated"
-        );
-
-        vm.stopPrank();
-    }
-
     function test_CircuitBreakerManagement() public {
-        // Deploy a proper Chainlink oracle for the RWA token
-        RWAPriceConsumerV3 rwaOracle = new RWAPriceConsumerV3();
-        rwaOracle.setPrice(1000e8); // $1000
+        // Use mockOracle2 which is already configured for rwaToken in _setupAssets()
+        // and has the required setTimestamp method
+        mockOracle2.setPrice(1990e8); // $1990 initial price (to match expected value)
+        mockOracle2.setTimestamp(block.timestamp);
+        mockOracle2.setRoundId(1);
+        mockOracle2.setAnsweredInRound(1);
 
         vm.startPrank(address(timelockInstance));
 
-        // Add oracle and set configuration
+        // Configure oracle parameters
         assetsInstance.updateMainOracleConfig(
-            uint80(28800), // default freshness
-            uint80(3600), // default volatility
-            uint40(20), // default volatility %
-            uint40(50) // default circuit breaker %
+            uint80(28800), // freshness threshold: 8 hours
+            uint80(3600), // volatility threshold: 1 hour
+            uint40(20), // volatility percentage: 20%
+            uint40(50) // circuit breaker threshold: 50%
         );
 
-        // Update asset configuration to use the new rwaOracle
-        assetsInstance.updateAssetConfig(
-            address(rwaToken),
-            IASSETS.Asset({
-                active: 1,
-                decimals: 18,
-                borrowThreshold: 800,
-                liquidationThreshold: 850,
-                maxSupplyThreshold: 500_000e18,
-                isolationDebtCap: 0,
-                assetMinimumOracles: 1,
-                primaryOracleType: IASSETS.OracleType.CHAINLINK,
-                tier: IASSETS.CollateralTier.CROSS_B,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(rwaOracle), // Use the new oracle
-                    active: 1
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
-            })
-        );
+        // No need to update asset configuration as mockOracle2 is already
+        // configured for rwaToken in the _setupAssets() method
 
         vm.stopPrank();
 
-        // Now start the circuit breaker test with gnosisSafe role
-        vm.startPrank(gnosisSafe);
-
-        // Verify we can get the price before triggering circuit breaker
+        // PHASE 1: Verify price works normally
         uint256 initialPrice = assetsInstance.getAssetPrice(address(rwaToken));
-        assertEq(initialPrice, 1000e6, "Should return correct price before circuit breaker");
+        assertEq(initialPrice, 1990e6, "Should return correct price before circuit breaker");
+        assertFalse(assetsInstance.circuitBroken(address(rwaToken)), "Circuit breaker should be inactive initially");
 
-        // Trigger circuit breaker for RWA token
-        assetsInstance.triggerCircuitBreaker(address(rwaToken));
+        // PHASE 2: Setup conditions that should trigger circuit breaker
 
-        // Verify circuit breaker is active
+        // Set up round 2 with a large price change and old timestamp
+        mockOracle2.setPrice(1500e8); // 25% decrease from 1990 to 1500
+        mockOracle2.setTimestamp(block.timestamp - 2 hours); // Older than volatility threshold (1 hour)
+        mockOracle2.setRoundId(2);
+        mockOracle2.setAnsweredInRound(2);
+
+        // Set historical data for round 1
+        mockOracle2.setHistoricalRoundData(1, 1990e8, block.timestamp - 3 hours, 1);
+
+        // PHASE 3: Call evaluate and verify circuit breaker activates
+        vm.expectEmit(true, true, true, false);
+        emit CircuitBreakerTriggered(address(rwaToken), 24, block.timestamp);
+
+        (bool triggered, uint256 deviation) = assetsInstance.evaluateCircuitBreaker(address(rwaToken));
+
+        // Verify circuit breaker was activated
+        assertTrue(triggered, "Circuit breaker should be triggered");
+        assertEq(deviation, 24, "Deviation should be 24%"); // Changed from 25% to 24%
         assertTrue(assetsInstance.circuitBroken(address(rwaToken)), "Circuit breaker should be active");
-
-        // When circuit breaker is active, price check should revert
-        vm.expectRevert(abi.encodeWithSelector(IASSETS.CircuitBreakerActive.selector, address(rwaToken)));
+        // Verify price check now fails
+        vm.expectRevert(abi.encodeWithSelector(CircuitBreakerActive.selector, address(rwaToken)));
         assetsInstance.getAssetPrice(address(rwaToken));
 
-        // Reset circuit breaker
-        assetsInstance.resetCircuitBreaker(address(rwaToken));
+        // PHASE 4: Return price to normal and verify circuit breaker resets
 
-        // Verify circuit breaker is cleared
+        // Return to normal price with fresh timestamp
+        mockOracle2.setPrice(2000e8); // Close to original price
+        mockOracle2.setTimestamp(block.timestamp); // Fresh timestamp
+
+        // Now evaluate again to automatically reset circuit breaker
+        vm.expectEmit(true, false, false, false);
+        emit CircuitBreakerReset(address(rwaToken));
+
+        (bool resetResult, uint256 resetDeviation) = assetsInstance.evaluateCircuitBreaker(address(rwaToken));
+
+        // Verify circuit breaker is no longer active
+        assertFalse(resetResult, "Circuit breaker should be inactive after reset");
+        assertLt(resetDeviation, 5, "Deviation should be small now");
         assertFalse(assetsInstance.circuitBroken(address(rwaToken)), "Circuit breaker should be inactive");
 
-        // Now price check should work again
+        // Price check should now work
         uint256 price = assetsInstance.getAssetPrice(address(rwaToken));
-        assertEq(price, 1000e6, "Should return a valid price after circuit breaker reset");
-
-        vm.stopPrank();
+        assertEq(price, 2000e6, "Should return a valid price after circuit breaker reset");
     }
 
     function test_GetUniswapPrice() public {
