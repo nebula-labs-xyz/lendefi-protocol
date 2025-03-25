@@ -15,7 +15,7 @@ import {MockPriceOracle} from "../../contracts/mock/MockPriceOracle.sol";
 contract LendefiAssetsTest is BasicDeploy {
     // Protocol instance
 
-    WETHPriceConsumerV3 internal wethOracle;
+    MockPriceOracle internal wethOracle;
     StablePriceConsumerV3 internal stableOracle;
     WETHPriceConsumerV3 internal linkOracle;
     WETHPriceConsumerV3 internal uniOracle;
@@ -45,7 +45,7 @@ contract LendefiAssetsTest is BasicDeploy {
         uniInstance = new TokenMock("Uniswap", "UNI");
 
         // Deploy oracles
-        wethOracle = new WETHPriceConsumerV3();
+        wethOracle = new MockPriceOracle();
         stableOracle = new StablePriceConsumerV3();
 
         // Create a custom oracle for Link and UNI
@@ -1347,6 +1347,9 @@ contract LendefiAssetsTest is BasicDeploy {
     function test_GetAssetCalculationParams() public {
         // First let's set a specific price in the oracle
         wethOracle.setPrice(2500e8); // $2500 per ETH
+        wethOracle.setTimestamp(block.timestamp);
+        wethOracle.setRoundId(1);
+        wethOracle.setAnsweredInRound(1);
 
         // Get the calculation params for WETH
         IASSETS.AssetCalculationParams memory params = assetsInstance.getAssetCalculationParams(address(wethInstance));
@@ -1366,21 +1369,61 @@ contract LendefiAssetsTest is BasicDeploy {
         assertEq(params.liquidationThreshold, 950, "USDC liquidation threshold should be 95%");
         assertEq(params.decimals, 6, "USDC decimals should be 6");
 
-        // Test how circuit breaker affects the function
-        vm.prank(gnosisSafe);
-        assetsInstance.triggerCircuitBreaker(address(wethInstance));
+        // PHASE 1: Set up conditions to trigger circuit breaker
+
+        // Update oracle parameters to ensure our price change will trigger the circuit breaker
+        vm.prank(address(timelockInstance));
+        assetsInstance.updateMainOracleConfig(
+            uint80(28800), // freshness threshold: 8 hours
+            uint80(3600), // volatility threshold: 1 hour
+            uint40(20), // volatility percentage: 20%
+            uint40(50) // circuit breaker threshold: 50%
+        );
+
+        // Set up a large price change and old timestamp
+        wethOracle.setPrice(3500e8); // 40% increase from 2500 to 3500
+        wethOracle.setTimestamp(block.timestamp - 2 hours); // Older than volatility threshold
+        wethOracle.setRoundId(2);
+        wethOracle.setAnsweredInRound(2);
+
+        // Set historical data for round 1
+        wethOracle.setHistoricalRoundData(1, 2500e8, block.timestamp - 3 hours, 1);
+
+        // Trigger circuit breaker by evaluating
+        vm.expectEmit(true, true, true, false);
+        emit IASSETS.CircuitBreakerTriggered(address(wethInstance), 40, block.timestamp);
+
+        (bool triggered, uint256 deviation) = assetsInstance.evaluateCircuitBreaker(address(wethInstance));
+
+        // Verify circuit breaker was triggered
+        assertTrue(triggered, "Circuit breaker should be triggered");
+        assertEq(deviation, 40, "Deviation should be 40%");
+        assertTrue(assetsInstance.circuitBroken(address(wethInstance)), "Circuit breaker should be active");
 
         // Now getAssetCalculationParams should revert for WETH
         vm.expectRevert(abi.encodeWithSelector(IASSETS.CircuitBreakerActive.selector, address(wethInstance)));
         assetsInstance.getAssetCalculationParams(address(wethInstance));
 
-        // Reset the circuit breaker
-        vm.prank(gnosisSafe);
-        assetsInstance.resetCircuitBreaker(address(wethInstance));
+        // PHASE 2: Reset circuit breaker by fixing the price
+
+        // Return to normal price with fresh timestamp
+        wethOracle.setPrice(2550e8); // $2550 per ETH (small change)
+        wethOracle.setTimestamp(block.timestamp); // Fresh timestamp
+
+        // Call evaluate again to automatically reset circuit breaker
+        vm.expectEmit(true, false, false, false);
+        emit IASSETS.CircuitBreakerReset(address(wethInstance));
+
+        (bool resetResult, uint256 resetDeviation) = assetsInstance.evaluateCircuitBreaker(address(wethInstance));
+
+        // Verify circuit breaker was reset
+        assertFalse(resetResult, "Circuit breaker should be inactive after reset");
+        assertTrue(resetDeviation < 5, "Deviation should be small now");
+        assertFalse(assetsInstance.circuitBroken(address(wethInstance)), "Circuit breaker should be inactive");
 
         // Function should work again after resetting circuit breaker
         params = assetsInstance.getAssetCalculationParams(address(wethInstance));
-        assertEq(params.price, 2500e6, "Price should match oracle price after reset");
+        assertEq(params.price, 2550e6, "Price should match updated oracle price after reset");
 
         // Test with non-listed asset should revert
         vm.expectRevert(abi.encodeWithSelector(IASSETS.AssetNotListed.selector, address(0xDEAD)));
