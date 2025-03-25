@@ -83,6 +83,12 @@ contract LendefiAssetsV2 is
     /// @dev Required by OpenZeppelin's upgradeable contracts pattern
     uint256[22] private __gap;
 
+    /**
+     * @notice Requires that the asset exists in the protocol's listed assets
+     * @dev Modifier to guard functions that operate on listed assets
+     * @param asset The address of the asset to check
+     * @custom:reverts AssetNotListed if the asset is not in the listed assets set
+     */
     modifier onlyListedAsset(address asset) {
         if (!listedAssets.contains(asset)) revert AssetNotListed(asset);
         _;
@@ -108,6 +114,7 @@ contract LendefiAssetsV2 is
      * @dev This can only be called once through the proxy's initializer
      * @param timelock Address of the timelock contract that will have admin privileges
      * @param multisig Address of the multisig wallet for emergency controls
+     * @param usdc_ USDC address
      * @custom:security Sets up the initial access control roles:
      * - DEFAULT_ADMIN_ROLE: timelock
      * - MANAGER_ROLE: timelock
@@ -152,36 +159,11 @@ contract LendefiAssetsV2 is
         version = 1;
     }
 
-    // ==================== ORACLE MANAGEMENT ====================
-
-    /**
-     * @notice Register a Uniswap V3 pool as an oracle for an asset
-     * @param asset The asset to register the oracle for
-     * @param uniswapPool The Uniswap V3 pool address (must contain the asset)
-     * @param twapPeriod The TWAP period in seconds
-     * @param active isActive flag
-     */
-    function updateUniswapOracle(address asset, address uniswapPool, uint32 twapPeriod, uint8 active)
-        public
-        nonZeroAddress(uniswapPool)
-        onlyListedAsset(asset)
-        onlyRole(LendefiConstants.MANAGER_ROLE)
-        whenNotPaused
-    {
-        // Validate the pool contains both tokens
-        _validatePool(asset, uniswapPool);
-        if (active == 0 && assetInfo[asset].chainlinkConfig.active == 0 && assetInfo[asset].assetMinimumOracles >= 1) {
-            revert NotEnoughValidOracles(asset, assetInfo[asset].assetMinimumOracles, 0);
-        }
-        // Asset storage item = assetInfo[asset];
-        assetInfo[asset].poolConfig = UniswapPoolConfig({pool: uniswapPool, twapPeriod: twapPeriod, active: active});
-        emit UniswapOracleUpdated(asset, uniswapPool, active);
-    }
-
     /**
      * @notice Add an oracle with type specification
      * @param asset The asset to add the oracle for
      * @param oracle The oracle address
+     * @param active active or not (1 or 0)
      */
     function updateChainlinkOracle(address asset, address oracle, uint8 active)
         external
@@ -361,7 +343,38 @@ contract LendefiAssetsV2 is
         emit AssetTierUpdated(asset, newTier);
     }
 
-    // ==================== ORACLE MANAGEMENT ====================
+    /**
+     * @notice Schedules an upgrade to a new implementation with timelock
+     * @dev Only callable by addresses with LendefiConstants.UPGRADER_ROLE
+     * @param newImplementation Address of the new implementation contract
+     */
+    function scheduleUpgrade(address newImplementation)
+        external
+        nonZeroAddress(newImplementation)
+        onlyRole(LendefiConstants.UPGRADER_ROLE)
+    {
+        uint64 currentTime = uint64(block.timestamp);
+        uint64 effectiveTime = currentTime + uint64(LendefiConstants.UPGRADE_TIMELOCK_DURATION);
+
+        pendingUpgrade = UpgradeRequest({implementation: newImplementation, scheduledTime: currentTime, exists: true});
+
+        emit UpgradeScheduled(msg.sender, newImplementation, currentTime, effectiveTime);
+    }
+
+    /**
+     * @notice Cancels a previously scheduled upgrade
+     * @dev Only callable by addresses with LendefiConstants.UPGRADER_ROLE
+     */
+    function cancelUpgrade() external onlyRole(LendefiConstants.UPGRADER_ROLE) {
+        if (!pendingUpgrade.exists) {
+            revert UpgradeNotScheduled();
+        }
+
+        address implementation = pendingUpgrade.implementation;
+        delete pendingUpgrade;
+
+        emit UpgradeCancelled(msg.sender, implementation);
+    }
 
     /**
      * @notice Automatically evaluates and manages circuit breaker status based on price conditions
@@ -369,7 +382,6 @@ contract LendefiAssetsV2 is
      * @param asset The asset to evaluate circuit breaker status for
      * @return triggered Whether the circuit breaker is now active
      * @return deviation The percentage deviation that affected the decision
-     * @custom:emits CircuitBreakerTriggered or CircuitBreakerReset based on conditions
      */
     function evaluateCircuitBreaker(address asset)
         external
@@ -393,29 +405,17 @@ contract LendefiAssetsV2 is
         }
         // Single Chainlink oracle case - check volatility between rounds
         else if (chainlinkActive == 1) {
+            // Use new helper function to calculate volatility
+            deviationPct = _getChainlinkVolatility(asset);
+
+            // Get timestamp to check age
             address oracle = info.chainlinkConfig.oracleUSD;
-            (uint80 roundId, int256 currentPrice,, uint256 timestamp,) = AggregatorV3Interface(oracle).latestRoundData();
+            (,,, uint256 timestamp,) = AggregatorV3Interface(oracle).latestRoundData();
+            uint256 age = block.timestamp - timestamp;
 
-            // Only check volatility if we have a previous round
-            if (roundId > 1) {
-                (, int256 previousPrice,, uint256 previousTimestamp,) =
-                    AggregatorV3Interface(oracle).getRoundData(roundId - 1);
-
-                if (previousPrice > 0 && previousTimestamp > 0) {
-                    uint256 priceDelta = uint256(
-                        currentPrice > previousPrice ? currentPrice - previousPrice : previousPrice - currentPrice
-                    );
-
-                    deviationPct = (priceDelta * 100) / uint256(previousPrice);
-                    uint256 age = block.timestamp - timestamp;
-
-                    if (
-                        deviationPct >= mainOracleConfig.volatilityPercentage
-                            && age >= mainOracleConfig.volatilityThreshold
-                    ) {
-                        shouldBreak = true;
-                    }
-                }
+            // Check if volatility exceeds threshold and price is old enough
+            if (deviationPct >= mainOracleConfig.volatilityPercentage && age >= mainOracleConfig.volatilityThreshold) {
+                shouldBreak = true;
             }
         }
 
@@ -472,77 +472,12 @@ contract LendefiAssetsV2 is
 
         return _getChainlinkPrice(asset);
     }
-    // ==================== ASSET VIEW FUNCTIONS ====================
-
-    /**
-     * @notice Get asset price as a view function (no state changes)
-     * @param asset The asset to get price for
-     * @return price The current price of the asset
-     */
-    function getAssetPrice(address asset) public view onlyListedAsset(asset) returns (uint256) {
-        if (circuitBroken[asset]) {
-            revert CircuitBreakerActive(asset);
-        }
-
-        // Load into memory once
-        Asset storage info = assetInfo[asset];
-        uint8 chainlinkActive = info.chainlinkConfig.active;
-        uint8 uniswapActive = info.poolConfig.active;
-
-        // Early returns for single oracle
-        if (chainlinkActive == 1 && uniswapActive == 0) {
-            return _getChainlinkPrice(asset);
-        }
-        if (uniswapActive == 1 && chainlinkActive == 0) {
-            return _getUniswapTWAPPrice(asset);
-        }
-
-        // Dual-oracle case (implicitly totalActive == 2)
-        uint256 price1 = _getChainlinkPrice(asset);
-        uint256 price2 = _getUniswapTWAPPrice(asset);
-        uint256 median = (price1 + price2) >> 1; // Bit shift instead of division
-
-        return median;
-    }
-
-    /**
-     * @notice Schedules an upgrade to a new implementation with timelock
-     * @dev Only callable by addresses with LendefiConstants.UPGRADER_ROLE
-     * @param newImplementation Address of the new implementation contract
-     */
-    function scheduleUpgrade(address newImplementation)
-        external
-        nonZeroAddress(newImplementation)
-        onlyRole(LendefiConstants.UPGRADER_ROLE)
-    {
-        uint64 currentTime = uint64(block.timestamp);
-        uint64 effectiveTime = currentTime + uint64(LendefiConstants.UPGRADE_TIMELOCK_DURATION);
-
-        pendingUpgrade = UpgradeRequest({implementation: newImplementation, scheduledTime: currentTime, exists: true});
-
-        emit UpgradeScheduled(msg.sender, newImplementation, currentTime, effectiveTime);
-    }
-
-    /**
-     * @notice Cancels a previously scheduled upgrade
-     * @dev Only callable by addresses with LendefiConstants.UPGRADER_ROLE
-     */
-    function cancelUpgrade() external onlyRole(LendefiConstants.UPGRADER_ROLE) {
-        if (!pendingUpgrade.exists) {
-            revert UpgradeNotScheduled();
-        }
-
-        address implementation = pendingUpgrade.implementation;
-        delete pendingUpgrade;
-
-        emit UpgradeCancelled(msg.sender, implementation);
-    }
-
     /**
      * @notice Returns the remaining time before a scheduled upgrade can be executed
      * @dev Returns 0 if no upgrade is scheduled or if the timelock has expired
      * @return timeRemaining The time remaining in seconds
      */
+
     function upgradeTimelockRemaining() external view returns (uint256) {
         return pendingUpgrade.exists
             && block.timestamp < pendingUpgrade.scheduledTime + LendefiConstants.UPGRADE_TIMELOCK_DURATION
@@ -770,12 +705,75 @@ contract LendefiAssetsV2 is
         return assetInfo[asset].chainlinkConfig.active + assetInfo[asset].poolConfig.active;
     }
 
+    // ==================== ORACLE MANAGEMENT ====================
+
     /**
-     * @notice Check for price deviation without modifying state
-     * @param asset The asset to check
-     * @return Whether the asset has a large price deviation
+     * @notice Register a Uniswap V3 pool as an oracle for an asset
+     * @param asset The asset to register the oracle for
+     * @param uniswapPool The Uniswap V3 pool address (must contain the asset)
+     * @param twapPeriod The TWAP period in seconds
+     * @param active isActive flag
      */
-    function checkPriceDeviation(address asset) public view returns (bool, uint256) {
+    function updateUniswapOracle(address asset, address uniswapPool, uint32 twapPeriod, uint8 active)
+        public
+        nonZeroAddress(uniswapPool)
+        onlyListedAsset(asset)
+        onlyRole(LendefiConstants.MANAGER_ROLE)
+        whenNotPaused
+    {
+        // Validate the pool contains both tokens
+        _validatePool(asset, uniswapPool);
+        if (active == 0 && assetInfo[asset].chainlinkConfig.active == 0 && assetInfo[asset].assetMinimumOracles >= 1) {
+            revert NotEnoughValidOracles(asset, assetInfo[asset].assetMinimumOracles, 0);
+        }
+        // Asset storage item = assetInfo[asset];
+        assetInfo[asset].poolConfig = UniswapPoolConfig({pool: uniswapPool, twapPeriod: twapPeriod, active: active});
+        emit UniswapOracleUpdated(asset, uniswapPool, active);
+    }
+
+    /**
+     * @notice Get asset price as a view function (no state changes)
+     * @param asset The asset to get price for
+     * @return price The current price of the asset
+     */
+    function getAssetPrice(address asset) public view onlyListedAsset(asset) returns (uint256) {
+        if (circuitBroken[asset]) {
+            revert CircuitBreakerActive(asset);
+        }
+
+        // Load into memory once
+        Asset storage info = assetInfo[asset];
+        uint8 chainlinkActive = info.chainlinkConfig.active;
+        uint8 uniswapActive = info.poolConfig.active;
+
+        // Early returns for single oracle
+        if (chainlinkActive == 1 && uniswapActive == 0) {
+            return _getChainlinkPrice(asset);
+        }
+        if (uniswapActive == 1 && chainlinkActive == 0) {
+            return _getUniswapTWAPPrice(asset);
+        }
+
+        // Dual-oracle case (implicitly totalActive == 2)
+        uint256 price1 = _getChainlinkPrice(asset);
+        uint256 price2 = _getUniswapTWAPPrice(asset);
+        uint256 median = (price1 + price2) >> 1; // Bit shift instead of division
+
+        return median;
+    }
+
+    /**
+     * @notice Checks for price deviation between Chainlink and Uniswap oracles
+     * @dev Requires both oracles to be active. Calculates percentage deviation between prices.
+     * @param asset The address of the asset to check price deviation for
+     * @return isDeviated True if deviation exceeds circuit breaker threshold
+     * @return deviation The calculated percentage deviation between oracle prices (0-100+)
+     * @custom:reverts NotEnoughValidOracles if both oracles aren't active
+     * @custom:calculation (abs(price1 - price2) * 100) / min(price1, price2)
+     * @custom:example If Chainlink reports $1000 and Uniswap reports $1200:
+     *                 deviation = (200 * 100) / 1000 = 20%
+     */
+    function checkPriceDeviation(address asset) public view returns (bool isDeviated, uint256 deviation) {
         // Load asset info into memory once
         Asset storage info = assetInfo[asset];
         uint8 chainlinkActive = info.chainlinkConfig.active;
@@ -794,7 +792,7 @@ contract LendefiAssetsV2 is
         uint256 minPrice = price1 < price2 ? price1 : price2;
         uint256 maxPrice = price1 > price2 ? price1 : price2;
         uint256 priceDelta = maxPrice - minPrice;
-        uint256 deviation = (priceDelta * 100) / minPrice;
+        deviation = (priceDelta * 100) / minPrice;
 
         // Compare with circuit breaker threshold
         return (deviation >= mainOracleConfig.circuitBreakerThreshold, deviation);
@@ -835,108 +833,68 @@ contract LendefiAssetsV2 is
     }
 
     /**
-     * @notice Validate asset configuration parameters
-     * @dev Centralized validation to ensure consistent checks across all configuration updates
-     * @param asset The address of the asset being configured
-     * @param config The asset configuration to validate
+     * @notice Validates and authorizes contract upgrades
+     * @dev Internal function required by UUPSUpgradeable pattern
+     * @param newImplementation Address of the new implementation contract
+     * @custom:security Enforces timelock and validates implementation address
+     * @custom:access Restricted to LendefiConstants.UPGRADER_ROLE
+     * @custom:validation Requires:
+     * - Upgrade must be scheduled
+     * - Implementation must match scheduled upgrade
+     * - Timelock duration must have elapsed
+     * @custom:emits Upgrade event on successful authorization
+     * @custom:state-changes Increments version and clears pending upgrade
      */
-    function _validateAssetConfig(address asset, Asset calldata config) internal pure {
-        // Basic validation
-        if (config.chainlinkConfig.oracleUSD == address(0)) revert ZeroAddressNotAllowed();
-
-        if (config.chainlinkConfig.active + config.poolConfig.active < config.assetMinimumOracles) {
-            revert NotEnoughValidOracles(
-                asset, config.assetMinimumOracles, config.chainlinkConfig.active + config.poolConfig.active
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(LendefiConstants.UPGRADER_ROLE) {
+        if (!pendingUpgrade.exists) revert UpgradeNotScheduled();
+        if (pendingUpgrade.implementation != newImplementation) {
+            revert ImplementationMismatch(pendingUpgrade.implementation, newImplementation);
+        }
+        if (block.timestamp - pendingUpgrade.scheduledTime < LendefiConstants.UPGRADE_TIMELOCK_DURATION) {
+            revert UpgradeTimelockActive(
+                LendefiConstants.UPGRADE_TIMELOCK_DURATION - (block.timestamp - pendingUpgrade.scheduledTime)
             );
         }
 
-        // Validate that the primary oracle type is active
-        bool isPrimaryOracleActive = false;
+        delete pendingUpgrade;
 
-        if (config.primaryOracleType == OracleType.CHAINLINK) {
-            isPrimaryOracleActive = config.chainlinkConfig.active == 1;
-        } else if (config.primaryOracleType == OracleType.UNISWAP_V3_TWAP) {
-            isPrimaryOracleActive = config.poolConfig.active == 1;
-        }
-
-        if (!isPrimaryOracleActive) {
-            revert OracleNotActive(asset, config.primaryOracleType);
-        }
-
-        // Threshold validations
-        if (config.liquidationThreshold > 990) {
-            revert InvalidLiquidationThreshold(config.liquidationThreshold);
-        }
-
-        if (config.borrowThreshold > config.liquidationThreshold - 10) {
-            revert InvalidBorrowThreshold(config.borrowThreshold);
-        }
-
-        if (config.decimals == 0 || config.decimals > 18) {
-            revert InvalidParameter("assetDecimals", config.decimals);
-        }
-
-        // Activity check
-        if (config.active > 1) {
-            revert InvalidParameter("active", config.active);
-        }
-
-        // Supply limit validation
-        if (config.maxSupplyThreshold == 0) {
-            revert InvalidParameter("maxSupplyThreshold", 0);
-        }
-
-        // For isolated assets, check debt cap
-        if (config.tier == CollateralTier.ISOLATED && config.isolationDebtCap == 0) {
-            revert InvalidParameter("isolationDebtCap", 0);
-        }
+        ++version;
+        emit Upgrade(msg.sender, newImplementation);
     }
 
     /**
-     * @notice Get price from Chainlink oracle
-     * @param asset The Chainlink oracle address
-     * @return The price with the specified decimals
+     * @notice Get price from Chainlink oracle with volatility checks
+     * @param asset The asset address
+     * @return The price with normalized decimals (1e6)
      */
     function _getChainlinkPrice(address asset) internal view returns (uint256) {
-        // Asset memory item = assetInfo[asset];
         address oracle = assetInfo[asset].chainlinkConfig.oracleUSD;
         (uint80 roundId, int256 price,, uint256 timestamp, uint80 answeredInRound) =
             AggregatorV3Interface(oracle).latestRoundData();
 
+        // Validate price is positive
         if (price <= 0) {
             revert OracleInvalidPrice(oracle, price);
         }
 
+        // Validate round data is not stale
         if (answeredInRound < roundId) {
             revert OracleStalePrice(oracle, roundId, answeredInRound);
         }
 
+        // Validate timestamp is fresh enough
         uint256 age = block.timestamp - timestamp;
         if (age > mainOracleConfig.freshnessThreshold) {
             revert OracleTimeout(oracle, timestamp, block.timestamp, mainOracleConfig.freshnessThreshold);
         }
 
-        if (roundId > 1) {
-            (, int256 previousPrice,, uint256 previousTimestamp,) =
-                AggregatorV3Interface(oracle).getRoundData(roundId - 1);
-
-            if (previousPrice > 0 && previousTimestamp > 0) {
-                uint256 currentPrice = uint256(price);
-                uint256 prevPrice = uint256(previousPrice);
-
-                uint256 priceDelta = currentPrice > prevPrice ? currentPrice - prevPrice : prevPrice - currentPrice;
-                uint256 changePercent = (priceDelta * 100) / prevPrice;
-
-                if (
-                    changePercent >= mainOracleConfig.volatilityPercentage
-                        && age >= mainOracleConfig.volatilityThreshold
-                ) {
-                    revert OracleInvalidPriceVolatility(oracle, price, changePercent);
-                }
-            }
+        // Check for excessive volatility using the new helper function
+        uint256 changePercent = _getChainlinkVolatility(asset);
+        if (changePercent >= mainOracleConfig.volatilityPercentage && age >= mainOracleConfig.volatilityThreshold) {
+            revert OracleInvalidPriceVolatility(oracle, price, changePercent);
         }
 
-        return uint256(price) / 1e2; //normalize to 1e6 to match Uniswap
+        return uint256(price) / 1e2; // Normalize to 1e6 to match Uniswap
     }
 
     /**
@@ -1051,32 +1009,78 @@ contract LendefiAssetsV2 is
     }
 
     /**
-     * @notice Validates and authorizes contract upgrades
-     * @dev Internal function required by UUPSUpgradeable pattern
-     * @param newImplementation Address of the new implementation contract
-     * @custom:security Enforces timelock and validates implementation address
-     * @custom:access Restricted to LendefiConstants.UPGRADER_ROLE
-     * @custom:validation Requires:
-     * - Upgrade must be scheduled
-     * - Implementation must match scheduled upgrade
-     * - Timelock duration must have elapsed
-     * @custom:emits Upgrade event on successful authorization
-     * @custom:state-changes Increments version and clears pending upgrade
+     * @notice Calculates price volatility between current and previous Chainlink oracle rounds
+     * @dev Returns the percentage change between current and previous price rounds
+     * @param asset The asset address to check volatility for
+     * @return The percentage change between current and previous price (0-100+)
+     * @custom:returns 0 if previous round data is invalid or unavailable
+     * @custom:calculation (abs(currentPrice - previousPrice) * 100) / previousPrice
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(LendefiConstants.UPGRADER_ROLE) {
-        if (!pendingUpgrade.exists) revert UpgradeNotScheduled();
-        if (pendingUpgrade.implementation != newImplementation) {
-            revert ImplementationMismatch(pendingUpgrade.implementation, newImplementation);
-        }
-        if (block.timestamp - pendingUpgrade.scheduledTime < LendefiConstants.UPGRADE_TIMELOCK_DURATION) {
-            revert UpgradeTimelockActive(
-                LendefiConstants.UPGRADE_TIMELOCK_DURATION - (block.timestamp - pendingUpgrade.scheduledTime)
+    function _getChainlinkVolatility(address asset) internal view returns (uint256) {
+        address oracle = assetInfo[asset].chainlinkConfig.oracleUSD;
+        (uint80 roundId, int256 price,,,) = AggregatorV3Interface(oracle).latestRoundData();
+        if (roundId <= 1) return 0;
+        (, int256 previousPrice,, uint256 previousTimestamp,) = AggregatorV3Interface(oracle).getRoundData(roundId - 1);
+        if (previousPrice <= 0 || previousTimestamp == 0) return 0;
+        uint256 priceDelta = uint256(price > previousPrice ? price - previousPrice : previousPrice - price);
+        return (priceDelta * 100) / uint256(previousPrice);
+    }
+
+    /**
+     * @notice Validate asset configuration parameters
+     * @dev Centralized validation to ensure consistent checks across all configuration updates
+     * @param asset The address of the asset being configured
+     * @param config The asset configuration to validate
+     */
+    function _validateAssetConfig(address asset, Asset calldata config) internal pure {
+        // Basic validation
+        if (config.chainlinkConfig.oracleUSD == address(0)) revert ZeroAddressNotAllowed();
+
+        if (config.chainlinkConfig.active + config.poolConfig.active < config.assetMinimumOracles) {
+            revert NotEnoughValidOracles(
+                asset, config.assetMinimumOracles, config.chainlinkConfig.active + config.poolConfig.active
             );
         }
 
-        delete pendingUpgrade;
+        // Validate that the primary oracle type is active
+        bool isPrimaryOracleActive = false;
 
-        ++version;
-        emit Upgrade(msg.sender, newImplementation);
+        if (config.primaryOracleType == OracleType.CHAINLINK) {
+            isPrimaryOracleActive = config.chainlinkConfig.active == 1;
+        } else if (config.primaryOracleType == OracleType.UNISWAP_V3_TWAP) {
+            isPrimaryOracleActive = config.poolConfig.active == 1;
+        }
+
+        if (!isPrimaryOracleActive) {
+            revert OracleNotActive(asset, config.primaryOracleType);
+        }
+
+        // Threshold validations
+        if (config.liquidationThreshold > 990) {
+            revert InvalidLiquidationThreshold(config.liquidationThreshold);
+        }
+
+        if (config.borrowThreshold > config.liquidationThreshold - 10) {
+            revert InvalidBorrowThreshold(config.borrowThreshold);
+        }
+
+        if (config.decimals == 0 || config.decimals > 18) {
+            revert InvalidParameter("assetDecimals", config.decimals);
+        }
+
+        // Activity check
+        if (config.active > 1) {
+            revert InvalidParameter("active", config.active);
+        }
+
+        // Supply limit validation
+        if (config.maxSupplyThreshold == 0) {
+            revert InvalidParameter("maxSupplyThreshold", 0);
+        }
+
+        // For isolated assets, check debt cap
+        if (config.tier == CollateralTier.ISOLATED && config.isolationDebtCap == 0) {
+            revert InvalidParameter("isolationDebtCap", 0);
+        }
     }
 }
