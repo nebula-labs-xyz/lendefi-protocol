@@ -33,5 +33,5 @@ library LendefiConstants {
     uint16 internal constant MAX_LIQUIDATION_THRESHOLD = 990;
 
     /// @notice Min liquidation threshold, percentage on a 1000 scale
-    uint16 internal constant MIN_THRESHOLD_SPREAD = 500;
+    uint16 internal constant MIN_THRESHOLD_SPREAD = 10;
 }
