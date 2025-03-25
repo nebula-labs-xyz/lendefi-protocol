@@ -28,4 +28,10 @@ library LendefiConstants {
 
     /// @notice Duration of the timelock for upgrade operations (3 days)
     uint256 internal constant UPGRADE_TIMELOCK_DURATION = 3 days;
+
+    /// @notice Max liquidation threshold, percentage on a 1000 scale
+    uint16 internal constant MAX_LIQUIDATION_THRESHOLD = 990;
+
+    /// @notice Min liquidation threshold, percentage on a 1000 scale
+    uint16 internal constant MIN_THRESHOLD_SPREAD = 500;
 }
