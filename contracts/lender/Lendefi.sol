@@ -490,7 +490,7 @@ contract Lendefi is
     /**
      * @notice Claims accumulated rewards for eligible liquidity providers
      * @dev Calculates time-based rewards and transfers them to the caller if eligible
-     *
+     * @return finalReward amount
      * @custom:requirements
      *   - Caller must have sufficient time since last claim (>= rewardInterval)
      *   - Caller must have supplied minimum amount (>= rewardableSupply)
@@ -1097,6 +1097,22 @@ contract Lendefi is
     }
 
     /**
+     * @notice Retrieves the current protocol configuration parameters
+     * @dev Returns the full ProtocolConfig struct containing all settings
+     * @return ProtocolConfig struct containing:
+     *         - profitTargetRate: Target profit rate for the protocol (1e6 = 100%)
+     *         - borrowRate: Base borrow rate before tier adjustments (1e6 = 100%)
+     *         - rewardAmount: Amount of governance tokens for liquidity rewards
+     *         - rewardInterval: Time required between reward claims (in seconds)
+     *         - rewardableSupply: Minimum supply required for reward eligibility
+     *         - liquidatorThreshold: Minimum governance tokens required to liquidate
+     *         - flashLoanFee: Fee charged for flash loans (in basis points)
+     * @custom:access-control Available to any caller, read-only function
+     */
+    function getConfig() external view returns (ProtocolConfig memory) {
+        return mainConfig;
+    }
+    /**
      * @notice Retrieves a user's position data by ID
      * @dev Returns the full position struct including isolation status, debt, and status
      * @param user Address of the position owner
@@ -1106,6 +1122,7 @@ contract Lendefi is
      * @custom:error-cases
      *   - InvalidPosition: Thrown when position doesn't exist
      */
+
     function getUserPosition(address user, uint256 positionId)
         external
         view
@@ -1430,9 +1447,6 @@ contract Lendefi is
         }
     }
 
-    function getConfig() external view returns (ProtocolConfig memory) {
-        return mainConfig;
-    }
     //////////////////////////////////////////////////
     // ---------internal functions------------------//
     //////////////////////////////////////////////////
@@ -1597,6 +1611,7 @@ contract Lendefi is
      *
      * @param positionId The ID of the position being repaid
      * @param proposedAmount The amount the user is offering to repay (uncapped)
+     * @param position The UserPosition struct for the position being repaid
      * @return actualAmount The actual amount that should be transferred from the user,
      *         which is the lesser of proposedAmount and the outstanding debt
      *
