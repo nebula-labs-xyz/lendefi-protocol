@@ -23,6 +23,17 @@ contract LendefiYieldToken is
     ReentrancyGuardUpgradeable,
     UUPSUpgradeable
 {
+    /**
+     * @notice Structure to store pending upgrade details
+     * @param implementation Address of the new implementation contract
+     * @param scheduledTime Timestamp when the upgrade was scheduled
+     * @param exists Boolean flag indicating if an upgrade is currently scheduled
+     */
+    struct UpgradeRequest {
+        address implementation;
+        uint64 scheduledTime;
+        bool exists;
+    }
     // ========== CONSTANTS ==========
 
     /// @notice Role for pausing and unpausing token transfers in emergency situations
@@ -42,18 +53,6 @@ contract LendefiYieldToken is
 
     /// @notice Current version of the contract, incremented on each upgrade
     uint8 public version;
-
-    /**
-     * @notice Structure to store pending upgrade details
-     * @param implementation Address of the new implementation contract
-     * @param scheduledTime Timestamp when the upgrade was scheduled
-     * @param exists Boolean flag indicating if an upgrade is currently scheduled
-     */
-    struct UpgradeRequest {
-        address implementation;
-        uint64 scheduledTime;
-        bool exists;
-    }
 
     /// @notice Information about the currently pending upgrade
     UpgradeRequest public pendingUpgrade;
