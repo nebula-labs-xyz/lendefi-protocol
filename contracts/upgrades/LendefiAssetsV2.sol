@@ -364,49 +364,76 @@ contract LendefiAssetsV2 is
     // ==================== ORACLE MANAGEMENT ====================
 
     /**
-     * @notice Sets the primary oracle type for an asset
-     * @dev Changes which oracle is used as the primary price source
-     * @param asset The asset to update
-     * @param oracleType The oracle type to set as primary
-     * @custom:access Restricted to LendefiConstants.MANAGER_ROLE
-     * @custom:pausable Operation not allowed when contract is paused
-     * @custom:validation Asset must be previously listed
-     * @custom:emits PrimaryOracleSet when primary oracle is changed
+     * @notice Automatically evaluates and manages circuit breaker status based on price conditions
+     * @dev Anyone can call this function to update circuit breaker status based on current conditions
+     * @param asset The asset to evaluate circuit breaker status for
+     * @return triggered Whether the circuit breaker is now active
+     * @return deviation The percentage deviation that affected the decision
+     * @custom:emits CircuitBreakerTriggered or CircuitBreakerReset based on conditions
      */
-    function setPrimaryOracle(address asset, OracleType oracleType)
+    function evaluateCircuitBreaker(address asset)
         external
         onlyListedAsset(asset)
-        onlyRole(LendefiConstants.MANAGER_ROLE)
-        whenNotPaused
+        returns (bool triggered, uint256 deviation)
     {
-        assetInfo[asset].primaryOracleType = oracleType;
-        emit PrimaryOracleSet(asset, oracleType);
-    }
+        // Get oracle configuration
+        Asset storage info = assetInfo[asset];
+        uint8 chainlinkActive = info.chainlinkConfig.active;
+        uint8 uniswapActive = info.poolConfig.active;
+        bool shouldBreak = false;
+        uint256 deviationPct = 0;
 
-    /**
-     * @notice Activates the circuit breaker for an asset
-     * @dev Prevents price queries when activated
-     * @param asset The asset to trigger circuit breaker for
-     * @custom:access Restricted to LendefiConstants.CIRCUIT_BREAKER_ROLE
-     * @custom:security Emergency function to prevent using potentially manipulated prices
-     * @custom:emits CircuitBreakerTriggered when activated
-     */
-    function triggerCircuitBreaker(address asset) external onlyRole(LendefiConstants.CIRCUIT_BREAKER_ROLE) {
-        circuitBroken[asset] = true;
-        emit CircuitBreakerTriggered(asset, 0, 0);
-    }
+        // Dual oracle case - check price deviation between oracles
+        if (chainlinkActive == 1 && uniswapActive == 1) {
+            (bool hasDeviation, uint256 devPercent) = checkPriceDeviation(asset);
+            if (hasDeviation) {
+                shouldBreak = true;
+                deviationPct = devPercent;
+            }
+        }
+        // Single Chainlink oracle case - check volatility between rounds
+        else if (chainlinkActive == 1) {
+            address oracle = info.chainlinkConfig.oracleUSD;
+            (uint80 roundId, int256 currentPrice,, uint256 timestamp,) = AggregatorV3Interface(oracle).latestRoundData();
 
-    /**
-     * @notice Deactivates the circuit breaker for an asset
-     * @dev Allows price queries to resume
-     * @param asset The asset to reset circuit breaker for
-     * @custom:access Restricted to LendefiConstants.CIRCUIT_BREAKER_ROLE
-     * @custom:security Should only be called after verifying price feed reliability
-     * @custom:emits CircuitBreakerReset when deactivated
-     */
-    function resetCircuitBreaker(address asset) external onlyRole(LendefiConstants.CIRCUIT_BREAKER_ROLE) {
-        circuitBroken[asset] = false;
-        emit CircuitBreakerReset(asset);
+            // Only check volatility if we have a previous round
+            if (roundId > 1) {
+                (, int256 previousPrice,, uint256 previousTimestamp,) =
+                    AggregatorV3Interface(oracle).getRoundData(roundId - 1);
+
+                if (previousPrice > 0 && previousTimestamp > 0) {
+                    uint256 priceDelta = uint256(
+                        currentPrice > previousPrice ? currentPrice - previousPrice : previousPrice - currentPrice
+                    );
+
+                    deviationPct = (priceDelta * 100) / uint256(previousPrice);
+                    uint256 age = block.timestamp - timestamp;
+
+                    if (
+                        deviationPct >= mainOracleConfig.volatilityPercentage
+                            && age >= mainOracleConfig.volatilityThreshold
+                    ) {
+                        shouldBreak = true;
+                    }
+                }
+            }
+        }
+
+        // Update circuit breaker status based on conditions
+        if (shouldBreak && !circuitBroken[asset]) {
+            // Activate circuit breaker
+            circuitBroken[asset] = true;
+            emit CircuitBreakerTriggered(asset, deviationPct, block.timestamp);
+            return (true, deviationPct);
+        } else if (!shouldBreak && circuitBroken[asset]) {
+            // Reset circuit breaker automatically when conditions return to normal
+            circuitBroken[asset] = false;
+            emit CircuitBreakerReset(asset);
+            return (false, deviationPct);
+        }
+
+        // Return current status
+        return (circuitBroken[asset], deviationPct);
     }
 
     /**
@@ -748,7 +775,7 @@ contract LendefiAssetsV2 is
      * @param asset The asset to check
      * @return Whether the asset has a large price deviation
      */
-    function checkPriceDeviation(address asset) external view returns (bool, uint256) {
+    function checkPriceDeviation(address asset) public view returns (bool, uint256) {
         // Load asset info into memory once
         Asset storage info = assetInfo[asset];
         uint8 chainlinkActive = info.chainlinkConfig.active;
@@ -807,10 +834,10 @@ contract LendefiAssetsV2 is
         });
     }
 
-    // ==================== INTERNAL FUNCTIONS ====================
     /**
      * @notice Validate asset configuration parameters
      * @dev Centralized validation to ensure consistent checks across all configuration updates
+     * @param asset The address of the asset being configured
      * @param config The asset configuration to validate
      */
     function _validateAssetConfig(address asset, Asset calldata config) internal pure {
@@ -822,6 +849,20 @@ contract LendefiAssetsV2 is
                 asset, config.assetMinimumOracles, config.chainlinkConfig.active + config.poolConfig.active
             );
         }
+
+        // Validate that the primary oracle type is active
+        bool isPrimaryOracleActive = false;
+
+        if (config.primaryOracleType == OracleType.CHAINLINK) {
+            isPrimaryOracleActive = config.chainlinkConfig.active == 1;
+        } else if (config.primaryOracleType == OracleType.UNISWAP_V3_TWAP) {
+            isPrimaryOracleActive = config.poolConfig.active == 1;
+        }
+
+        if (!isPrimaryOracleActive) {
+            revert OracleNotActive(asset, config.primaryOracleType);
+        }
+
         // Threshold validations
         if (config.liquidationThreshold > 990) {
             revert InvalidLiquidationThreshold(config.liquidationThreshold);
