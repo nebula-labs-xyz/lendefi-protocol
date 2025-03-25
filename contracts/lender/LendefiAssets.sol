@@ -172,11 +172,16 @@ contract LendefiAssets is
         onlyRole(LendefiConstants.MANAGER_ROLE)
         whenNotPaused
     {
-        if (active == 0 && assetInfo[asset].poolConfig.active == 0 && assetInfo[asset].assetMinimumOracles >= 1) {
-            revert NotEnoughValidOracles(asset, assetInfo[asset].assetMinimumOracles, 0);
-        }
+        // Update Chainlink configuration
         assetInfo[asset].chainlinkConfig = ChainlinkOracleConfig({oracleUSD: oracle, active: active});
 
+        // Create a memory copy of the asset configuration to validate
+        Asset memory configCopy = assetInfo[asset];
+
+        // Validate the updated configuration using the memory copy
+        _validateAssetConfig(asset, configCopy);
+
+        // Emit event to log the update
         emit ChainlinkOracleUpdated(asset, oracle, active);
     }
 
@@ -713,6 +718,7 @@ contract LendefiAssets is
      * @param uniswapPool The Uniswap V3 pool address
      * @param twapPeriod The TWAP period in seconds (15min-24h)
      * @param active isActive flag (0 or 1)
+     * @custom:validation Validates through _validateAssetConfig
      * @custom:validation Performed by _validatePool function
      */
     function updateUniswapOracle(address asset, address uniswapPool, uint32 twapPeriod, uint8 active)
@@ -722,11 +728,19 @@ contract LendefiAssets is
         onlyRole(LendefiConstants.MANAGER_ROLE)
         whenNotPaused
     {
-        // Comprehensive validation
+        // Validate TWAP period and pool configuration first
         _validatePool(asset, uniswapPool, twapPeriod, active);
 
-        // Update configuration
+        // Update Uniswap configuration
         assetInfo[asset].poolConfig = UniswapPoolConfig({pool: uniswapPool, twapPeriod: twapPeriod, active: active});
+
+        // Create a memory copy of the asset configuration to validate
+        Asset memory configCopy = assetInfo[asset];
+
+        // Validate the updated configuration using the memory copy
+        _validateAssetConfig(asset, configCopy);
+
+        // Emit event to log the update
         emit UniswapOracleUpdated(asset, uniswapPool, active);
     }
 
@@ -1105,7 +1119,7 @@ contract LendefiAssets is
      * - Economic attacks on the lending protocol
      * @custom:reverts Multiple error types based on the specific validation failure
      */
-    function _validateAssetConfig(address asset, Asset calldata config) internal pure {
+    function _validateAssetConfig(address asset, Asset memory config) internal pure {
         // Basic validation
         if (config.chainlinkConfig.oracleUSD == address(0)) revert ZeroAddressNotAllowed();
         // Validate active parameter (must be 0 or 1)
