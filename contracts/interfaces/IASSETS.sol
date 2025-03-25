@@ -349,6 +349,12 @@ interface IASSETS {
      */
     error OracleNotActive(address asset, OracleType oracleType);
 
+    /**
+     * @notice Error thrown when too many assets are listed
+     * @param maxAllowedAssets Maximum allowed assets
+     */
+    error AssetListTooLarge(uint32 maxAllowedAssets);
+
     // ==================== FUNCTIONS ====================
 
     /**
