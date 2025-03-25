@@ -28,6 +28,13 @@ import {UniswapTickMath} from "../lender/lib/UniswapTickMath.sol";
 
 /// @custom:oz-upgrades-from contracts/lender/LendefiAssets.sol:LendefiAssets
 contract LendefiAssetsV2 is
+    IASSETS,
+    Initializable,
+    AccessControlUpgradeable,
+    ReentrancyGuardUpgradeable,
+    PausableUpgradeable,
+    UUPSUpgradeable
+{
     using LendefiConstants for *;
     using UniswapTickMath for int24;
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -798,7 +805,8 @@ contract LendefiAssetsV2 is
         uint256 minPrice = price1 < price2 ? price1 : price2;
         uint256 maxPrice = price1 > price2 ? price1 : price2;
         uint256 priceDelta = maxPrice - minPrice;
-        deviation = (priceDelta * 100) / minPrice;
+
+        deviation = FullMath.mulDiv(priceDelta, 100, minPrice);
 
         // Compare with circuit breaker threshold
         return (deviation >= mainOracleConfig.circuitBreakerThreshold, deviation);
