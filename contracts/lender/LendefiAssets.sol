@@ -805,7 +805,8 @@ contract LendefiAssets is
         uint256 minPrice = price1 < price2 ? price1 : price2;
         uint256 maxPrice = price1 > price2 ? price1 : price2;
         uint256 priceDelta = maxPrice - minPrice;
-        deviation = (priceDelta * 100) / minPrice;
+
+        deviation = FullMath.mulDiv(priceDelta, 100, minPrice);
 
         // Compare with circuit breaker threshold
         return (deviation >= mainOracleConfig.circuitBreakerThreshold, deviation);
