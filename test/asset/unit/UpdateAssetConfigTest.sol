@@ -623,4 +623,137 @@ contract UpdateAssetConfigTest is BasicDeploy {
         assertEq(assetInfo.borrowThreshold, 840, "Borrow threshold not stored correctly");
         assertEq(assetInfo.liquidationThreshold, 850, "Liquidation threshold not stored correctly");
     }
+
+    // ======== 9. ValidatePool Edge Cases ========
+
+    function testRevert_ValidatePoolWithInvalidTwapPeriodTooShort() public {
+        // Create a proper Uniswap pool containing the test token
+        MockUniswapV3Pool testPool = new MockUniswapV3Pool(address(testToken), address(usdcInstance), 3000);
+
+        // First add the token to make it a listed asset
+        vm.startPrank(address(timelockInstance));
+        assetsInstance.updateAssetConfig(
+            address(testToken),
+            IASSETS.Asset({
+                active: 1,
+                decimals: 8,
+                borrowThreshold: 800,
+                liquidationThreshold: 850,
+                maxSupplyThreshold: 1_000_000e8,
+                isolationDebtCap: 0,
+                assetMinimumOracles: 1,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
+            })
+        );
+
+        // Now try to set an invalid TWAP period (too short)
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.InvalidThreshold.selector, "twapPeriod", 899, 900, 1800));
+        assetsInstance.updateUniswapOracle(address(testToken), address(testPool), 899, 1);
+
+        vm.stopPrank();
+    }
+
+    function testRevert_ValidatePoolWithInvalidTwapPeriodTooLong() public {
+        // Create a proper Uniswap pool containing the test token
+        MockUniswapV3Pool testPool = new MockUniswapV3Pool(address(testToken), address(usdcInstance), 3000);
+
+        // First add the token to make it a listed asset
+        vm.startPrank(address(timelockInstance));
+        assetsInstance.updateAssetConfig(
+            address(testToken),
+            IASSETS.Asset({
+                active: 1,
+                decimals: 8,
+                borrowThreshold: 800,
+                liquidationThreshold: 850,
+                maxSupplyThreshold: 1_000_000e8,
+                isolationDebtCap: 0,
+                assetMinimumOracles: 1,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
+            })
+        );
+
+        // Try with an invalid TWAP period (too long)
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.InvalidThreshold.selector, "twapPeriod", 1801, 900, 1800));
+        assetsInstance.updateUniswapOracle(address(testToken), address(testPool), 1801, 1);
+
+        vm.stopPrank();
+    }
+
+    function testRevert_ValidatePoolWithInvalidActiveParameter() public {
+        // Create a proper Uniswap pool containing the test token
+        MockUniswapV3Pool testPool = new MockUniswapV3Pool(address(testToken), address(usdcInstance), 3000);
+
+        // First add the token to make it a listed asset
+        vm.startPrank(address(timelockInstance));
+        assetsInstance.updateAssetConfig(
+            address(testToken),
+            IASSETS.Asset({
+                active: 1,
+                decimals: 8,
+                borrowThreshold: 800,
+                liquidationThreshold: 850,
+                maxSupplyThreshold: 1_000_000e8,
+                isolationDebtCap: 0,
+                assetMinimumOracles: 1,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
+            })
+        );
+
+        // Try with an invalid active parameter (>1)
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.InvalidParameter.selector, "active", 2));
+        assetsInstance.updateUniswapOracle(address(testToken), address(testPool), 900, 2);
+
+        vm.stopPrank();
+    }
+
+    function testRevert_ValidatePoolWithInsufficientOracles() public {
+        // Create a proper Uniswap pool containing the test token
+        MockUniswapV3Pool testPool = new MockUniswapV3Pool(address(testToken), address(usdcInstance), 3000);
+
+        // First add the token to make it a listed asset with:
+        // - Minimum oracles = 1
+        // - Chainlink inactive
+        // - Uniswap active
+        vm.startPrank(address(timelockInstance));
+        assetsInstance.updateAssetConfig(
+            address(testToken),
+            IASSETS.Asset({
+                active: 1,
+                decimals: 8,
+                borrowThreshold: 800,
+                liquidationThreshold: 850,
+                maxSupplyThreshold: 1_000_000e8,
+                isolationDebtCap: 0,
+                assetMinimumOracles: 1, // Require at least 1 oracle
+                primaryOracleType: IASSETS.OracleType.UNISWAP_V3_TWAP, // Uniswap is primary
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
+                    oracleUSD: address(testOracle),
+                    active: 0 // Chainlink inactive
+                }),
+                poolConfig: IASSETS.UniswapPoolConfig({
+                    pool: address(testPool),
+                    twapPeriod: 900,
+                    active: 1 // Uniswap active
+                })
+            })
+        );
+
+        // Now try to deactivate Uniswap with Chainlink already inactive
+        // This should revert because we would have 0 active oracles while minimum is 1
+        vm.expectRevert(abi.encodeWithSelector(IASSETS.NotEnoughValidOracles.selector, address(testToken), 1, 0));
+        assetsInstance.updateUniswapOracle(address(testToken), address(testPool), 900, 0);
+
+        vm.stopPrank();
+    }
 }
