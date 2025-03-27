@@ -213,10 +213,6 @@ contract InvestmentManager is
      * @param amount The amount to check
      * @custom:throws InvalidAmount if the amount is zero
      */
-    // modifier nonZeroAmount(uint256 amount) {
-    //     if (amount == 0) revert InvalidAmount(amount);
-    //     _;
-    // }
 
     // ============ Constructor & Initializer ============
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -240,19 +236,11 @@ contract InvestmentManager is
      * @param token Address of the ecosystem token
      * @param timelock_ Address of the timelock controller
      * @param treasury_ Address of the treasury contract
-     * @param guardian Address with pause/unpause authority
-     * @param gnosisSafe Address of the multisig for management operations
      * @notice Sets up roles, connects to ecosystem contracts, and initializes version
      * @custom:throws ZeroAddressDetected if any parameter is the zero address
      */
-    function initialize(address token, address timelock_, address treasury_, address guardian, address gnosisSafe)
-        external
-        initializer
-    {
-        if (
-            token == address(0) || timelock_ == address(0) || treasury_ == address(0) || guardian == address(0)
-                || gnosisSafe == address(0)
-        ) {
+    function initialize(address token, address timelock_, address treasury_) external initializer {
+        if (token == address(0) || timelock_ == address(0) || treasury_ == address(0)) {
             revert ZeroAddressDetected();
         }
 
@@ -262,10 +250,10 @@ contract InvestmentManager is
         __ReentrancyGuard_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, timelock_);
-        _grantRole(MANAGER_ROLE, gnosisSafe);
-        _grantRole(PAUSER_ROLE, guardian);
+        _grantRole(MANAGER_ROLE, timelock_);
+        _grantRole(PAUSER_ROLE, timelock_);
+        _grantRole(UPGRADER_ROLE, timelock_);
         _grantRole(DAO_ROLE, timelock_);
-        _grantRole(UPGRADER_ROLE, gnosisSafe);
 
         ecosystemToken = IERC20(token);
         timelock = timelock_;
@@ -692,44 +680,6 @@ contract InvestmentManager is
     }
 
     /**
-     * @notice Processes ETH investment in a specific investment round
-     * @dev Handles direct investment and fallback function investments
-     * @param roundId The ID of the investment round
-     * @custom:security Uses nonReentrant guard for ETH transfers
-     * @custom:security Validates round status and investor allocation
-     * @custom:security Enforces investment limits and round constraints
-     * @custom:events-emits {Invest} when investment is processed
-     * @custom:events-emits {RoundComplete} if round target is reached
-     * @custom:modifiers validRound, activeRound, whenNotPaused, nonReentrant
-     * @custom:throws RoundEnded if round end time has passed
-     * @custom:throws RoundOversubscribed if maximum investor count reached
-     * @custom:throws NoAllocation if sender has no allocation
-     * @custom:throws AmountAllocationMismatch if sent ETH doesn't match remaining allocation
-     */
-    function investEther(uint32 roundId)
-        public
-        payable
-        validRound(roundId)
-        activeRound(roundId)
-        whenNotPaused
-        nonReentrant
-    {
-        Round storage currentRound = rounds[roundId];
-        if (block.timestamp >= currentRound.endTime) revert RoundEnded(roundId);
-        if (currentRound.participants >= MAX_INVESTORS_PER_ROUND) revert RoundOversubscribed(roundId);
-
-        Allocation storage allocation = investorAllocations[roundId][msg.sender];
-        if (allocation.etherAmount == 0) revert NoAllocation(msg.sender);
-
-        uint256 remainingAllocation = allocation.etherAmount - investorPositions[roundId][msg.sender];
-        if (msg.value != remainingAllocation) {
-            revert AmountAllocationMismatch(msg.value, remainingAllocation);
-        }
-
-        _processInvestment(roundId, msg.sender, msg.value);
-    }
-
-    /**
      * @notice Calculates remaining time in the upgrade timelock period
      * @dev Returns 0 if no upgrade is pending or timelock has expired
      * @return uint256 Remaining time in seconds before upgrade can be executed
@@ -804,6 +754,44 @@ contract InvestmentManager is
      */
     function getRoundInvestors(uint32 roundId) external view returns (address[] memory) {
         return investors[roundId];
+    }
+
+    /**
+     * @notice Processes ETH investment in a specific investment round
+     * @dev Handles direct investment and fallback function investments
+     * @param roundId The ID of the investment round
+     * @custom:security Uses nonReentrant guard for ETH transfers
+     * @custom:security Validates round status and investor allocation
+     * @custom:security Enforces investment limits and round constraints
+     * @custom:events-emits {Invest} when investment is processed
+     * @custom:events-emits {RoundComplete} if round target is reached
+     * @custom:modifiers validRound, activeRound, whenNotPaused, nonReentrant
+     * @custom:throws RoundEnded if round end time has passed
+     * @custom:throws RoundOversubscribed if maximum investor count reached
+     * @custom:throws NoAllocation if sender has no allocation
+     * @custom:throws AmountAllocationMismatch if sent ETH doesn't match remaining allocation
+     */
+    function investEther(uint32 roundId)
+        public
+        payable
+        validRound(roundId)
+        activeRound(roundId)
+        whenNotPaused
+        nonReentrant
+    {
+        Round storage currentRound = rounds[roundId];
+        if (block.timestamp >= currentRound.endTime) revert RoundEnded(roundId);
+        if (currentRound.participants >= MAX_INVESTORS_PER_ROUND) revert RoundOversubscribed(roundId);
+
+        Allocation storage allocation = investorAllocations[roundId][msg.sender];
+        if (allocation.etherAmount == 0) revert NoAllocation(msg.sender);
+
+        uint256 remainingAllocation = allocation.etherAmount - investorPositions[roundId][msg.sender];
+        if (msg.value != remainingAllocation) {
+            revert AmountAllocationMismatch(msg.value, remainingAllocation);
+        }
+
+        _processInvestment(roundId, msg.sender, msg.value);
     }
 
     /**
