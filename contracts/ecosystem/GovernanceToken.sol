@@ -31,6 +31,12 @@ contract GovernanceToken is
     ERC20VotesUpgradeable,
     UUPSUpgradeable
 {
+    /// @dev Upgrade timelock storage
+    struct UpgradeRequest {
+        address implementation;
+        uint64 scheduledTime;
+        bool exists;
+    }
     // ============ Constants ============
 
     /// @notice Token supply and distribution constants
@@ -60,13 +66,6 @@ contract GovernanceToken is
     uint32 public version;
     /// @dev tge initialized variable
     uint32 public tge;
-
-    /// @dev Upgrade timelock storage
-    struct UpgradeRequest {
-        address implementation;
-        uint64 scheduledTime;
-        bool exists;
-    }
 
     UpgradeRequest public pendingUpgrade;
 
@@ -182,8 +181,8 @@ contract GovernanceToken is
         if (addr == address(0)) revert ZeroAddress();
         _;
     }
-    /// @custom:oz-upgrades-unsafe-allow constructor
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
@@ -197,15 +196,12 @@ contract GovernanceToken is
      * @notice Sets up the initial state of the contract, including roles and token supplies.
      * @param guardian The address of the guardian (admin).
      * @param timelock The address of the timelock controller.
-     * @param multisig The address of the multisig wallet.
      * @custom:requires The addresses must not be zero.
      * @custom:events-emits {Initialized} event.
      * @custom:throws ZeroAddress if any address is zero.
      */
-    function initializeUUPS(address guardian, address timelock, address multisig) external initializer {
-        if (guardian == address(0)) revert ZeroAddress();
-        if (timelock == address(0)) revert ZeroAddress();
-        if (multisig == address(0)) revert ZeroAddress();
+    function initializeUUPS(address guardian, address timelock) external initializer {
+        if (guardian == address(0) || timelock == address(0)) revert ZeroAddress();
 
         __ERC20_init("Lendefi DAO", "LEND");
         __ERC20Burnable_init();
@@ -216,10 +212,10 @@ contract GovernanceToken is
         __UUPSUpgradeable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, timelock);
-        _grantRole(TGE_ROLE, guardian);
-        _grantRole(PAUSER_ROLE, guardian);
-        _grantRole(UPGRADER_ROLE, multisig);
         _grantRole(MANAGER_ROLE, timelock);
+        _grantRole(PAUSER_ROLE, timelock);
+        _grantRole(UPGRADER_ROLE, timelock);
+        _grantRole(TGE_ROLE, guardian);
 
         initialSupply = INITIAL_SUPPLY;
         maxBridge = DEFAULT_MAX_BRIDGE_AMOUNT;
