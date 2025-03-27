@@ -139,19 +139,17 @@ contract TreasuryV2 is
     /**
      * @notice Initializes the treasury contract
      * @dev Sets up the initial state of the contract
-     * @param guardian The address that will have the PAUSER_ROLE
      * @param timelock The address that will have the DEFAULT_ADMIN_ROLE and MANAGER_ROLE
      * @param multisig The address of the Gnosis Safe multisig that will be granted the UPGRADER_ROLE
      * @param startOffset The number of seconds the start time is before the current block timestamp
      * @param vestingDuration The duration of vesting in seconds (must be at least 730 days)
      */
-    function initialize(
-        address guardian,
-        address timelock,
-        address multisig,
-        uint256 startOffset,
-        uint256 vestingDuration
-    ) external initializer nonZeroAddress(guardian) nonZeroAddress(timelock) nonZeroAddress(multisig) {
+    function initialize(address timelock, address multisig, uint256 startOffset, uint256 vestingDuration)
+        external
+        initializer
+        nonZeroAddress(timelock)
+        nonZeroAddress(multisig)
+    {
         if (vestingDuration < 730 days) revert InvalidDuration(730 days);
 
         // Initialize inherited contracts
@@ -163,8 +161,9 @@ contract TreasuryV2 is
         // Set roles
         _grantRole(DEFAULT_ADMIN_ROLE, timelock);
         _grantRole(MANAGER_ROLE, timelock);
-        _grantRole(PAUSER_ROLE, guardian);
-        _grantRole(UPGRADER_ROLE, multisig); // Grant upgrade role to multisig
+        _grantRole(PAUSER_ROLE, timelock);
+        _grantRole(UPGRADER_ROLE, timelock);
+        _grantRole(UPGRADER_ROLE, multisig);
 
         _start = block.timestamp - startOffset;
         _duration = vestingDuration;
@@ -308,6 +307,19 @@ contract TreasuryV2 is
     }
 
     /**
+     * @notice Cancels a previously scheduled upgrade
+     * @dev Only callable by addresses with UPGRADER_ROLE
+     */
+    function cancelUpgrade() external onlyRole(UPGRADER_ROLE) {
+        if (!pendingUpgrade.exists) {
+            revert UpgradeNotScheduled();
+        }
+        address implementation = pendingUpgrade.implementation;
+        delete pendingUpgrade;
+        emit UpgradeCancelled(msg.sender, implementation);
+    }
+
+    /**
      * @dev Returns the remaining time before a scheduled upgrade can be executed
      * @return timeRemaining The time remaining in seconds, or 0 if no upgrade is scheduled or timelock has passed
      */
@@ -414,24 +426,6 @@ contract TreasuryV2 is
     }
 
     // ============ Internal Functions ============
-
-    /**
-     * @dev Internal function to calculate vested amounts for a given allocation and timestamp
-     * @dev Uses linear vesting between start and end time
-     * @param totalAllocation The total amount to vest
-     * @param timestamp The timestamp to check
-     * @return The amount vested at the specified timestamp
-     */
-    function _vestingSchedule(uint256 totalAllocation, uint256 timestamp) internal view virtual returns (uint256) {
-        if (timestamp < _start) {
-            return 0;
-        } else if (timestamp >= _start + _duration) {
-            return totalAllocation;
-        } else {
-            return (totalAllocation * (timestamp - _start)) / _duration;
-        }
-    }
-
     /**
      * @notice Authorizes and processes contract upgrades with timelock enforcement
      * @dev Internal override for UUPS upgrade authorization
@@ -459,5 +453,22 @@ contract TreasuryV2 is
 
         // Emit the upgrade event
         emit Upgraded(msg.sender, newImplementation, _version);
+    }
+
+    /**
+     * @dev Internal function to calculate vested amounts for a given allocation and timestamp
+     * @dev Uses linear vesting between start and end time
+     * @param totalAllocation The total amount to vest
+     * @param timestamp The timestamp to check
+     * @return The amount vested at the specified timestamp
+     */
+    function _vestingSchedule(uint256 totalAllocation, uint256 timestamp) internal view virtual returns (uint256) {
+        if (timestamp < _start) {
+            return 0;
+        } else if (timestamp >= _start + _duration) {
+            return totalAllocation;
+        } else {
+            return (totalAllocation * (timestamp - _start)) / _duration;
+        }
     }
 }
