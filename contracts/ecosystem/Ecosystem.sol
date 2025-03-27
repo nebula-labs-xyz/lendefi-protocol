@@ -12,7 +12,6 @@ import {ILENDEFI} from "../interfaces/ILendefi.sol";
 import {IECOSYSTEM} from "../interfaces/IEcosystem.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {VestingWallet} from "@openzeppelin/contracts/finance/VestingWallet.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
@@ -118,22 +117,31 @@ contract Ecosystem is
     receive() external payable {
         revert ValidationFailed("NO_ETHER_ACCEPTED");
     }
-
     /**
-     * @dev Initializes the ecosystem contract.
-     * @notice Sets up the initial state of the contract, including roles and token supplies.
-     * @param token The address of the governance token.
-     * @param timelockAddr The address of the timelock controller for partner vesting cancellation.
-     * @param guardian The address of the guardian (admin).
-     * @param multisig The address of the pauser.
-     * @custom:requires All input addresses must not be zero.
-     * @custom:requires-role DEFAULT_ADMIN_ROLE for the guardian.
-     * @custom:requires-role PAUSER_ROLE for the pauser.
-     * @custom:events-emits {Initialized} event.
-     * @custom:throws ZeroAddressDetected if any of the input addresses are zero.
+     * @notice Initializes the Ecosystem contract with core dependencies and configurations
+     * @dev Sets up the contract with initial token allocations, roles, and limits
+     * @param token Address of the LENDEFI token contract
+     * @param timelockAddr Address of the timelock contract that will have admin control
+     * @param multisig Address of the multisig wallet that will have upgrade rights
+     * @custom:security Uses initializer modifier to prevent multiple initializations
+     * @custom:security-roles Grants the following roles:
+     *  - DEFAULT_ADMIN_ROLE to timelock
+     *  - MANAGER_ROLE to timelock
+     *  - PAUSER_ROLE to timelock
+     *  - UPGRADER_ROLE to both timelock and multisig
+     * @custom:allocation Configures token allocations as follows:
+     *  - 26% for rewards
+     *  - 10% for airdrops
+     *  - 8% for partnerships
+     * @custom:limits Sets initial limits:
+     *  - maxReward: 0.1% of reward supply
+     *  - maxBurn: 2% of reward supply
+     * @custom:events-emits {Initialized} when initialization is complete
+     * @custom:throws ZeroAddressDetected if any input address is zero
      */
-    function initialize(address token, address timelockAddr, address guardian, address multisig) external initializer {
-        if (token == address(0) || timelockAddr == address(0) || guardian == address(0) || multisig == address(0)) {
+
+    function initialize(address token, address timelockAddr, address multisig) external initializer {
+        if (token == address(0) || timelockAddr == address(0) || multisig == address(0)) {
             revert ZeroAddressDetected();
         }
 
@@ -144,7 +152,8 @@ contract Ecosystem is
         // Set up roles
         _grantRole(DEFAULT_ADMIN_ROLE, timelockAddr);
         _grantRole(MANAGER_ROLE, timelockAddr);
-        _grantRole(PAUSER_ROLE, guardian);
+        _grantRole(PAUSER_ROLE, timelockAddr);
+        _grantRole(UPGRADER_ROLE, timelockAddr);
         _grantRole(UPGRADER_ROLE, multisig); // Grant upgrade role to multisig
 
         // Set up token and timelock
@@ -210,16 +219,6 @@ contract Ecosystem is
         pendingUpgrade = UpgradeRequest({implementation: newImplementation, scheduledTime: currentTime, exists: true});
 
         emit UpgradeScheduled(msg.sender, newImplementation, currentTime, effectiveTime);
-    }
-
-    /**
-     * @dev Returns the remaining time before a scheduled upgrade can be executed
-     * @return The time remaining in seconds, or 0 if no upgrade is scheduled or timelock has passed
-     */
-    function upgradeTimelockRemaining() external view returns (uint256) {
-        return pendingUpgrade.exists && block.timestamp < pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION
-            ? pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION - block.timestamp
-            : 0;
     }
 
     /**
@@ -548,6 +547,15 @@ contract Ecosystem is
     }
 
     // ============ View Functions ============
+    /**
+     * @dev Returns the remaining time before a scheduled upgrade can be executed
+     * @return The time remaining in seconds, or 0 if no upgrade is scheduled or timelock has passed
+     */
+    function upgradeTimelockRemaining() external view returns (uint256) {
+        return pendingUpgrade.exists && block.timestamp < pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION
+            ? pendingUpgrade.scheduledTime + UPGRADE_TIMELOCK_DURATION - block.timestamp
+            : 0;
+    }
 
     /**
      * @dev Returns the effective available reward supply considering burns.
