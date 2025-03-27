@@ -97,13 +97,12 @@ contract BasicDeploy is Test {
         }
 
         // token deploy
-        bytes memory data =
-            abi.encodeCall(GovernanceToken.initializeUUPS, (guardian, address(timelockInstance), gnosisSafe));
+        bytes memory data = abi.encodeCall(GovernanceToken.initializeUUPS, (guardian, address(timelockInstance)));
         address payable proxy = payable(Upgrades.deployUUPSProxy("GovernanceToken.sol", data));
         tokenInstance = GovernanceToken(proxy);
         address tokenImplementation = Upgrades.getImplementationAddress(proxy);
         assertFalse(address(tokenInstance) == tokenImplementation);
-        assertTrue(tokenInstance.hasRole(UPGRADER_ROLE, gnosisSafe) == true);
+        assertTrue(tokenInstance.hasRole(UPGRADER_ROLE, address(timelockInstance)) == true);
 
         // Create options struct for the implementation
         Options memory opts = Options({
@@ -126,7 +125,7 @@ contract BasicDeploy is Test {
         address newImpl = Upgrades.prepareUpgrade("GovernanceTokenV2.sol", opts);
 
         // Schedule the upgrade with that exact address
-        vm.startPrank(gnosisSafe);
+        vm.startPrank(address(timelockInstance));
         tokenInstance.scheduleUpgrade(newImpl);
 
         // Fast forward past the timelock period
@@ -140,7 +139,7 @@ contract BasicDeploy is Test {
         GovernanceTokenV2 instanceV2 = GovernanceTokenV2(proxy);
         assertEq(instanceV2.version(), 2, "Version not incremented to 2");
         assertFalse(implAddressV2 == tokenImplementation, "Implementation address didn't change");
-        assertTrue(instanceV2.hasRole(UPGRADER_ROLE, gnosisSafe) == true, "Lost UPGRADER_ROLE");
+        assertTrue(instanceV2.hasRole(UPGRADER_ROLE, address(timelockInstance)) == true, "Lost UPGRADER_ROLE");
     }
 
     function deployEcosystemUpgrade() internal {
@@ -149,9 +148,8 @@ contract BasicDeploy is Test {
         _deployTimelock();
 
         // ecosystem deploy
-        bytes memory data = abi.encodeCall(
-            Ecosystem.initialize, (address(tokenInstance), address(timelockInstance), guardian, gnosisSafe)
-        );
+        bytes memory data =
+            abi.encodeCall(Ecosystem.initialize, (address(tokenInstance), address(timelockInstance), gnosisSafe));
         address payable proxy = payable(Upgrades.deployUUPSProxy("Ecosystem.sol", data));
         ecoInstance = Ecosystem(proxy);
         address implAddressV1 = Upgrades.getImplementationAddress(proxy);
@@ -207,9 +205,8 @@ contract BasicDeploy is Test {
         uint256 startOffset = 180 days;
         uint256 vestingDuration = 3 * 365 days;
 
-        bytes memory data = abi.encodeCall(
-            Treasury.initialize, (guardian, address(timelockInstance), gnosisSafe, startOffset, vestingDuration)
-        );
+        bytes memory data =
+            abi.encodeCall(Treasury.initialize, (address(timelockInstance), gnosisSafe, startOffset, vestingDuration));
         address payable proxy = payable(Upgrades.deployUUPSProxy("Treasury.sol", data));
         treasuryInstance = Treasury(proxy);
         address implAddressV1 = Upgrades.getImplementationAddress(proxy);
@@ -337,8 +334,7 @@ contract BasicDeploy is Test {
 
         // deploy Investment Manager
         bytes memory data = abi.encodeCall(
-            InvestmentManager.initialize,
-            (address(tokenInstance), address(timelockInstance), address(treasuryInstance), guardian, gnosisSafe)
+            InvestmentManager.initialize, (address(tokenInstance), address(timelockInstance), address(treasuryInstance))
         );
         address payable proxy = payable(Upgrades.deployUUPSProxy("InvestmentManager.sol", data));
         managerInstance = InvestmentManager(proxy);
@@ -346,7 +342,9 @@ contract BasicDeploy is Test {
         assertFalse(address(managerInstance) == implAddressV1);
 
         // Verify gnosis multisig has the required role
-        assertTrue(managerInstance.hasRole(UPGRADER_ROLE, gnosisSafe), "Multisig should have UPGRADER_ROLE");
+        assertTrue(
+            managerInstance.hasRole(UPGRADER_ROLE, address(timelockInstance)), "Timelock should have UPGRADER_ROLE"
+        );
 
         // Create options struct for the implementation
         Options memory opts = Options({
@@ -369,7 +367,7 @@ contract BasicDeploy is Test {
         address newImpl = Upgrades.prepareUpgrade("InvestmentManagerV2.sol", opts);
 
         // Schedule the upgrade with that exact address
-        vm.startPrank(gnosisSafe);
+        vm.startPrank(address(timelockInstance));
         managerInstance.scheduleUpgrade(newImpl);
 
         // Fast forward past the timelock period (3 days for InvestmentManager)
@@ -383,7 +381,7 @@ contract BasicDeploy is Test {
         InvestmentManagerV2 imInstanceV2 = InvestmentManagerV2(proxy);
         assertEq(imInstanceV2.version(), 2, "Version not incremented to 2");
         assertFalse(implAddressV2 == implAddressV1, "Implementation address didn't change");
-        assertTrue(imInstanceV2.hasRole(UPGRADER_ROLE, gnosisSafe), "Lost UPGRADER_ROLE");
+        assertTrue(imInstanceV2.hasRole(UPGRADER_ROLE, address(timelockInstance)), "Lost UPGRADER_ROLE");
     }
 
     function deployTeamManagerUpgrade() internal {
@@ -392,9 +390,8 @@ contract BasicDeploy is Test {
         _deployToken();
 
         // deploy Team Manager with gnosisSafe as the upgrader role
-        bytes memory data = abi.encodeCall(
-            TeamManager.initialize, (address(tokenInstance), address(timelockInstance), guardian, gnosisSafe)
-        );
+        bytes memory data =
+            abi.encodeCall(TeamManager.initialize, (address(tokenInstance), address(timelockInstance), gnosisSafe));
         address payable proxy = payable(Upgrades.deployUUPSProxy("TeamManager.sol", data));
         tmInstance = TeamManager(proxy);
         address implAddressV1 = Upgrades.getImplementationAddress(proxy);
@@ -465,8 +462,7 @@ contract BasicDeploy is Test {
             _deployTimelock();
         }
         // token deploy
-        bytes memory data =
-            abi.encodeCall(GovernanceToken.initializeUUPS, (guardian, address(timelockInstance), gnosisSafe));
+        bytes memory data = abi.encodeCall(GovernanceToken.initializeUUPS, (guardian, address(timelockInstance)));
         address payable proxy = payable(Upgrades.deployUUPSProxy("GovernanceToken.sol", data));
         tokenInstance = GovernanceToken(proxy);
         address tokenImplementation = Upgrades.getImplementationAddress(proxy);
@@ -475,9 +471,8 @@ contract BasicDeploy is Test {
 
     function _deployEcosystem() internal {
         // ecosystem deploy
-        bytes memory data = abi.encodeCall(
-            Ecosystem.initialize, (address(tokenInstance), address(timelockInstance), guardian, gnosisSafe)
-        );
+        bytes memory data =
+            abi.encodeCall(Ecosystem.initialize, (address(tokenInstance), address(timelockInstance), gnosisSafe));
         address payable proxy = payable(Upgrades.deployUUPSProxy("Ecosystem.sol", data));
         ecoInstance = Ecosystem(proxy);
         address ecoImplementation = Upgrades.getImplementationAddress(proxy);
@@ -513,9 +508,8 @@ contract BasicDeploy is Test {
         // deploy Treasury
         uint256 startOffset = 180 days;
         uint256 vestingDuration = 3 * 365 days;
-        bytes memory data = abi.encodeCall(
-            Treasury.initialize, (guardian, address(timelockInstance), gnosisSafe, startOffset, vestingDuration)
-        );
+        bytes memory data =
+            abi.encodeCall(Treasury.initialize, (address(timelockInstance), gnosisSafe, startOffset, vestingDuration));
         address payable proxy = payable(Upgrades.deployUUPSProxy("Treasury.sol", data));
         treasuryInstance = Treasury(proxy);
         address implAddress = Upgrades.getImplementationAddress(proxy);
@@ -525,8 +519,7 @@ contract BasicDeploy is Test {
     function _deployInvestmentManager() internal {
         // deploy Investment Manager
         bytes memory data = abi.encodeCall(
-            InvestmentManager.initialize,
-            (address(tokenInstance), address(timelockInstance), address(treasuryInstance), guardian, gnosisSafe)
+            InvestmentManager.initialize, (address(tokenInstance), address(timelockInstance), address(treasuryInstance))
         );
         address payable proxy = payable(Upgrades.deployUUPSProxy("InvestmentManager.sol", data));
         managerInstance = InvestmentManager(proxy);
@@ -536,9 +529,8 @@ contract BasicDeploy is Test {
 
     function _deployTeamManager() internal {
         // deploy Team Manager
-        bytes memory data = abi.encodeCall(
-            TeamManager.initialize, (address(tokenInstance), address(timelockInstance), guardian, gnosisSafe)
-        );
+        bytes memory data =
+            abi.encodeCall(TeamManager.initialize, (address(tokenInstance), address(timelockInstance), gnosisSafe));
         address payable proxy = payable(Upgrades.deployUUPSProxy("TeamManager.sol", data));
         tmInstance = TeamManager(proxy);
         address implementation = Upgrades.getImplementationAddress(proxy);
