@@ -7,8 +7,6 @@ pragma solidity 0.8.23;
  */
 
 library LendefiRates {
-    // using EnumerableSet for EnumerableSet.AddressSet;
-
     /// @dev base scale
     uint256 internal constant WAD = 1e6;
     /// @dev ray scale
