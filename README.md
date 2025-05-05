@@ -204,7 +204,7 @@ The protocol consists of several integrated components:
 - **Ecosystem Contract**: Handles rewards and protocol incentives
 - **Governance Integration**: Protocol parameters controlled via DAO
 
-## Segregated Position Vaults
+## Isolated Position Vaults
 
 The Lendefi Protocol implements a segregated vault architecture for enhanced security:
 
@@ -216,6 +216,7 @@ The Lendefi Protocol implements a segregated vault architecture for enhanced sec
 - During liquidations, collateral transfers directly from vault to liquidator
 - Prevents cross-position collateral contamination
 - Enhances security through asset isolation between positions
+- Implements compliance with Custodian classification rules
 
 ## Liquidation Mechanism
 
