@@ -253,7 +253,9 @@ then
 
 ```
 git clone https://github.com/nebula-labs-xyz/lendefi-protocol.git
-cd lendefi-dao
+cd lendefi-protocol
+
+echo "ALCHEMY_API_KEY=your_api_key_here" >> .env
 
 npm install
 forge clean && forge build && forge test -vvv --ffi --gas-report
