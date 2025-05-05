@@ -76,8 +76,6 @@ import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/ut
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {LendefiConstants} from "./lib/LendefiConstants.sol";
 import {LendefiRates} from "./lib/LendefiRates.sol";
-// import {LendefiVault} from "./LendefiVault.sol";
-// import {VaultFactory} from "./VaultFactory.sol";
 
 /// @custom:oz-upgrades
 contract Lendefi is
