@@ -258,8 +258,8 @@ contract LendefiV2 is
         address timelock_,
         address yieldToken,
         address assetsModule_,
-        address multisig,
-        address vaultFactory_
+        address vaultFactory_,
+        address multisig
     ) external initializer {
         __Pausable_init();
         __AccessControl_init();
@@ -572,8 +572,6 @@ contract LendefiV2 is
         UserPosition storage newPosition = positions[msg.sender].push();
         uint256 positionId = positions[msg.sender].length - 1;
         // Create vault for the position
-        // address vault = createVault(msg.sender, positionId);
-        // address vault = address(new LendefiVault(address(this), msg.sender));
         address vault = IVaultFactory(vaultFactory).createVault(msg.sender, positionId);
 
         newPosition.vault = vault;
@@ -966,8 +964,7 @@ contract LendefiV2 is
         emit InterestAccrued(user, positionId, interestAccrued);
         emit Liquidated(user, positionId, msg.sender);
 
-        // _withdrawAllCollateral(user, positionId);
-        delete positionCollateral[user][positionId];
+        positionCollateral[user][positionId].clear(); // Clear all collateral assets
         TH.safeTransferFrom(usdcInstance, msg.sender, address(this), debtWithInterest + fee);
     }
 
@@ -1011,35 +1008,35 @@ contract LendefiV2 is
         );
     }
 
-    // /**
-    //  * @notice Resets protocol parameters to default values
-    //  * @dev Reverts all configuration parameters to conservative default values
-    //  * @custom:access-control Restricted to LendefiConstants.MANAGER_ROLE
-    //  * @custom:events Emits a ProtocolConfigReset event
-    //  */
-    // function resetProtocolConfig() external onlyRole(LendefiConstants.MANAGER_ROLE) {
-    //     // Set default values in mainConfig
-    //     mainConfig = ProtocolConfig({
-    //         profitTargetRate: 0.01e6, // 1%
-    //         borrowRate: 0.06e6, // 6%
-    //         rewardAmount: 2_000 ether, // 2,000 tokens
-    //         rewardInterval: 180 days, // 180 days
-    //         rewardableSupply: 100_000 * LendefiConstants.WAD, // 100,000 USDC
-    //         liquidatorThreshold: 20_000 ether, // 20,000 tokens
-    //         flashLoanFee: 9 // 9 basis points (0.09%)
-    //     });
+    /**
+     * @notice Resets protocol parameters to default values
+     * @dev Reverts all configuration parameters to conservative default values
+     * @custom:access-control Restricted to LendefiConstants.MANAGER_ROLE
+     * @custom:events Emits a ProtocolConfigReset event
+     */
+    function resetProtocolConfig() external onlyRole(LendefiConstants.MANAGER_ROLE) {
+        // Set default values in mainConfig
+        mainConfig = ProtocolConfig({
+            profitTargetRate: 0.01e6, // 1%
+            borrowRate: 0.06e6, // 6%
+            rewardAmount: 2_000 ether, // 2,000 tokens
+            rewardInterval: 180 days, // 180 days
+            rewardableSupply: 100_000 * LendefiConstants.WAD, // 100,000 USDC
+            liquidatorThreshold: 20_000 ether, // 20,000 tokens
+            flashLoanFee: 9 // 9 basis points (0.09%)
+        });
 
-    //     // Emit event
-    //     emit ProtocolConfigReset(
-    //         mainConfig.profitTargetRate,
-    //         mainConfig.borrowRate,
-    //         mainConfig.rewardAmount,
-    //         mainConfig.rewardInterval,
-    //         mainConfig.rewardableSupply,
-    //         mainConfig.liquidatorThreshold,
-    //         mainConfig.flashLoanFee
-    //     );
-    // }
+        // Emit event
+        emit ProtocolConfigReset(
+            mainConfig.profitTargetRate,
+            mainConfig.borrowRate,
+            mainConfig.rewardAmount,
+            mainConfig.rewardInterval,
+            mainConfig.rewardableSupply,
+            mainConfig.liquidatorThreshold,
+            mainConfig.flashLoanFee
+        );
+    }
 
     /**
      * @notice Schedules an upgrade to a new implementation with timelock
@@ -1663,36 +1660,23 @@ contract LendefiV2 is
     function _withdrawAllCollateral(address owner, uint256 positionId) internal {
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[owner][positionId];
         address vault = positions[msg.sender][positionId].vault;
-        // Iterate and remove all assets
-        while (collaterals.length() > 0) {
-            (address asset, uint256 amount) = collaterals.at(0);
-            collaterals.remove(asset);
+
+        // Process all assets before clearing the mapping
+        uint256 length = collaterals.length();
+        for (uint256 i = 0; i < length; i++) {
+            (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount > 0) {
                 assetTVL[asset] -= amount;
-                emit TVLUpdated(address(asset), assetTVL[asset]);
+                emit TVLUpdated(asset, assetTVL[asset]);
                 emit WithdrawCollateral(owner, positionId, asset, amount);
                 IVAULT(vault).withdrawToken(asset, amount);
             }
         }
+
+        // Clear all entries at once
+        collaterals.clear();
     }
-
-    // /**
-    //  * @notice Creates a new vault for a user position
-    //  * @dev Only callable by the protocol contract
-    //  * @param user Owner of the position
-    //  * @param positionId ID of the position
-    //  * @return vault Address of the created vault
-    //  */
-    // function createVault(address user, uint256 positionId) internal returns (address vault) {
-    //     // Create new vault
-    //     vault = address(new LendefiVault(address(this), user));
-
-    //     // Register vault
-    //     positions[msg.sender][positionId].vault = vault;
-
-    //     emit VaultCreated(user, positionId, vault);
-    // }
 
     /**
      * @notice Authorizes an upgrade to a new implementation
