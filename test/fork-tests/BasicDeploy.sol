@@ -33,7 +33,7 @@ import {LendefiYieldToken} from "../../contracts/lender/LendefiYieldToken.sol";
 import {LendefiYieldTokenV2} from "../../contracts/upgrades/LendefiYieldTokenV2.sol";
 import {LendefiAssets} from "../../contracts/lender/LendefiAssets.sol";
 import {LendefiAssetsV2} from "../../contracts/upgrades/LendefiAssetsV2.sol";
-
+import {VaultFactory} from "../../contracts/lender/VaultFactory.sol";
 import {TimelockControllerUpgradeable} from
     "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import {ITransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
@@ -89,6 +89,7 @@ contract BasicDeploy is Test {
     LendefiYieldToken internal yieldTokenInstance;
     LendefiAssets internal assetsInstance;
     // USDC internal usdcInstance;
+    VaultFactory internal vaultFactoryInstance;
     IERC20 usdcInstance = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); //real usdc ethereum for fork testing
 
     function deployTokenUpgrade() internal {
@@ -542,7 +543,10 @@ contract BasicDeploy is Test {
         if (address(assetsInstance) == address(0)) {
             _deployAssetsModule();
         }
-
+        // Deploy VaultFactory first
+        if (address(vaultFactoryInstance) == address(0)) {
+            _deployVaultFactory();
+        }
         // Now deploy Lendefi with oracle address
         bytes memory data = abi.encodeCall(
             Lendefi.initialize,
@@ -554,7 +558,8 @@ contract BasicDeploy is Test {
                 address(timelockInstance),
                 address(yieldTokenInstance),
                 address(assetsInstance),
-                guardian
+                address(vaultFactoryInstance),
+                gnosisSafe
             )
         );
 
@@ -736,14 +741,19 @@ contract BasicDeploy is Test {
         assertTrue(assetsInstanceV2.hasRole(UPGRADER_ROLE, gnosisSafe), "Lost UPGRADER_ROLE");
         vm.stopPrank();
     }
+
     /**
      * @notice Updates the _deployLendefiModules function to use the combined protocol oracle
      */
-
     function _deployLendefiModules() internal {
         // First deploy combined protocol oracle if not already deployed
         if (address(assetsInstance) == address(0)) {
             _deployAssetsModule();
+        }
+
+        // Deploy VaultFactory first
+        if (address(vaultFactoryInstance) == address(0)) {
+            _deployVaultFactory();
         }
 
         // Then deploy the yield token with proper initialization parameters
@@ -753,7 +763,7 @@ contract BasicDeploy is Test {
         address payable tokenProxy = payable(Upgrades.deployUUPSProxy("LendefiYieldToken.sol", tokenData));
         yieldTokenInstance = LendefiYieldToken(tokenProxy);
 
-        // Deploy Lendefi with the combined protocol oracle
+        // Deploy Lendefi with the VaultFactory address
         bytes memory lendingData = abi.encodeCall(
             Lendefi.initialize,
             (
@@ -763,13 +773,17 @@ contract BasicDeploy is Test {
                 address(treasuryInstance),
                 address(timelockInstance),
                 address(yieldTokenInstance),
-                address(assetsInstance), // Use the combined contract for asset management
+                address(assetsInstance),
+                address(vaultFactoryInstance),
                 gnosisSafe
             )
         );
 
         address payable lendingProxy = payable(Upgrades.deployUUPSProxy("Lendefi.sol", lendingData));
         LendefiInstance = Lendefi(lendingProxy);
+
+        // Now set the protocol address in VaultFactory to point to the deployed Lendefi
+        _configureVaultFactory();
 
         // Update the protocol role in the yield token to point to the real Lendefi address
         vm.startPrank(address(timelockInstance));
@@ -808,5 +822,34 @@ contract BasicDeploy is Test {
         timelockInstance.grantRole(EXECUTOR_ROLE, address(govInstance));
         timelockInstance.grantRole(CANCELLER_ROLE, address(govInstance));
         vm.stopPrank();
+    }
+
+    /**
+     * @notice Deploys the VaultFactory contract
+     * @dev Associates the factory with the Lendefi protocol
+     */
+    function _deployVaultFactory() internal {
+        // Deploy VaultFactory with multisig as controller
+        vaultFactoryInstance = new VaultFactory(gnosisSafe);
+
+        // At this point, protocol is not set yet - it will be set after Lendefi is deployed
+        assertEq(vaultFactoryInstance.multisig(), gnosisSafe, "Multisig address mismatch");
+    }
+
+    /**
+     * @notice Sets the protocol address in the VaultFactory
+     * @dev Should be called after Lendefi is deployed
+     */
+    function _configureVaultFactory() internal {
+        // Ensure both components are deployed
+        require(address(vaultFactoryInstance) != address(0), "VaultFactory not deployed");
+        require(address(LendefiInstance) != address(0), "Lendefi not deployed");
+
+        // Set the protocol address in VaultFactory
+        vm.prank(gnosisSafe);
+        vaultFactoryInstance.setProtocol(address(LendefiInstance));
+
+        // Verify configuration
+        assertEq(vaultFactoryInstance.protocol(), address(LendefiInstance), "Protocol address not set correctly");
     }
 }

@@ -64,8 +64,10 @@ pragma solidity 0.8.23;
 import {IPROTOCOL} from "../interfaces/IProtocol.sol";
 import {IECOSYSTEM} from "../interfaces/IEcosystem.sol";
 import {IASSETS} from "../interfaces/IASSETS.sol";
+import {IVAULT} from "../interfaces/IVAULT.sol";
 import {IFlashLoanReceiver} from "../interfaces/IFlashLoanReceiver.sol";
 import {IYIELDTOKEN} from "../interfaces/ILendefiYieldToken.sol";
+import {IVaultFactory} from "../interfaces/IVaultFactory.sol";
 import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import {IERC20, SafeERC20 as TH} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -111,9 +113,12 @@ contract LendefiV2 is
     /**
      * @dev Reference to the assets module for collateral management
      */
-    // IASSETS internal assetsModule;
     IASSETS internal assetsModule;
 
+    /**
+     * @dev Reference to the vault factory for creating position vaults
+     */
+    // VaultFactory internal vaultFactory;
     /**
      * @notice Total amount borrowed from the protocol (in USDC)
      */
@@ -148,6 +153,12 @@ contract LendefiV2 is
      * @notice Address of the treasury that receives protocol fees
      */
     address public treasury;
+
+    /**
+     * @notice Address of the vaultFactory
+     */
+    address public vaultFactory;
+
     /**
      * @notice Protocol configuration parameters
      */
@@ -247,7 +258,8 @@ contract LendefiV2 is
         address timelock_,
         address yieldToken,
         address assetsModule_,
-        address multisig
+        address multisig,
+        address vaultFactory_
     ) external initializer {
         __Pausable_init();
         __AccessControl_init();
@@ -267,6 +279,7 @@ contract LendefiV2 is
         treasury = treasury_;
         yieldTokenInstance = IYIELDTOKEN(yieldToken);
         assetsModule = IASSETS(assetsModule_);
+        vaultFactory = vaultFactory_;
 
         // Initialize default parameters in mainConfig
         mainConfig = ProtocolConfig({
@@ -557,6 +570,13 @@ contract LendefiV2 is
     function createPosition(address asset, bool isIsolated) external validAsset(asset) nonReentrant whenNotPaused {
         if (positions[msg.sender].length >= 1000) revert MaxPositionLimitReached(); // Max position limit
         UserPosition storage newPosition = positions[msg.sender].push();
+        uint256 positionId = positions[msg.sender].length - 1;
+        // Create vault for the position
+        // address vault = createVault(msg.sender, positionId);
+        // address vault = address(new LendefiVault(address(this), msg.sender));
+        address vault = IVaultFactory(vaultFactory).createVault(msg.sender, positionId);
+
+        newPosition.vault = vault;
         newPosition.isIsolated = isIsolated;
         newPosition.status = PositionStatus.ACTIVE;
 
@@ -566,7 +586,8 @@ contract LendefiV2 is
             collaterals.set(asset, 0); // Register the asset with zero initial amount
         }
 
-        emit PositionCreated(msg.sender, positions[msg.sender].length - 1, isIsolated);
+        emit VaultCreated(msg.sender, positionId, vault);
+        emit PositionCreated(msg.sender, positionId, isIsolated);
     }
 
     /**
@@ -623,8 +644,9 @@ contract LendefiV2 is
         whenNotPaused
     {
         _processDeposit(asset, amount, positionId);
+        address vault = positions[msg.sender][positionId].vault;
         emit SupplyCollateral(msg.sender, positionId, asset, amount);
-        TH.safeTransferFrom(IERC20(asset), msg.sender, address(this), amount);
+        TH.safeTransferFrom(IERC20(asset), msg.sender, vault, amount);
     }
 
     /**
@@ -674,8 +696,10 @@ contract LendefiV2 is
         whenNotPaused
     {
         _processWithdrawal(asset, amount, positionId);
+        // Transfer from vault to user
+        address vault = positions[msg.sender][positionId].vault;
+        IVAULT(vault).withdrawToken(asset, amount);
         emit WithdrawCollateral(msg.sender, positionId, asset, amount);
-        TH.safeTransfer(IERC20(asset), msg.sender, amount);
     }
 
     /**
@@ -864,7 +888,7 @@ contract LendefiV2 is
         uint256 actualAmount = _processRepay(positionId, type(uint256).max, position);
         position.status = PositionStatus.CLOSED;
         if (actualAmount > 0) TH.safeTransferFrom(usdcInstance, msg.sender, address(this), actualAmount);
-        _withdrawAllCollateral(msg.sender, positionId, msg.sender);
+        _withdrawAllCollateral(msg.sender, positionId);
         emit PositionClosed(msg.sender, positionId);
     }
 
@@ -934,55 +958,17 @@ contract LendefiV2 is
         position.debtAmount = 0;
         position.status = PositionStatus.LIQUIDATED;
 
+        // Get the position's vault
+        address vault = positions[user][positionId].vault;
+        // Transfer all assets from vault to liquidator
+        IVAULT(vault).liquidate(getPositionCollateralAssets(user, positionId), msg.sender);
+
         emit InterestAccrued(user, positionId, interestAccrued);
         emit Liquidated(user, positionId, msg.sender);
 
+        // _withdrawAllCollateral(user, positionId);
+        delete positionCollateral[user][positionId];
         TH.safeTransferFrom(usdcInstance, msg.sender, address(this), debtWithInterest + fee);
-        _withdrawAllCollateral(user, positionId, msg.sender);
-    }
-
-    /**
-     * @notice Transfers collateral between two positions owned by the same user
-     * @dev Validates both the withdrawal from the source position and the deposit to the destination position.
-     *      This function ensures that the collateral transfer adheres to the protocol's rules regarding
-     *      isolation and cross-collateral positions.
-     * @param fromPositionId The ID of the position to transfer collateral from
-     * @param toPositionId The ID of the position to transfer collateral to
-     * @param asset The address of the collateral asset to transfer
-     * @param amount The amount of the asset to transfer
-     * @custom:access-control Available to position owners when the protocol is not paused
-     * @custom:events Emits an InterPositionalTransfer event
-     * @custom:requirements
-     *   - Protocol must not be paused
-     *   - Asset must be whitelisted in the protocol
-     *   - Source position must exist and be in ACTIVE status
-     *   - Destination position must exist and be in ACTIVE status
-     *   - Source position must have sufficient collateral balance of the specified asset
-     *   - Destination position must adhere to isolation rules if applicable
-     * @custom:state-changes
-     *   - Decreases the collateral amount of the specified asset in the source position
-     *   - Increases the collateral amount of the specified asset in the destination position
-     *   - Updates protocol-wide TVL for the asset
-     * @custom:error-cases
-     *   - ZeroAmount: Thrown when amount is zero
-     *   - InvalidPosition: Thrown when position doesn't exist
-     *   - InactivePosition: Thrown when position is not in ACTIVE status
-     *   - NotListed: Thrown when asset is not whitelisted
-     *   - LowBalance: Thrown when position doesn't have sufficient asset balance
-     *   - IsolatedAssetViolation: Thrown when transferring isolated-tier asset to a cross position
-     *   - InvalidAssetForIsolation: Thrown when asset doesn't match isolated position's asset
-     *   - MaximumAssetsReached: Thrown when destination position already has 20 different assets
-     */
-    function interpositionalTransfer(uint256 fromPositionId, uint256 toPositionId, address asset, uint256 amount)
-        external
-        validAsset(asset)
-        validAmount(amount)
-        whenNotPaused
-        nonReentrant
-    {
-        _processWithdrawal(asset, amount, fromPositionId);
-        _processDeposit(asset, amount, toPositionId);
-        emit InterPositionalTransfer(msg.sender, asset, amount);
     }
 
     /**
@@ -1025,35 +1011,35 @@ contract LendefiV2 is
         );
     }
 
-    /**
-     * @notice Resets protocol parameters to default values
-     * @dev Reverts all configuration parameters to conservative default values
-     * @custom:access-control Restricted to LendefiConstants.MANAGER_ROLE
-     * @custom:events Emits a ProtocolConfigReset event
-     */
-    function resetProtocolConfig() external onlyRole(LendefiConstants.MANAGER_ROLE) {
-        // Set default values in mainConfig
-        mainConfig = ProtocolConfig({
-            profitTargetRate: 0.01e6, // 1%
-            borrowRate: 0.06e6, // 6%
-            rewardAmount: 2_000 ether, // 2,000 tokens
-            rewardInterval: 180 days, // 180 days
-            rewardableSupply: 100_000 * LendefiConstants.WAD, // 100,000 USDC
-            liquidatorThreshold: 20_000 ether, // 20,000 tokens
-            flashLoanFee: 9 // 9 basis points (0.09%)
-        });
+    // /**
+    //  * @notice Resets protocol parameters to default values
+    //  * @dev Reverts all configuration parameters to conservative default values
+    //  * @custom:access-control Restricted to LendefiConstants.MANAGER_ROLE
+    //  * @custom:events Emits a ProtocolConfigReset event
+    //  */
+    // function resetProtocolConfig() external onlyRole(LendefiConstants.MANAGER_ROLE) {
+    //     // Set default values in mainConfig
+    //     mainConfig = ProtocolConfig({
+    //         profitTargetRate: 0.01e6, // 1%
+    //         borrowRate: 0.06e6, // 6%
+    //         rewardAmount: 2_000 ether, // 2,000 tokens
+    //         rewardInterval: 180 days, // 180 days
+    //         rewardableSupply: 100_000 * LendefiConstants.WAD, // 100,000 USDC
+    //         liquidatorThreshold: 20_000 ether, // 20,000 tokens
+    //         flashLoanFee: 9 // 9 basis points (0.09%)
+    //     });
 
-        // Emit event
-        emit ProtocolConfigReset(
-            mainConfig.profitTargetRate,
-            mainConfig.borrowRate,
-            mainConfig.rewardAmount,
-            mainConfig.rewardInterval,
-            mainConfig.rewardableSupply,
-            mainConfig.liquidatorThreshold,
-            mainConfig.flashLoanFee
-        );
-    }
+    //     // Emit event
+    //     emit ProtocolConfigReset(
+    //         mainConfig.profitTargetRate,
+    //         mainConfig.borrowRate,
+    //         mainConfig.rewardAmount,
+    //         mainConfig.rewardInterval,
+    //         mainConfig.rewardableSupply,
+    //         mainConfig.liquidatorThreshold,
+    //         mainConfig.flashLoanFee
+    //     );
+    // }
 
     /**
      * @notice Schedules an upgrade to a new implementation with timelock
@@ -1160,7 +1146,7 @@ contract LendefiV2 is
      * @return assets Array of addresses representing all collateral assets in the position
      */
     function getPositionCollateralAssets(address user, uint256 positionId)
-        external
+        public
         view
         validPosition(user, positionId)
         returns (address[] memory assets)
@@ -1664,7 +1650,6 @@ contract LendefiV2 is
      *
      * @param owner Address of the position owner
      * @param positionId ID of the position to withdraw all collateral from
-     * @param recipient Address that will receive the withdrawn collateral assets
      *
      * @custom:state-changes
      *   - Clears all assets from the position's collateral mapping
@@ -1675,9 +1660,9 @@ contract LendefiV2 is
      *   - WithdrawCollateral(owner, positionId, asset, amount) for each asset
      *   - TVLUpdated(asset, newTVL) for each asset
      */
-    function _withdrawAllCollateral(address owner, uint256 positionId, address recipient) internal {
+    function _withdrawAllCollateral(address owner, uint256 positionId) internal {
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[owner][positionId];
-
+        address vault = positions[msg.sender][positionId].vault;
         // Iterate and remove all assets
         while (collaterals.length() > 0) {
             (address asset, uint256 amount) = collaterals.at(0);
@@ -1687,10 +1672,27 @@ contract LendefiV2 is
                 assetTVL[asset] -= amount;
                 emit TVLUpdated(address(asset), assetTVL[asset]);
                 emit WithdrawCollateral(owner, positionId, asset, amount);
-                TH.safeTransfer(IERC20(asset), recipient, amount);
+                IVAULT(vault).withdrawToken(asset, amount);
             }
         }
     }
+
+    // /**
+    //  * @notice Creates a new vault for a user position
+    //  * @dev Only callable by the protocol contract
+    //  * @param user Owner of the position
+    //  * @param positionId ID of the position
+    //  * @return vault Address of the created vault
+    //  */
+    // function createVault(address user, uint256 positionId) internal returns (address vault) {
+    //     // Create new vault
+    //     vault = address(new LendefiVault(address(this), user));
+
+    //     // Register vault
+    //     positions[msg.sender][positionId].vault = vault;
+
+    //     emit VaultCreated(user, positionId, vault);
+    // }
 
     /**
      * @notice Authorizes an upgrade to a new implementation

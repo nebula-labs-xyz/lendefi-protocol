@@ -40,6 +40,7 @@ interface IPROTOCOL {
         uint256 debtAmount; // Current debt principal without interest
         uint256 lastInterestAccrual; // Timestamp of last interest accrual
         PositionStatus status; // Current lifecycle status of the position
+        address vault; // Address of the vault contract for this position
     }
 
     /**
@@ -221,6 +222,13 @@ interface IPROTOCOL {
     /// @param implementation The implementation address that was cancelled
     event UpgradeCancelled(address indexed canceller, address indexed implementation);
 
+    /**
+     * @notice Event emitted when a new vault is created
+     * @param user Owner of the position
+     * @param positionId ID of the position
+     * @param vault Address of the created vault
+     */
+    event VaultCreated(address indexed user, uint256 indexed positionId, address vault);
     //////////////////////////////////////////////////
     // -------------------Errors-------------------//
     /////////////////////////////////////////////////
@@ -407,7 +415,8 @@ interface IPROTOCOL {
      * @param treasury_ The address of the treasury that collects protocol fees
      * @param timelock_ The address of the timelock contract for governance actions
      * @param yieldToken The address of the yield token contract
-     * @param guardian The address of the initial admin with pausing capability
+     * @param vaultFactory The address of the vault factory contract
+     * @param multisig The address of the initial admin with pausing capability
      * @dev Sets up access control roles and default protocol parameters
      */
     function initialize(
@@ -418,7 +427,8 @@ interface IPROTOCOL {
         address timelock_,
         address yieldToken,
         address assetsModule,
-        address guardian
+        address vaultFactory,
+        address multisig
     ) external;
 
     /**
@@ -704,8 +714,8 @@ interface IPROTOCOL {
      * @param asset The address of the collateral asset to transfer
      * @param amount The amount of the asset to transfer
      */
-    function interpositionalTransfer(uint256 fromPositionId, uint256 toPositionId, address asset, uint256 amount)
-        external;
+    // function interpositionalTransfer(uint256 fromPositionId, uint256 toPositionId, address asset, uint256 amount)
+    //     external;
 
     /**
      * @notice Gets the current protocol config

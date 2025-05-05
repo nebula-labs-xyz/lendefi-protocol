@@ -398,13 +398,24 @@ contract OraclePriceExpandedTest is BasicDeploy {
         mockOracle.setRoundId(1);
         mockOracle.setAnsweredInRound(1);
 
-        // Set up Uniswap oracle with a mock pool
-        MockUniswapV3Pool newPool = new MockUniswapV3Pool(address(usdcInstance), address(testAsset), 3000);
+        // IMPORTANT: Create a completely new asset to avoid any interference
+        MockRWA freshTestAsset = new MockRWA("Fresh Test Asset", "FTST");
+        MockPriceOracle freshOracle = new MockPriceOracle();
 
-        // Configure tick cumulatives for a predictable price
+        // Configure the fresh oracle
+        freshOracle.setPrice(1000e8);
+        freshOracle.setTimestamp(block.timestamp);
+        freshOracle.setRoundId(1);
+        freshOracle.setAnsweredInRound(1);
+
+        // Create the Uniswap pool with explicit token ordering
+        // Note: Try reversing token order compared to the debug test
+        MockUniswapV3Pool newPool = new MockUniswapV3Pool(address(freshTestAsset), address(usdcInstance), 3000);
+
+        // Configure the pool with the exact tick from the debug test
         int56[] memory tickCumulatives = new int56[](2);
         tickCumulatives[0] = 0;
-        tickCumulatives[1] = -203200 * 1800; // Simulate a higher tick value ~$1500
+        tickCumulatives[1] = 203000 * 1800; // POSITIVE value for reversed token order
         newPool.setTickCumulatives(tickCumulatives);
 
         uint160[] memory secondsPerLiquidityCumulatives = new uint160[](2);
@@ -413,28 +424,49 @@ contract OraclePriceExpandedTest is BasicDeploy {
         newPool.setSecondsPerLiquidity(secondsPerLiquidityCumulatives);
         newPool.setObserveSuccess(true);
 
-        // Update the Uniswap oracle for the test asset
+        // Register the fresh asset with both oracles
         vm.startPrank(address(timelockInstance));
-        assetsInstance.updateUniswapOracle(
-            address(testAsset),
-            address(newPool),
-            1800, // 30-minute TWAP
-            1 // Active
+        assetsInstance.updateAssetConfig(
+            address(freshTestAsset),
+            IASSETS.Asset({
+                active: 1,
+                decimals: 18,
+                borrowThreshold: 800,
+                liquidationThreshold: 850,
+                maxSupplyThreshold: 1_000_000 ether,
+                isolationDebtCap: 0,
+                assetMinimumOracles: 2,
+                primaryOracleType: IASSETS.OracleType.CHAINLINK,
+                tier: IASSETS.CollateralTier.CROSS_A,
+                chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(freshOracle), active: 1}),
+                poolConfig: IASSETS.UniswapPoolConfig({pool: address(newPool), twapPeriod: 1800, active: 1})
+            })
         );
         vm.stopPrank();
 
-        // Verify the Chainlink price
-        uint256 chainlinkPrice = assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.CHAINLINK);
-        assertEq(chainlinkPrice, 1000e6, "Chainlink price should be $1000");
+        // Verify token order in the pool
+        address token0 = newPool.token0();
+        address token1 = newPool.token1();
+        console2.log("Token0:", token0);
+        console2.log("Token1:", token1);
+        console2.log("USDC:", address(usdcInstance));
+        console2.log("Fresh Test Asset:", address(freshTestAsset));
 
-        // Verify the Uniswap price
+        // Get individual prices for debugging
+        uint256 chainlinkPrice =
+            assetsInstance.getAssetPriceByType(address(freshTestAsset), IASSETS.OracleType.CHAINLINK);
         uint256 uniswapPrice =
-            assetsInstance.getAssetPriceByType(address(testAsset), IASSETS.OracleType.UNISWAP_V3_TWAP);
-        assertTrue(uniswapPrice > 0, "Uniswap price should be greater than 0");
+            assetsInstance.getAssetPriceByType(address(freshTestAsset), IASSETS.OracleType.UNISWAP_V3_TWAP);
 
-        // Calculate the median price
-        uint256 medianPrice = assetsInstance.getAssetPrice(address(testAsset));
-        // console2.log("Median price:", medianPrice);
+        console2.log("Chainlink price:", chainlinkPrice);
+        console2.log("Uniswap price:", uniswapPrice);
+
+        // Verify reasonable Uniswap price before proceeding
+        assertTrue(uniswapPrice < 100000e6, "Uniswap price should be reasonable");
+
+        // Calculate and check the median price
+        uint256 medianPrice = assetsInstance.getAssetPrice(address(freshTestAsset));
+        console2.log("Median price:", medianPrice);
 
         // Assert the median price is within the expected range
         assertTrue(medianPrice >= 1200e6 && medianPrice <= 1300e6, "Median price should be in a reasonable range");

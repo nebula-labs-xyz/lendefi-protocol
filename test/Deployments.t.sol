@@ -140,6 +140,7 @@ contract BasicDeployTest is BasicDeploy {
         console2.log("Assets:       ", address(assetsInstance));
         console2.log("YieldToken:   ", address(yieldTokenInstance));
         console2.log("Lendefi:      ", address(LendefiInstance));
+        console2.log("VaultFactory: ", address(vaultFactoryInstance));
         console2.log("USDC:         ", address(usdcInstance));
     }
 
@@ -169,5 +170,25 @@ contract BasicDeployTest is BasicDeploy {
 
         // Check version after upgrade
         assertEq(assetsInstance.version(), 2, "Version should be 2 after upgrade");
+    }
+
+    function test_019_deployVaultFactory() public {
+        deployCompleteWithOracle();
+
+        // Verify VaultFactory deployment
+        assertEq(
+            vaultFactoryInstance.protocol(),
+            address(LendefiInstance),
+            "VaultFactory should be linked to Lendefi protocol"
+        );
+
+        // Test creating a vault
+        vm.startPrank(address(LendefiInstance));
+        address vaultAddress = vaultFactoryInstance.createVault(alice, 1);
+        vm.stopPrank();
+
+        // Verify vault was created and registered
+        assertNotEq(vaultAddress, address(0), "Vault should be deployed");
+        assertEq(vaultFactoryInstance.getVault(alice, 1), vaultAddress, "Vault should be registered");
     }
 }

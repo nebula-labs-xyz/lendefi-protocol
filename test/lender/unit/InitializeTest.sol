@@ -30,6 +30,7 @@ contract InitializeTest is BasicDeploy {
                 address(timelockInstance),
                 address(yieldTokenInstance),
                 address(assetsInstance),
+                address(vaultFactoryInstance),
                 gnosisSafe
             )
         );
