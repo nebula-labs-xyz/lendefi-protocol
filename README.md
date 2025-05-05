@@ -127,12 +127,6 @@ The protocol offers flash loans with:
 - Validation of return funds plus fees
 - Fee accrual to protocol treasury
 
-### Interpositional Transfers
-
-A gas-optimized feature allowing users to move collateral between their positions:
-- No token transfers occur (purely accounting changes)
-- Subject to the same risk checks as withdrawals/deposits
-- Enforces maximum asset limits per position
 
 ### Oracle Integration
 
@@ -210,6 +204,19 @@ The protocol consists of several integrated components:
 - **Ecosystem Contract**: Handles rewards and protocol incentives
 - **Governance Integration**: Protocol parameters controlled via DAO
 
+## Segregated Position Vaults
+
+The Lendefi Protocol implements a segregated vault architecture for enhanced security:
+
+- Each user position has its own dedicated vault contract
+- All collateral assets are stored in isolated position-specific vaults
+- Vaults are created automatically when positions are opened
+- The VaultFactory contract manages vault creation and tracking
+- Only the protocol contract can withdraw assets from vaults
+- During liquidations, collateral transfers directly from vault to liquidator
+- Prevents cross-position collateral contamination
+- Enhances security through asset isolation between positions
+
 ## Liquidation Mechanism
 
 Positions become liquidatable when their health factor falls below 1.0. Liquidators:
@@ -253,7 +260,10 @@ then
 
 ```
 git clone https://github.com/nebula-labs-xyz/lendefi-protocol.git
-cd lendefi-dao
+cd lendefi-protocol
+git checkout -b isolated-vaults
+
+echo "ALCHEMY_API_KEY=your_api_key_here" >> .env
 
 npm install
 forge clean && forge build && forge test -vvv --ffi --gas-report
