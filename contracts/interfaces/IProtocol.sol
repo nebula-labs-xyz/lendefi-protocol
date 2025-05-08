@@ -373,12 +373,6 @@ interface IPROTOCOL {
     error CreditLimitExceeded();
 
     /**
-     * @notice Thrown when attempting an operation that requires debt on a position with no debt
-     * @dev Used in operations that require an active debt position
-     */
-    error NoDebt();
-
-    /**
      * @notice Thrown when a user tries to deposit a collateral asset amount greater than 3% of total uniswap pool liquidity
      * @dev Used in operations that require positions to be liquidatable
      */
