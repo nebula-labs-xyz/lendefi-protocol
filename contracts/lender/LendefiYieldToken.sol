@@ -63,11 +63,11 @@ contract LendefiYieldToken is
     /// @notice Information about the currently pending upgrade
     UpgradeRequest public pendingUpgrade;
 
-    /// @notice Address of the Lendefi protocol contract
+    /// @notice Counter for the number of times the upkeep has been performed
     uint256 public counter;
-    /// @notice Address of the Lendefi protocol contract
+    /// @notice Interval for the upkeep to be performed
     uint256 public interval;
-    /// @notice Timestamp of the last
+    /// @notice Timestamp of the last upkeep performed
     uint256 public lastTimeStamp;
     /// @notice Address of the por feed for the token
     address public porFeed;
