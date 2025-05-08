@@ -16,7 +16,7 @@
 
 ## Executive Summary
 
-The Lendefi smart contract represents a sophisticated lending protocol with several noteworthy innovations compared to existing solutions like Compound III, Aave, and MakerDAO. This review assesses the contract's architecture, security features, economic model, and overall viability. 
+The Lendefi protocol represents a sophisticated lending protocol with several noteworthy innovations compared to existing solutions like Compound III, Aave, and MakerDAO. This review assesses the contract's architecture, security features, economic model, and overall viability. 
 For more information visit [Nebula Labs](https://nebula-labs.xyz).
 
 ## Architecture & Design
@@ -64,7 +64,7 @@ One of the contract's standout features is its sophisticated risk management fra
   - Support for both isolated and cross-collateral positions
   - Granular health factor calculations
   - Dynamic interest rate model based on utilization and risk tier
-  - Allows transfer of assets between positions to help mitigate risk
+  - Segregated vault for every position
 
 ## Economic Model
 
@@ -88,6 +88,7 @@ The protocol implements a sustainable economic model with multiple components:
    - Minimum supply threshold for eligibility
    - Ecosystem integration for additional incentives
 
+
 ## Technical Implementation
 
 The contract demonstrates high-quality implementation practices:
@@ -106,8 +107,8 @@ The contract demonstrates the technical maturity expected in a production-grade 
 
 ## Features
 
-1. Supports more than 200 collateral assets.
-2. Allows multiple independent user positions.
+1. Supports up to 3000 collateral assets.
+2. Allows up to 1000 independent user positions.
 3. Up to 20 collateral assets per user postion.
 4. Compounds interest.
 5. Gas Efficient.
@@ -127,7 +128,6 @@ The protocol offers flash loans with:
 - Validation of return funds plus fees
 - Fee accrual to protocol treasury
 
-
 ### Oracle Integration
 
 The protocol integrates with Chainlink price oracles:
@@ -136,6 +136,15 @@ The protocol integrates with Chainlink price oracles:
 - Freshness thresholds for price data
 - Special handling for volatile assets
 - Tiered oracle fallback system
+
+### Chainlink Proof of Reserve Integration
+
+The protocol leverages Chainlink Proof of Reserve to enhance security and transparency:
+- Real-time on-chain asset verification through PoR feeds
+- Asset-specific reserve tracking for each collateral type
+- TVL (Total Value Locked) monitoring in both native tokens and USD values
+- Automatic reserves updates when deposits or withdrawals occur
+- Circuit breaker integration with reserve reporting for additional safety
 
 ## Technical Safeguards
 
@@ -179,7 +188,7 @@ The Lendefi protocol is built with security and flexibility as core principles. 
    - Cross-collateralization across multiple assets
    - Isolated positions for higher risk assets
    - Custom liquidation parameters per risk tier
-   - Interpositional asset transfers
+   - Segrated vault for every position
 
 4. **Economic Model**:
    - Utilization-based interest rates
@@ -200,23 +209,38 @@ The Lendefi protocol is built with security and flexibility as core principles. 
 The protocol consists of several integrated components:
 
 - **Core Lending Contract**: Manages borrowing, collateralization, and liquidations
+- **Assets Management Module**: Handles asset configurations, oracles, and proof of reserve
 - **Liquidity Tokenization**: ERC20-compatible yield token representing supplied liquidity
 - **Ecosystem Contract**: Handles rewards and protocol incentives
 - **Governance Integration**: Protocol parameters controlled via DAO
+- **VaultFactory**: Creates and manages isolated position vaults
+
+## Regulatory Compliance
+
+### U.S. GENIUS Act Compliance
+
+The Lendefi protocol's isolated vaults architecture is designed to comply with emerging regulatory requirements including the U.S. GENIUS Act (Generating Effective New Infrastructure, Understanding, and Sustainability):
+
+- **Asset Segregation**: Full separation of customer assets through dedicated vault contracts
+- **Proof of Reserves**: Integration with Chainlink's Proof of Reserve networks for transparent asset verification
+- **Bankruptcy Protection**: User assets are protected from protocol insolvency through technical separation
+- **Transparent Reporting**: On-chain verification of asset reserves with real-time updates
+- **Custodial Standards**: Meets requirements for qualified custodians through proper asset segregation
 
 ## Isolated Position Vaults
 
-The Lendefi Protocol implements a segregated vault architecture for enhanced security:
+The Lendefi Protocol implements a segregated vault architecture for enhanced security and regulatory compliance:
 
 - Each user position has its own dedicated vault contract
 - All collateral assets are stored in isolated position-specific vaults
-- Vaults are created automatically when positions are opened
+- Vaults are created automatically when positions are opened via the VaultFactory contract
 - The VaultFactory contract manages vault creation and tracking
 - Only the protocol contract can withdraw assets from vaults
 - During liquidations, collateral transfers directly from vault to liquidator
 - Prevents cross-position collateral contamination
 - Enhances security through asset isolation between positions
-- Implements compliance with Custodian classification rules
+- Implements compliance with regulatory custodian classification rules
+- Meets digital asset custody requirements through technical isolation
 
 ## Liquidation Mechanism
 
@@ -228,21 +252,20 @@ Positions become liquidatable when their health factor falls below 1.0. Liquidat
 
 ## Oracle Integration
 
-The protocol utilizes Chainlink price feeds with multiple safeguards:
-- Price freshness verification
-- Volatility monitoring for large price movements
-- Round completion validation
-- Minimum price checks
+The protocol utilizes a sophisticated oracle system with multiple safeguards:
+- Primary Chainlink price feeds with backup Uniswap V3 TWAP oracles
+- Price freshness verification (maximum 8-hour age)
+- Volatility monitoring for large price movements (>20%)
+- Round completion validation for Chainlink feeds
+- Minimum price checks to prevent zero/negative values
+- Circuit breaker for extreme price deviations between oracles
+
 
 ## Disclaimer
 
 This software is provided as is with a Business Source License 1.1 without warranties of any kind.
 Some libraries included with this software are licenced under the MIT license, while others
 require GPL-v3.0. The smart contracts are labeled accordingly.
-
-## Important Information
-
-You need to hold 20_000 governance tokens to be able to run liquidations on the Lendefi Protocol.
 
 
 
@@ -262,7 +285,7 @@ then
 ```
 git clone https://github.com/nebula-labs-xyz/lendefi-protocol.git
 cd lendefi-protocol
-git checkout -b isolated-vaults
+git checkout -b custodian
 
 echo "ALCHEMY_API_KEY=your_api_key_here" >> .env
 
