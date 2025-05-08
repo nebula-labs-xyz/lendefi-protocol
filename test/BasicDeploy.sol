@@ -596,14 +596,14 @@ contract BasicDeploy is Test {
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiYieldToken.sol", data));
         yieldTokenInstance = LendefiYieldToken(proxy);
 
-        // address implementation = Upgrades.getImplementationAddress(proxy);
-        // assertFalse(address(yieldTokenInstance) == implementation);
+        address implementation = Upgrades.getImplementationAddress(proxy);
+        assertFalse(address(yieldTokenInstance) == implementation);
 
-        // // Verify roles are properly assigned
-        // assertTrue(yieldTokenInstance.hasRole(PAUSER_ROLE, gnosisSafe));
-        // assertTrue(yieldTokenInstance.hasRole(UPGRADER_ROLE, gnosisSafe));
-        // assertTrue(yieldTokenInstance.hasRole(PROTOCOL_ROLE, address(ethereum)));
-        // assertTrue(yieldTokenInstance.hasRole(DEFAULT_ADMIN_ROLE, address(timelockInstance)));
+        // Verify roles are properly assigned
+        assertTrue(yieldTokenInstance.hasRole(PAUSER_ROLE, gnosisSafe));
+        assertTrue(yieldTokenInstance.hasRole(UPGRADER_ROLE, gnosisSafe));
+        assertTrue(yieldTokenInstance.hasRole(PROTOCOL_ROLE, address(ethereum)));
+        assertTrue(yieldTokenInstance.hasRole(DEFAULT_ADMIN_ROLE, address(timelockInstance)));
     }
 
     /**
