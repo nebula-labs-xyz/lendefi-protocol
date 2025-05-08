@@ -33,7 +33,7 @@ import {LendefiYieldToken} from "../../contracts/lender/LendefiYieldToken.sol";
 import {LendefiYieldTokenV2} from "../../contracts/upgrades/LendefiYieldTokenV2.sol";
 import {LendefiAssets} from "../../contracts/lender/LendefiAssets.sol";
 import {LendefiAssetsV2} from "../../contracts/upgrades/LendefiAssetsV2.sol";
-
+import {LendefiPoRFactory} from "../../contracts/lender/LendefiPoRFactory.sol";
 import {TimelockControllerUpgradeable} from
     "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import {ITransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
@@ -88,8 +88,9 @@ contract BasicDeploy is Test {
     Lendefi internal LendefiInstance;
     LendefiYieldToken internal yieldTokenInstance;
     LendefiAssets internal assetsInstance;
-    // USDC internal usdcInstance;
+    //USDC internal usdcInstance;
     IERC20 usdcInstance = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); //real usdc ethereum for fork testing
+    LendefiPoRFactory internal porFactoryInstance;
 
     function deployTokenUpgrade() internal {
         if (address(timelockInstance) == address(0)) {
@@ -570,12 +571,27 @@ contract BasicDeploy is Test {
      * @dev Initializes with proper role assignment for protocol, timelock, guardian, and multisig
      */
     function _deployYieldToken() internal {
+        // Make sure USDC is deployed first and is valid
+        if (address(usdcInstance) == address(0)) {
+            usdcInstance = new USDC();
+        }
+
         // Deploy LendefiYieldToken
         if (address(timelockInstance) == address(0)) {
             _deployTimelock();
         }
-        bytes memory data =
-            abi.encodeCall(LendefiYieldToken.initialize, (address(ethereum), address(timelockInstance), gnosisSafe));
+
+        // Use more explicit parameter encoding to avoid confusion
+        bytes memory data = abi.encodeCall(
+            LendefiYieldToken.initialize,
+            (address(ethereum), address(timelockInstance), address(gnosisSafe), address(usdcInstance))
+        );
+
+        // Debug output to verify addresses
+        console2.log("Protocol address:", address(ethereum));
+        console2.log("Timelock address:", address(timelockInstance));
+        console2.log("Gnosis address:", gnosisSafe);
+        console2.log("USDC address:", address(usdcInstance));
 
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiYieldToken.sol", data));
         yieldTokenInstance = LendefiYieldToken(proxy);
@@ -736,19 +752,26 @@ contract BasicDeploy is Test {
         assertTrue(assetsInstanceV2.hasRole(UPGRADER_ROLE, gnosisSafe), "Lost UPGRADER_ROLE");
         vm.stopPrank();
     }
-    /**
-     * @notice Updates the _deployLendefiModules function to use the combined protocol oracle
-     */
 
+    /**
+     * @notice Deploys the Lendefi contract with the combined protocol oracle
+     * @dev This function is called internally and should not be used directly
+     */
     function _deployLendefiModules() internal {
         // First deploy combined protocol oracle if not already deployed
         if (address(assetsInstance) == address(0)) {
             _deployAssetsModule();
         }
 
+        // Deploy mock USDC if needed
+        if (address(usdcInstance) == address(0)) {
+            usdcInstance = new USDC();
+        }
         // Then deploy the yield token with proper initialization parameters
-        bytes memory tokenData =
-            abi.encodeCall(LendefiYieldToken.initialize, (address(ethereum), address(timelockInstance), gnosisSafe));
+        bytes memory tokenData = abi.encodeCall(
+            LendefiYieldToken.initialize,
+            (address(ethereum), address(timelockInstance), gnosisSafe, address(usdcInstance))
+        );
 
         address payable tokenProxy = payable(Upgrades.deployUUPSProxy("LendefiYieldToken.sol", tokenData));
         yieldTokenInstance = LendefiYieldToken(tokenProxy);
@@ -771,6 +794,9 @@ contract BasicDeploy is Test {
         address payable lendingProxy = payable(Upgrades.deployUUPSProxy("Lendefi.sol", lendingData));
         LendefiInstance = Lendefi(lendingProxy);
 
+        // Deploy and configure PoR factory after Lendefi is deployed
+        _deployPoRFactory();
+
         // Update the protocol role in the yield token to point to the real Lendefi address
         vm.startPrank(address(timelockInstance));
         yieldTokenInstance.revokeRole(PROTOCOL_ROLE, address(ethereum));
@@ -790,7 +816,9 @@ contract BasicDeploy is Test {
     function deployCompleteWithOracle() internal {
         vm.warp(365 days);
         // Deploy mock tokens for testing
-        usdcInstance = new USDC();
+        if (address(usdcInstance) == address(0)) {
+            usdcInstance = new USDC();
+        }
         _deployTimelock();
         _deployToken();
         _deployEcosystem();
@@ -807,6 +835,25 @@ contract BasicDeploy is Test {
         timelockInstance.grantRole(PROPOSER_ROLE, address(govInstance));
         timelockInstance.grantRole(EXECUTOR_ROLE, address(govInstance));
         timelockInstance.grantRole(CANCELLER_ROLE, address(govInstance));
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Deploys and initializes the Proof of Reserve factory
+     * @dev Uses the real implementation, not a mock
+     */
+    function _deployPoRFactory() internal {
+        // Deploy PoR factory using UUPS pattern
+        bytes memory data = abi.encodeCall(
+            LendefiPoRFactory.initialize, (address(LendefiInstance), address(assetsInstance), gnosisSafe)
+        );
+
+        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiPoRFactory.sol", data));
+        porFactoryInstance = LendefiPoRFactory(proxy);
+
+        // Set factory in assets module
+        vm.startPrank(address(timelockInstance));
+        assetsInstance.setPoRFactory(address(porFactoryInstance));
         vm.stopPrank();
     }
 }
