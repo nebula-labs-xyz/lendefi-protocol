@@ -116,10 +116,6 @@ contract LendefiV2 is
     IASSETS internal assetsModule;
 
     /**
-     * @dev Reference to the vault factory for creating position vaults
-     */
-    // VaultFactory internal vaultFactory;
-    /**
      * @notice Total amount borrowed from the protocol (in USDC)
      */
     uint256 public totalBorrow;
@@ -165,9 +161,13 @@ contract LendefiV2 is
     ProtocolConfig public mainConfig;
     /// @notice Information about the currently pending upgrade
     UpgradeRequest public pendingUpgrade;
+
     // Mappings
     /// @notice Total value locked per asset
     mapping(address => uint256) public assetTVL;
+
+    /// @notice Total value locked per asset in USD
+    EnumerableMap.AddressToUintMap internal assetTVLinUSD;
     /**
      * @dev Stores all borrowing positions for each user
      * @dev Key: User address, Value: Array of positions
@@ -189,7 +189,7 @@ contract LendefiV2 is
     /**
      * @dev Reserved storage gap for future upgrades
      */
-    uint256[30] private __gap;
+    uint256[12] private __gap;
 
     /**
      * @dev Ensures the position exists for the given user
@@ -886,7 +886,7 @@ contract LendefiV2 is
         uint256 actualAmount = _processRepay(positionId, type(uint256).max, position);
         position.status = PositionStatus.CLOSED;
         if (actualAmount > 0) TH.safeTransferFrom(usdcInstance, msg.sender, address(this), actualAmount);
-        _withdrawAllCollateral(msg.sender, positionId);
+        _withdrawAllCollateral(positionId);
         emit PositionClosed(msg.sender, positionId);
     }
 
@@ -1008,35 +1008,35 @@ contract LendefiV2 is
         );
     }
 
-    /**
-     * @notice Resets protocol parameters to default values
-     * @dev Reverts all configuration parameters to conservative default values
-     * @custom:access-control Restricted to LendefiConstants.MANAGER_ROLE
-     * @custom:events Emits a ProtocolConfigReset event
-     */
-    function resetProtocolConfig() external onlyRole(LendefiConstants.MANAGER_ROLE) {
-        // Set default values in mainConfig
-        mainConfig = ProtocolConfig({
-            profitTargetRate: 0.01e6, // 1%
-            borrowRate: 0.06e6, // 6%
-            rewardAmount: 2_000 ether, // 2,000 tokens
-            rewardInterval: 180 days, // 180 days
-            rewardableSupply: 100_000 * LendefiConstants.WAD, // 100,000 USDC
-            liquidatorThreshold: 20_000 ether, // 20,000 tokens
-            flashLoanFee: 9 // 9 basis points (0.09%)
-        });
+    // /**
+    //  * @notice Resets protocol parameters to default values
+    //  * @dev Reverts all configuration parameters to conservative default values
+    //  * @custom:access-control Restricted to LendefiConstants.MANAGER_ROLE
+    //  * @custom:events Emits a ProtocolConfigReset event
+    //  */
+    // function resetProtocolConfig() external onlyRole(LendefiConstants.MANAGER_ROLE) {
+    //     // Set default values in mainConfig
+    //     mainConfig = ProtocolConfig({
+    //         profitTargetRate: 0.01e6, // 1%
+    //         borrowRate: 0.06e6, // 6%
+    //         rewardAmount: 2_000 ether, // 2,000 tokens
+    //         rewardInterval: 180 days, // 180 days
+    //         rewardableSupply: 100_000 * LendefiConstants.WAD, // 100,000 USDC
+    //         liquidatorThreshold: 20_000 ether, // 20,000 tokens
+    //         flashLoanFee: 9 // 9 basis points (0.09%)
+    //     });
 
-        // Emit event
-        emit ProtocolConfigReset(
-            mainConfig.profitTargetRate,
-            mainConfig.borrowRate,
-            mainConfig.rewardAmount,
-            mainConfig.rewardInterval,
-            mainConfig.rewardableSupply,
-            mainConfig.liquidatorThreshold,
-            mainConfig.flashLoanFee
-        );
-    }
+    //     // Emit event
+    //     emit ProtocolConfigReset(
+    //         mainConfig.profitTargetRate,
+    //         mainConfig.borrowRate,
+    //         mainConfig.rewardAmount,
+    //         mainConfig.rewardInterval,
+    //         mainConfig.rewardableSupply,
+    //         mainConfig.liquidatorThreshold,
+    //         mainConfig.flashLoanFee
+    //     );
+    // }
 
     /**
      * @notice Schedules an upgrade to a new implementation with timelock
@@ -1430,6 +1430,23 @@ contract LendefiV2 is
         }
     }
 
+    /**
+     * @notice Checks if the protocol is solvent based on total asset value and borrow amount
+     * @dev Ensures that the total asset value exceeds the total borrow amount
+     * @return True if the protocol is solvent, false otherwise, and amount of total asset value
+     */
+    function isCollateralized() public view returns (bool, uint256) {
+        uint256 totalAssetValue = totalSuppliedLiquidity - totalBorrow;
+        uint256 length = assetTVLinUSD.length();
+
+        for (uint256 i = 0; i < length; i++) {
+            (, uint256 value) = assetTVLinUSD.at(i);
+            totalAssetValue += value;
+        }
+
+        return (totalAssetValue >= totalBorrow, totalAssetValue);
+    }
+
     //////////////////////////////////////////////////
     // ---------internal functions------------------//
     //////////////////////////////////////////////////
@@ -1507,8 +1524,12 @@ contract LendefiV2 is
             collaterals.set(asset, currentAmount + amount);
         }
 
-        assetTVL[asset] += amount;
-        emit TVLUpdated(address(asset), assetTVL[asset]);
+        uint256 newTVL = assetTVL[asset] + amount;
+        assetTVL[asset] = newTVL;
+        // Update PoR feed
+        uint256 usdValue = assetsModule.updateAssetPoRFeed(asset, newTVL);
+        assetTVLinUSD.set(asset, usdValue);
+        emit TVLUpdated(address(asset), newTVL);
     }
 
     /**
@@ -1571,11 +1592,13 @@ contract LendefiV2 is
             collaterals.set(asset, newAmount);
         }
 
-        assetTVL[asset] -= amount;
-        emit TVLUpdated(address(asset), assetTVL[asset]);
-
+        uint256 newTVL = assetTVL[asset] - amount;
+        assetTVL[asset] = newTVL;
         // Verify collateralization after withdrawal
         if (calculateCreditLimit(msg.sender, positionId) < position.debtAmount) revert CreditLimitExceeded(); // Credit limit maxed out
+        uint256 usdValue = assetsModule.updateAssetPoRFeed(asset, newTVL);
+        assetTVLinUSD.set(asset, usdValue);
+        emit TVLUpdated(address(asset), newTVL);
     }
 
     /**
@@ -1645,7 +1668,6 @@ contract LendefiV2 is
      * state or collateralization ratio, and is intended for use only in terminal operations
      * like complete position closure or liquidation.
      *
-     * @param owner Address of the position owner
      * @param positionId ID of the position to withdraw all collateral from
      *
      * @custom:state-changes
@@ -1657,8 +1679,8 @@ contract LendefiV2 is
      *   - WithdrawCollateral(owner, positionId, asset, amount) for each asset
      *   - TVLUpdated(asset, newTVL) for each asset
      */
-    function _withdrawAllCollateral(address owner, uint256 positionId) internal {
-        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[owner][positionId];
+    function _withdrawAllCollateral(uint256 positionId) internal {
+        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
         address vault = positions[msg.sender][positionId].vault;
 
         // Process all assets before clearing the mapping
@@ -1667,9 +1689,12 @@ contract LendefiV2 is
             (address asset, uint256 amount) = collaterals.at(i);
 
             if (amount > 0) {
-                assetTVL[asset] -= amount;
-                emit TVLUpdated(asset, assetTVL[asset]);
-                emit WithdrawCollateral(owner, positionId, asset, amount);
+                uint256 newTVL = assetTVL[asset] - amount;
+                assetTVL[asset] = newTVL;
+                uint256 usdValue = assetsModule.updateAssetPoRFeed(asset, newTVL);
+                assetTVLinUSD.set(asset, usdValue);
+                emit TVLUpdated(asset, newTVL);
+                emit WithdrawCollateral(msg.sender, positionId, asset, amount);
                 IVAULT(vault).withdrawToken(asset, amount);
             }
         }

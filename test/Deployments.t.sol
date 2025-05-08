@@ -129,6 +129,8 @@ contract BasicDeployTest is BasicDeploy {
         assertTrue(address(yieldTokenInstance) != address(0), "YieldToken should be deployed");
         assertTrue(address(LendefiInstance) != address(0), "Lendefi should be deployed");
         assertTrue(address(usdcInstance) != address(0), "USDC mock should be deployed");
+        assertTrue(address(vaultFactoryInstance) != address(0), "Vault Factory mock should be deployed");
+        assertTrue(address(porFactoryInstance) != address(0), "PoR Factory mock should be deployed");
 
         // Log addresses for reference
         console2.log("===== Complete System Deployment =====");
@@ -141,6 +143,7 @@ contract BasicDeployTest is BasicDeploy {
         console2.log("YieldToken:   ", address(yieldTokenInstance));
         console2.log("Lendefi:      ", address(LendefiInstance));
         console2.log("VaultFactory: ", address(vaultFactoryInstance));
+        console2.log("PoRFactory:   ", address(porFactoryInstance));
         console2.log("USDC:         ", address(usdcInstance));
     }
 

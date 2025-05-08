@@ -3,16 +3,21 @@ pragma solidity 0.8.23;
 
 /**
  * @title LendefiYieldToken
- * @author alexei@nebula-labs.xyz
+ * @author alexei@nebula-labs(dot)xyz
  * @notice LP token representing shares in the Lendefi lending protocol's liquidity pool
  * @dev This ERC20 token uses 6 decimals to match USDC and represents the lender's share in the
  *      Lendefi protocol's lending pool. Only the main protocol can mint and burn tokens.
  * @custom:security-contact security@nebula-labs.xyz
  */
+import {IPROTOCOL} from "../interfaces/IProtocol.sol";
+import {IPoRFeed} from "../interfaces/IPoRFeed.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {LendefiPoRFeed} from "./LendefiPoRFeed.sol";
+import {AutomationCompatibleInterface} from
+    "../vendor/@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import {ERC20PausableUpgradeable} from
     "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PausableUpgradeable.sol";
 
@@ -21,7 +26,8 @@ contract LendefiYieldToken is
     ERC20PausableUpgradeable,
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    AutomationCompatibleInterface
 {
     /**
      * @notice Structure to store pending upgrade details
@@ -57,6 +63,17 @@ contract LendefiYieldToken is
     /// @notice Information about the currently pending upgrade
     UpgradeRequest public pendingUpgrade;
 
+    /// @notice Address of the Lendefi protocol contract
+    uint256 public counter;
+    /// @notice Address of the Lendefi protocol contract
+    uint256 public interval;
+    /// @notice Timestamp of the last
+    uint256 public lastTimeStamp;
+    /// @notice Address of the por feed for the token
+    address public porFeed;
+    /// @notice Address of the Lendefi protocol contract
+    address public protocol;
+
     /// @dev Reserved storage slots for future upgrades
     uint256[25] private __gap;
 
@@ -84,6 +101,12 @@ contract LendefiYieldToken is
     /// @param canceller The address that cancelled the upgrade
     /// @param implementation The implementation address that was cancelled
     event UpgradeCancelled(address indexed canceller, address indexed implementation);
+
+    /// @notice Emitted when the contract is undercollateralized
+    /// @param timestamp The timestamp of the event
+    /// @param tvl The total value locked in the protocol
+    /// @param totalSupply The total supply of the token
+    event CollateralizationAlert(uint256 timestamp, uint256 tvl, uint256 totalSupply);
 
     // ========== ERRORS ==========
 
@@ -114,12 +137,12 @@ contract LendefiYieldToken is
     /**
      * @notice Initializes the token with name, symbol, and key roles
      * @dev Sets up token details and access control roles
-     * @param protocol Address of the Lendefi protocol contract (receives PROTOCOL_ROLE)
+     * @param protocol_ Address of the Lendefi protocol contract (receives PROTOCOL_ROLE)
      * @param timelock Address of the timelock contract (receives DEFAULT_ADMIN_ROLE)
      * @param multisig Address with upgrade capability (receives UPGRADER_ROLE)
      */
-    function initialize(address protocol, address timelock, address multisig) external initializer {
-        if (protocol == address(0) || timelock == address(0) || multisig == address(0)) {
+    function initialize(address protocol_, address timelock, address multisig, address usdc) external initializer {
+        if (protocol_ == address(0) || timelock == address(0) || multisig == address(0) || usdc == address(0)) {
             revert ZeroAddressNotAllowed();
         }
 
@@ -131,12 +154,16 @@ contract LendefiYieldToken is
 
         // Set up roles
         _grantRole(DEFAULT_ADMIN_ROLE, timelock);
-        _grantRole(PROTOCOL_ROLE, protocol);
+        _grantRole(PROTOCOL_ROLE, protocol_);
         _grantRole(PAUSER_ROLE, timelock);
         _grantRole(PAUSER_ROLE, multisig);
         _grantRole(UPGRADER_ROLE, timelock);
         _grantRole(UPGRADER_ROLE, multisig);
 
+        protocol = protocol_;
+        interval = 12 hours;
+        lastTimeStamp = block.timestamp;
+        porFeed = address(new LendefiPoRFeed(usdc, address(this), address(this), multisig));
         // Set initial version
         version = 1;
 
@@ -206,6 +233,48 @@ contract LendefiYieldToken is
         address implementation = pendingUpgrade.implementation;
         delete pendingUpgrade;
         emit UpgradeCancelled(msg.sender, implementation);
+    }
+
+    function performUpkeep(bytes calldata /* performData */ ) external override {
+        if ((block.timestamp - lastTimeStamp) > interval) {
+            lastTimeStamp = block.timestamp;
+            counter = counter + 1;
+
+            // Use the stored TVL value instead of parameter
+            (bool collateralized, uint256 tvl) = IPROTOCOL(protocol).isCollateralized();
+
+            // Update the reserves on the feed
+            IPoRFeed(porFeed).updateReserves(tvl);
+            if (!collateralized) {
+                emit CollateralizationAlert(block.timestamp, tvl, totalSupply());
+            }
+        }
+    }
+
+    /**
+     * @notice method that is simulated by the keepers to see if any work actually
+     * needs to be performed. This method does does not actually need to be
+     * executable, and since it is only ever simulated it can consume lots of gas.
+     * @dev To ensure that it is never called, you may want to add the
+     * cannotExecute modifier from KeeperBase to your implementation of this
+     * method.
+     * same for a registered upkeep. This can easily be broken down into specific
+     * arguments using `abi.decode`, so multiple upkeeps can be registered on the
+     * same contract and easily differentiated by the contract.
+     * @return upkeepNeeded boolean to indicate whether the keeper should call
+     * performUpkeep or not.
+     * @return performData bytes that the keeper should call performUpkeep with, if
+     * upkeep is needed. If you would like to encode data to decode later, try
+     * `abi.encode`.
+     */
+    function checkUpkeep(bytes calldata /* checkData */ )
+        external
+        view
+        override
+        returns (bool upkeepNeeded, bytes memory performData)
+    {
+        upkeepNeeded = (block.timestamp - lastTimeStamp) > interval;
+        performData = "0x00";
     }
 
     /**

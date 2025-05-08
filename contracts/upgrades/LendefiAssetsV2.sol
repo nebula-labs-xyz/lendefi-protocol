@@ -13,7 +13,7 @@ import {IASSETS} from "../interfaces/IASSETS.sol";
 import {IPROTOCOL} from "../interfaces/IProtocol.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-
+import {IPoRFactory} from "../interfaces/IPoRFactory.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -23,8 +23,9 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {AggregatorV3Interface} from "../vendor/@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {IUniswapV3Pool} from "../interfaces/IUniswapV3Pool.sol";
-import {LendefiConstants} from "../lender/lib/LendefiConstants.sol";
 import {UniswapTickMath} from "../lender/lib/UniswapTickMath.sol";
+import {LendefiConstants} from "../lender/lib/LendefiConstants.sol";
+import {IPoRFeed} from "../interfaces/IPoRFeed.sol";
 
 /// @custom:oz-upgrades-from contracts/lender/LendefiAssets.sol:LendefiAssets
 contract LendefiAssetsV2 is
@@ -50,6 +51,8 @@ contract LendefiAssetsV2 is
     address public coreAddress;
     /// @notice Address of the usdc contract
     address internal usdc;
+    /// @notice Address of the Proof of Reserve factory
+    address public porFactory;
 
     /// @notice Information about the currently pending upgrade request
     /// @dev Stores implementation address and scheduling details
@@ -305,7 +308,7 @@ contract LendefiAssetsV2 is
      * @custom:validation Asset address cannot be zero
      * @custom:emits UpdateAssetConfig when configuration is updated
      */
-    function updateAssetConfig(address asset, Asset calldata config)
+    function updateAssetConfig(address asset, Asset memory config)
         external
         nonZeroAddress(asset)
         onlyRole(LendefiConstants.MANAGER_ROLE)
@@ -326,6 +329,9 @@ contract LendefiAssetsV2 is
                 revert AssetListTooLarge(LendefiConstants.MAX_ASSETS);
             }
             require(listedAssets.add(asset), "ADDING_ASSET");
+            config.porFeed = IPoRFactory(porFactory).createFeed(asset);
+        } else {
+            if (config.porFeed == address(0)) revert InvalidParameter("porFeed", 0);
         }
 
         assetInfo[asset] = config;
@@ -444,6 +450,38 @@ contract LendefiAssetsV2 is
 
         // Return current status
         return (circuitBroken[asset], deviationPct);
+    }
+
+    /**
+     * @notice Sets the Proof of Reserve factory address
+     * @param _porFactory Address of the factory contract
+     */
+    function setPoRFactory(address _porFactory)
+        external
+        nonZeroAddress(_porFactory)
+        onlyRole(DEFAULT_ADMIN_ROLE)
+        whenNotPaused
+    {
+        porFactory = _porFactory;
+        emit PoRFactorySet(_porFactory);
+    }
+
+    /**
+     * @notice Gets the price from the Chainlink oracle
+     * @param asset The asset to get price for
+     * @return usdValue The price in USD (scaled by 1e8)
+     */
+    function updateAssetPoRFeed(address asset, uint256 tvl)
+        external
+        onlyListedAsset(asset)
+        returns (uint256 usdValue)
+    {
+        // Get PoR feed
+        address feedAddr = assetInfo[asset].porFeed;
+        // Update the reserves on the feed
+        IPoRFeed(feedAddr).updateReserves(tvl);
+        // Calculate USD value
+        usdValue = tvl * getAssetPrice(asset) / LendefiConstants.WAD;
     }
 
     /**
@@ -708,6 +746,15 @@ contract LendefiAssetsV2 is
      */
     function getOracleCount(address asset) external view returns (uint256) {
         return assetInfo[asset].chainlinkConfig.active + assetInfo[asset].poolConfig.active;
+    }
+
+    /**
+     * @notice Gets the Proof of Reserve feed for an asset
+     * @param asset The asset address
+     * @return The feed address or address(0) if none exists
+     */
+    function getPoRFeed(address asset) external view onlyListedAsset(asset) returns (address) {
+        return assetInfo[asset].porFeed;
     }
 
     /**

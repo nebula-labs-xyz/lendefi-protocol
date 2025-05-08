@@ -45,6 +45,7 @@ interface IASSETS {
         uint256 maxSupplyThreshold;
         uint256 isolationDebtCap;
         uint8 assetMinimumOracles;
+        address porFeed;
         OracleType primaryOracleType;
         CollateralTier tier;
         ChainlinkOracleConfig chainlinkConfig;
@@ -209,6 +210,12 @@ interface IASSETS {
      * @param active Whether the oracle is active (0=inactive, 1=active)
      */
     event UniswapOracleUpdated(address indexed asset, address indexed pool, uint8 active);
+
+    /**
+     * @notice Emitted when Proof of Reserve factory is set
+     * @param factory Address of the factory
+     */
+    event PoRFactorySet(address indexed factory);
 
     // ==================== ERRORS ====================
 
@@ -615,4 +622,19 @@ interface IASSETS {
      * @return Boolean - If amount exceeds 3% of the Uniswap v3 pool liquidity
      */
     function poolLiquidityLimit(address asset, uint256 amount) external view returns (bool);
+
+    /**
+     * @notice Gets the Proof of Reserve feed for an asset
+     * @param asset The asset address
+     * @return The feed address or address(0) if none exists
+     */
+    function getPoRFeed(address asset) external view returns (address);
+
+    /**
+     * @notice Gets the total value of a specific asset in USD terms
+     * @param asset The address of the asset
+     * @param amount The amount of the asset
+     * @return usdValue The total value of the asset in USD terms
+     */
+    function updateAssetPoRFeed(address asset, uint256 amount) external returns (uint256 usdValue);
 }

@@ -34,6 +34,7 @@ import {LendefiYieldTokenV2} from "../contracts/upgrades/LendefiYieldTokenV2.sol
 import {LendefiAssets} from "../contracts/lender/LendefiAssets.sol";
 import {LendefiAssetsV2} from "../contracts/upgrades/LendefiAssetsV2.sol";
 import {VaultFactory} from "../contracts/lender/VaultFactory.sol";
+import {LendefiPoRFactory} from "../contracts/lender/LendefiPoRFactory.sol";
 import {TimelockControllerUpgradeable} from
     "@openzeppelin/contracts-upgradeable/governance/TimelockControllerUpgradeable.sol";
 import {ITransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
@@ -90,6 +91,7 @@ contract BasicDeploy is Test {
     LendefiAssets internal assetsInstance;
     USDC internal usdcInstance;
     VaultFactory internal vaultFactoryInstance;
+    LendefiPoRFactory internal porFactoryInstance;
     // IERC20 usdcInstance = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); //real usdc ethereum for fork testing
 
     function deployTokenUpgrade() internal {
@@ -575,12 +577,20 @@ contract BasicDeploy is Test {
      * @dev Initializes with proper role assignment for protocol, timelock, guardian, and multisig
      */
     function _deployYieldToken() internal {
+        // Deploy mock USDC if needed
+        if (address(usdcInstance) == address(0)) {
+            usdcInstance = new USDC();
+        }
+
         // Deploy LendefiYieldToken
         if (address(timelockInstance) == address(0)) {
             _deployTimelock();
         }
-        bytes memory data =
-            abi.encodeCall(LendefiYieldToken.initialize, (address(ethereum), address(timelockInstance), gnosisSafe));
+        // Use more explicit parameter encoding to avoid confusion
+        bytes memory data = abi.encodeCall(
+            LendefiYieldToken.initialize,
+            (address(ethereum), address(timelockInstance), address(gnosisSafe), address(usdcInstance))
+        );
 
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiYieldToken.sol", data));
         yieldTokenInstance = LendefiYieldToken(proxy);
@@ -756,9 +766,15 @@ contract BasicDeploy is Test {
             _deployVaultFactory();
         }
 
+        // Deploy mock USDC if needed
+        if (address(usdcInstance) == address(0)) {
+            usdcInstance = new USDC();
+        }
         // Then deploy the yield token with proper initialization parameters
-        bytes memory tokenData =
-            abi.encodeCall(LendefiYieldToken.initialize, (address(ethereum), address(timelockInstance), gnosisSafe));
+        bytes memory tokenData = abi.encodeCall(
+            LendefiYieldToken.initialize,
+            (address(ethereum), address(timelockInstance), gnosisSafe, address(usdcInstance))
+        );
 
         address payable tokenProxy = payable(Upgrades.deployUUPSProxy("LendefiYieldToken.sol", tokenData));
         yieldTokenInstance = LendefiYieldToken(tokenProxy);
@@ -784,6 +800,9 @@ contract BasicDeploy is Test {
 
         // Now set the protocol address in VaultFactory to point to the deployed Lendefi
         _configureVaultFactory();
+
+        // Deploy and configure PoR factory after Lendefi is deployed
+        _deployPoRFactory();
 
         // Update the protocol role in the yield token to point to the real Lendefi address
         vm.startPrank(address(timelockInstance));
@@ -851,5 +870,24 @@ contract BasicDeploy is Test {
 
         // Verify configuration
         assertEq(vaultFactoryInstance.protocol(), address(LendefiInstance), "Protocol address not set correctly");
+    }
+
+    /**
+     * @notice Deploys and initializes the Proof of Reserve factory
+     * @dev Uses the real implementation, not a mock
+     */
+    function _deployPoRFactory() internal {
+        // Deploy PoR factory using UUPS pattern
+        bytes memory data = abi.encodeCall(
+            LendefiPoRFactory.initialize, (address(LendefiInstance), address(assetsInstance), gnosisSafe)
+        );
+
+        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiPoRFactory.sol", data));
+        porFactoryInstance = LendefiPoRFactory(proxy);
+
+        // Set factory in assets module
+        vm.startPrank(address(timelockInstance));
+        assetsInstance.setPoRFactory(address(porFactoryInstance));
+        vm.stopPrank();
     }
 }
