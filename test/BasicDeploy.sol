@@ -823,7 +823,10 @@ contract BasicDeploy is Test {
     function deployCompleteWithOracle() internal {
         vm.warp(365 days);
         // Deploy mock tokens for testing
-        usdcInstance = new USDC();
+        // Deploy mock tokens for testing
+        if (address(usdcInstance) == address(0)) {
+            usdcInstance = new USDC();
+        }
         _deployTimelock();
         _deployToken();
         _deployEcosystem();
@@ -878,9 +881,7 @@ contract BasicDeploy is Test {
      */
     function _deployPoRFactory() internal {
         // Deploy PoR factory using UUPS pattern
-        bytes memory data = abi.encodeCall(
-            LendefiPoRFactory.initialize, (address(LendefiInstance), address(assetsInstance), gnosisSafe)
-        );
+        bytes memory data = abi.encodeCall(LendefiPoRFactory.initialize, (address(assetsInstance), gnosisSafe));
 
         address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiPoRFactory.sol", data));
         porFactoryInstance = LendefiPoRFactory(proxy);
