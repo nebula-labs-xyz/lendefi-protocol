@@ -237,6 +237,23 @@ contract LendefiYieldTokenV2 is
         emit UpgradeCancelled(msg.sender, implementation);
     }
 
+    /**
+     * @notice Performs automated Proof of Reserve updates at regular intervals
+     * @dev This function is called by Chainlink Automation nodes when checkUpkeep returns true
+     *      It updates the PoR feed with current TVL and monitors protocol collateralization
+     *
+     * The function:
+     * 1. Updates lastTimeStamp to track intervals
+     * 2. Increments the counter for monitoring purposes
+     * 3. Checks protocol collateralization status
+     * 4. Updates the Chainlink PoR feed with current TVL
+     * 5. Emits alert if protocol becomes undercollateralized
+     *
+     * @custom:automation This function is part of Chainlink's AutomationCompatibleInterface
+     * @custom:interval Updates occur every 12 hours (defined by interval state variable)
+     *
+     * @custom:emits CollateralizationAlert when protocol becomes undercollateralized
+     */
     function performUpkeep(bytes calldata /* performData */ ) external override {
         if ((block.timestamp - lastTimeStamp) > interval) {
             lastTimeStamp = block.timestamp;
@@ -253,6 +270,16 @@ contract LendefiYieldTokenV2 is
         }
     }
 
+    /**
+     * @notice Checks if upkeep needs to be performed for Proof of Reserve updates
+     * @dev This function is called by Chainlink Automation nodes to determine if performUpkeep should be executed
+     *      The upkeep is needed when the time elapsed since the last update exceeds the defined interval
+     * @return upkeepNeeded Boolean indicating if upkeep should be performed
+     * @return performData Encoded data to be passed to performUpkeep (returns empty bytes)
+     *
+     * @custom:automation This function is part of Chainlink's AutomationCompatibleInterface
+     * @custom:interval The check uses the contract's interval variable (default 12 hours)
+     */
     function checkUpkeep(bytes calldata /* checkData */ )
         external
         view
