@@ -210,11 +210,13 @@ interface IASSETS {
      * @param active Whether the oracle is active (0=inactive, 1=active)
      */
     event UniswapOracleUpdated(address indexed asset, address indexed pool, uint8 active);
+
     /**
      * @notice Emitted when Proof of Reserve factory is set
      * @param factory Address of the factory
      */
     event PoRFactorySet(address indexed factory);
+
     // ==================== ERRORS ====================
 
     /**
