@@ -83,18 +83,6 @@ interface IPROTOCOL {
     );
 
     /**
-     * @dev Emitted when protocol Config are reset to default values
-     */
-    event ProtocolConfigReset(
-        uint256 profitTargetRate,
-        uint256 borrowRate,
-        uint256 rewardAmount,
-        uint256 interval,
-        uint256 supplyAmount,
-        uint256 liquidatorThreshold,
-        uint256 flashLoanFee
-    );
-    /**
      * @notice Emitted when a user supplies liquidity to the protocol
      * @param supplier Address of the liquidity supplier
      * @param amount Amount of USDC supplied
@@ -192,14 +180,6 @@ interface IPROTOCOL {
      * @param liquidator The address of the liquidator
      */
     event Liquidated(address indexed user, uint256 indexed positionId, address liquidator);
-
-    /**
-     * @notice Emitted when collateral is transferred between positions
-     * @param user Address of the position owner
-     * @param asset Address of the transferred asset
-     * @param amount Amount of the asset transferred
-     */
-    event InterPositionalTransfer(address indexed user, address asset, uint256 amount);
 
     /**
      * @notice Emitted when an asset's total value locked (TVL) is updated
@@ -706,16 +686,6 @@ interface IPROTOCOL {
      * @dev For isolated positions, returns ISOLATED tier regardless of asset
      */
     function getPositionTier(address user, uint256 positionId) external view returns (IASSETS.CollateralTier);
-
-    /**
-     * @notice Transfers collateral between two positions owned by the same user
-     * @param fromPositionId The ID of the position to transfer collateral from
-     * @param toPositionId The ID of the position to transfer collateral to
-     * @param asset The address of the collateral asset to transfer
-     * @param amount The amount of the asset to transfer
-     */
-    // function interpositionalTransfer(uint256 fromPositionId, uint256 toPositionId, address asset, uint256 amount)
-    //     external;
 
     /**
      * @notice Gets the current protocol config
