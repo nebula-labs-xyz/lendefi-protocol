@@ -21,13 +21,22 @@ For more information visit [Nebula Labs](https://nebula-labs.xyz).
 
 ## Architecture & Design
 
-The contract implements a monolithic design pattern that combines all core lending functionality within a single upgradeable contract. This approach offers several advantages:
+The contract implements a hybrid architecture that balances monolithic core functionality with modular position-specific vaults. This design offers several advantages:
 
-- **Comprehensive Integration**: All lending, borrowing, and liquidation functionality is tightly integrated
-- **Simplified User Experience**: Single entry point for protocol interactions
-- **Efficient State Management**: Cross-functional optimizations possible within contract scope
+- **Regulatory Compliance**: Segregated vaults ensure asset isolation in accordance with custodial regulations 
+- **Enhanced Security**: Position-specific vaults prevent cross-contamination of assets between user positions
+- **Proof of Reserve Integration**: Chainlink PoR feeds provide transparent on-chain asset verification
+- **Simplified User Experience**: Single entry point for protocol interactions despite underlying complexity
+- **Efficient State Management**: Core logic remains centralized while asset custody is properly segregated
 
-The architecture follows sound design principles with clear separation of concerns through distinct functional areas and well-defined interfaces.
+The architecture follows sound design principles with clear separation of concerns:
+
+1. **Core Protocol Contract**: Manages lending parameters, interest calculations, and business logic
+2. **Asset Management Module**: Handles asset configurations, oracles, and Proof of Reserve integration
+3. **Position Vaults**: Individual vault contracts for each user position, providing true asset segregation
+4. **Vault Factory**: Responsible for creating and tracking position-specific vaults
+
+This hybrid approach maintains the operational efficiency of a monolithic design while implementing the segregated custody model required for regulatory compliance with the U.S. GENIUS Act and similar frameworks.
 
 ## Security Features
 
