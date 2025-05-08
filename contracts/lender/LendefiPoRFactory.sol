@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.23;
 
+/**
+ * @title LendefiPoRFactory
+ * @notice Factory for deploying and managing Proof of Reserve feeds
+ * @dev Creates standardized feeds for protocol assets
+ */
 import {LendefiPoRFeed} from "./LendefiPoRFeed.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {LendefiConstants} from "./lib/LendefiConstants.sol";
 
-/**
- * @title LendefiPoRFactory
- * @notice Factory for deploying and managing Proof of Reserve feeds
- * @dev Creates standardized feeds for protocol assets
- */
 contract LendefiPoRFactory is Initializable, AccessControlUpgradeable, UUPSUpgradeable {
     // The Lendefi protocol contract
-    address public lendefiProtocol;
+    address public manager;
 
     // Mapping from asset address to PoR feed address
     mapping(address => address) public feeds;
@@ -24,6 +24,8 @@ contract LendefiPoRFactory is Initializable, AccessControlUpgradeable, UUPSUpgra
 
     // Errors
     error FeedAlreadyExists();
+    // Error for zero address
+    error ZeroAddressNotAllowed();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -32,18 +34,22 @@ contract LendefiPoRFactory is Initializable, AccessControlUpgradeable, UUPSUpgra
 
     /**
      * @notice Initializes the factory contract
-     * @param lendefi The Lendefi protocol address
-     * @param assetsModule Admin address for access control
+     * @param manager_ Admin address for access control
+     * @param multisig Address of the multisig wallet
      */
-    function initialize(address lendefi, address assetsModule, address multisig) external initializer {
+    function initialize(address manager_, address multisig) external initializer {
+        // Validate parameters
+        if (manager_ == address(0)) revert ZeroAddressNotAllowed();
+        if (multisig == address(0)) revert ZeroAddressNotAllowed();
+
         __AccessControl_init();
         __UUPSUpgradeable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, multisig);
-        _grantRole(LendefiConstants.MANAGER_ROLE, assetsModule);
+        _grantRole(LendefiConstants.MANAGER_ROLE, manager_);
         _grantRole(LendefiConstants.UPGRADER_ROLE, multisig);
 
-        lendefiProtocol = lendefi;
+        manager = manager_;
     }
 
     /**
@@ -59,8 +65,8 @@ contract LendefiPoRFactory is Initializable, AccessControlUpgradeable, UUPSUpgra
         feed = address(
             new LendefiPoRFeed(
                 asset,
-                lendefiProtocol,
-                lendefiProtocol, // Protocol is the updater
+                manager,
+                manager, // LendefiAssets is the updater
                 msg.sender // Manager is the owner
             )
         );
