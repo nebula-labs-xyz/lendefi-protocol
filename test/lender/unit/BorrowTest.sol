@@ -60,6 +60,7 @@ contract BorrowTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -78,6 +79,7 @@ contract BorrowTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether,
                 isolationDebtCap: 100_000e6,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A, // Note: Originally this was CROSS_A, not ISOLATED as the comment suggests
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(rwaOracleInstance), active: 1}),
@@ -545,6 +547,7 @@ contract BorrowTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(crossBOracleInstance), active: 1}),

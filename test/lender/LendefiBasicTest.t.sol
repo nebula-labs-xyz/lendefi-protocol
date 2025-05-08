@@ -72,6 +72,7 @@ contract LendefiTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Max supply limit
                 isolationDebtCap: 100_000e6, // Isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
@@ -97,6 +98,7 @@ contract LendefiTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether,
                 isolationDebtCap: 0, // isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
@@ -124,6 +126,7 @@ contract LendefiTest is BasicDeploy {
 
     // Test 3: Borrow exceeding isolation debt cap should revert
     function test_Revert_BorrowExceedingIsolationDebtCap() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
         // Configure asset with low isolation debt cap
         vm.prank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
@@ -136,6 +139,7 @@ contract LendefiTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Max supply limit
                 isolationDebtCap: 50_000e6, // Isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
@@ -214,6 +218,9 @@ contract LendefiTest is BasicDeploy {
 
         // Set a higher isolation debt cap to ensure we hit credit limit error first
         vm.stopPrank();
+
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
+
         vm.prank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
             address(rwaToken),
@@ -225,6 +232,7 @@ contract LendefiTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Max supply limit
                 isolationDebtCap: 300_000e6, // Isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({

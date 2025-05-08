@@ -77,6 +77,7 @@ contract GetLPInfoTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({

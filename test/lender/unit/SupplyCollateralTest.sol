@@ -74,6 +74,7 @@ contract SupplyCollateralTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -96,6 +97,7 @@ contract SupplyCollateralTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 100_000e6, // Isolation debt cap of 100,000 USDC
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(rwaOracleInstance), active: 1}),
@@ -118,6 +120,7 @@ contract SupplyCollateralTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
@@ -140,6 +143,7 @@ contract SupplyCollateralTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(crossBOracleInstance), active: 1}),
@@ -347,6 +351,7 @@ contract SupplyCollateralTest is BasicDeploy {
 
     // Test 7: Supply up to supply cap
     function test_SupplyUpToCap() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(stableToken));
         // Set a small supply cap for testing
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
@@ -359,6 +364,7 @@ contract SupplyCollateralTest is BasicDeploy {
                 maxSupplyThreshold: 100 ether, // Low cap of 100 tokens
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
@@ -394,6 +400,7 @@ contract SupplyCollateralTest is BasicDeploy {
 
     // Test 8: Supply exceeding cap should fail
     function testRevert_SupplyExceedingCap() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(stableToken));
         // Set a small supply cap for testing
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
@@ -406,6 +413,7 @@ contract SupplyCollateralTest is BasicDeploy {
                 maxSupplyThreshold: 100 ether, // Low cap of 100 tokens
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
@@ -468,6 +476,7 @@ contract SupplyCollateralTest is BasicDeploy {
         uint256 positionId = _createPosition(bob, address(wethInstance), false);
         _mintTokens(bob, address(wethInstance), 10 ether);
 
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         // Now deactivate the WETH asset
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
@@ -480,6 +489,7 @@ contract SupplyCollateralTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -624,6 +634,7 @@ contract SupplyCollateralTest is BasicDeploy {
                     maxSupplyThreshold: 1_000_000 ether, // Supply limit
                     isolationDebtCap: 0, // No isolation debt cap
                     assetMinimumOracles: 1, // Need at least 1 oracle
+                    porFeed: address(0),
                     primaryOracleType: IASSETS.OracleType.CHAINLINK,
                     tier: IASSETS.CollateralTier.CROSS_A,
                     chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(newOracle), active: 1}),
@@ -663,6 +674,7 @@ contract SupplyCollateralTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(extraOracle), active: 1}),

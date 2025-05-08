@@ -71,6 +71,7 @@ contract PauseUnpauseTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -93,6 +94,7 @@ contract PauseUnpauseTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 100_000e6, // Isolation debt cap of 100,000 USDC
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(rwaOracleInstance), active: 1}),
@@ -507,6 +509,7 @@ contract PauseUnpauseTest is BasicDeploy {
 
     // Test 20: Admin functions work when paused
     function test_AdminFunctionsWorkWhenPaused() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
         // Try admin functions
         vm.prank(address(timelockInstance));
         // Update asset config should work
@@ -520,6 +523,7 @@ contract PauseUnpauseTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 100_000e6, // Isolation debt cap of 100,000 USDC
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(rwaOracleInstance), active: 1}),
@@ -548,7 +552,7 @@ contract PauseUnpauseTest is BasicDeploy {
         LendefiInstance.loadProtocolConfig(config);
 
         // Verify changes were applied
-        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
+        asset = assetsInstance.getAssetInfo(address(rwaToken));
         assertEq(asset.borrowThreshold, 650, "borrowThreshold should be updated to 600");
         assertEq(asset.liquidationThreshold, 750, "liquidationThreshold should be updated to 700");
 

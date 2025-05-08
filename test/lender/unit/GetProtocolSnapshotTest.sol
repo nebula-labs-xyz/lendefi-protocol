@@ -44,6 +44,7 @@ contract GetProtocolSnapshotTest is BasicDeploy {
                 maxSupplyThreshold: 10_000_000 ether, // Max supply
                 isolationDebtCap: 1_000_000e6, // Isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({

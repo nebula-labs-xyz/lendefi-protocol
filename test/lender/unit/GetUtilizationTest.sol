@@ -67,6 +67,7 @@ contract GetUtilizationTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -89,6 +90,7 @@ contract GetUtilizationTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e6, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),

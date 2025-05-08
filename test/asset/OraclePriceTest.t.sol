@@ -63,6 +63,7 @@ contract OraclePriceTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -81,6 +82,7 @@ contract OraclePriceTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(rwaOracleInstance), active: 1}),
@@ -99,6 +101,7 @@ contract OraclePriceTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
@@ -117,6 +120,7 @@ contract OraclePriceTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockOracle), active: 1}),
@@ -214,6 +218,7 @@ contract OraclePriceTest is BasicDeploy {
 
     // Test 10: Integration with Asset Config
     function test_GetAssetPriceOracle_WithAssetConfig() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         // Setup asset config with WETH oracle using the new Asset struct
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
@@ -226,6 +231,7 @@ contract OraclePriceTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),

@@ -68,6 +68,7 @@ contract WBTCInterestTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap for CROSS assets
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethassetsInstance), active: 1}),
@@ -90,6 +91,7 @@ contract WBTCInterestTest is BasicDeploy {
                 maxSupplyThreshold: 1_000 * 1e8, // Supply limit
                 isolationDebtCap: 1_000_000e6, // isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wbtcassetsInstance), active: 1}),
@@ -112,6 +114,7 @@ contract WBTCInterestTest is BasicDeploy {
                 maxSupplyThreshold: 1_000 * 1e8, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap for CROSS assets
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wbtcassetsInstance), active: 1}),
@@ -134,6 +137,7 @@ contract WBTCInterestTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e6, // Supply limit
                 isolationDebtCap: 0, // No isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableassetsInstance), active: 1}),

@@ -37,13 +37,10 @@ contract AssetModuleOracleTest is BasicDeploy {
     event CircuitBreakerThresholdUpdated(uint256 oldValue, uint256 newValue);
     event CircuitBreakerTriggered(address indexed asset, uint256 deviationPct, uint256 timestamp);
     event CircuitBreakerReset(address indexed asset);
-    // event CircuitBreakerTriggered(address indexed asset, uint256 currentPrice, uint256 previousPrice);
-    // event CircuitBreakerReset(address indexed asset);
     event PriceUpdated(address indexed asset, uint256 price, uint256 median, uint256 numOracles);
     event MinimumOraclesUpdated(uint256 oldValue, uint256 newValue);
     event AssetMinimumOraclesUpdated(address indexed asset, uint256 oldValue, uint256 newValue);
     event NotEnoughOraclesWarning(address indexed asset, uint256 required, uint256 actual);
-    // Add these custom errors at the top of your test contract to match what's in LendefiOracle.sol
 
     error NotEnoughOracles(address asset, uint256 required, uint256 actual);
     error LargeDeviation(address asset, uint256 currentPrice, uint256 previousPrice, uint256 percentChange);
@@ -116,6 +113,7 @@ contract AssetModuleOracleTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockOracle1), active: 1}),
@@ -134,6 +132,7 @@ contract AssetModuleOracleTest is BasicDeploy {
                 maxSupplyThreshold: 500_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockOracle2), active: 1}),
@@ -152,6 +151,7 @@ contract AssetModuleOracleTest is BasicDeploy {
                 maxSupplyThreshold: 10_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockOracle3), active: 1}),
@@ -653,6 +653,7 @@ contract AssetModuleOracleTest is BasicDeploy {
             uint40(40) // Circuit breaker threshold (40%)
         );
 
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(rwaToken));
         // Update asset configuration to include both Chainlink and Uniswap oracles
         assetsInstance.updateAssetConfig(
             address(rwaToken),
@@ -664,6 +665,7 @@ contract AssetModuleOracleTest is BasicDeploy {
                 maxSupplyThreshold: 500_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 2, // Require both oracles
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),

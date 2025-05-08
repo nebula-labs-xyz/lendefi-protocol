@@ -74,6 +74,7 @@ import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/ut
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {LendefiConstants} from "../lender/lib/LendefiConstants.sol";
 import {LendefiRates} from "../lender/lib/LendefiRates.sol";
+import {IPoRFeed} from "../interfaces/IPoRFeed.sol";
 
 /// @custom:oz-upgrades-from contracts/lender/Lendefi.sol:Lendefi
 contract LendefiV2 is
@@ -154,9 +155,12 @@ contract LendefiV2 is
     ProtocolConfig public mainConfig;
     /// @notice Information about the currently pending upgrade
     UpgradeRequest public pendingUpgrade;
+    /// @notice Total value locked per asset in USD
+    EnumerableMap.AddressToUintMap internal assetTVLinUSD;
     // Mappings
     /// @notice Total value locked per asset
     mapping(address => uint256) public assetTVL;
+
     /**
      * @dev Stores all borrowing positions for each user
      * @dev Key: User address, Value: Array of positions
@@ -178,7 +182,7 @@ contract LendefiV2 is
     /**
      * @dev Reserved storage gap for future upgrades
      */
-    uint256[30] private __gap;
+    uint256[21] private __gap;
 
     /**
      * @dev Ensures the position exists for the given user
@@ -370,6 +374,7 @@ contract LendefiV2 is
 
         // Update protocol state only after all verifications succeed
         totalFlashLoanFees += fee;
+
         emit FlashLoan(msg.sender, receiver, address(usdcInstance), amount, fee);
     }
 
@@ -766,6 +771,8 @@ contract LendefiV2 is
         position.debtAmount = currentDebt + amount;
         position.lastInterestAccrual = block.timestamp;
 
+        // Update USDC PoR feed
+        // _updatePoRFeed(address(usdcInstance), usdcInstance.balanceOf(address(this)) - amount);
         emit Borrow(msg.sender, positionId, amount);
         TH.safeTransfer(usdcInstance, msg.sender, amount);
     }
@@ -938,6 +945,7 @@ contract LendefiV2 is
         emit Liquidated(user, positionId, msg.sender);
 
         TH.safeTransferFrom(usdcInstance, msg.sender, address(this), debtWithInterest + fee);
+
         _withdrawAllCollateral(user, positionId, msg.sender);
     }
 
@@ -1447,6 +1455,23 @@ contract LendefiV2 is
         }
     }
 
+    /**
+     * @notice Checks if the protocol is solvent based on total asset value and borrow amount
+     * @dev Ensures that the total asset value exceeds the total borrow amount
+     * @return True if the protocol is solvent, false otherwise, and amount of total asset value
+     */
+    function isCollateralized() public view returns (bool, uint256) {
+        uint256 totalAssetValue = totalSuppliedLiquidity - totalBorrow;
+        uint256 length = assetTVLinUSD.length();
+
+        for (uint256 i = 0; i < length; i++) {
+            (, uint256 value) = assetTVLinUSD.at(i);
+            totalAssetValue += value;
+        }
+
+        return (totalAssetValue >= totalBorrow, totalAssetValue);
+    }
+
     //////////////////////////////////////////////////
     // ---------internal functions------------------//
     //////////////////////////////////////////////////
@@ -1525,6 +1550,8 @@ contract LendefiV2 is
         }
 
         assetTVL[asset] += amount;
+        // Update PoR feed if one exists
+        updatePoRFeed(asset);
         emit TVLUpdated(address(asset), assetTVL[asset]);
     }
 
@@ -1589,10 +1616,10 @@ contract LendefiV2 is
         }
 
         assetTVL[asset] -= amount;
-        emit TVLUpdated(address(asset), assetTVL[asset]);
-
         // Verify collateralization after withdrawal
         if (calculateCreditLimit(msg.sender, positionId) < position.debtAmount) revert CreditLimitExceeded(); // Credit limit maxed out
+        updatePoRFeed(asset);
+        emit TVLUpdated(address(asset), assetTVL[asset]);
     }
 
     /**
@@ -1645,7 +1672,8 @@ contract LendefiV2 is
             // Update position state
             position.debtAmount = balance - actualAmount;
             position.lastInterestAccrual = block.timestamp;
-
+            // Update USDC PoR feed
+            //_updatePoRFeed(address(usdcInstance), usdcInstance.balanceOf(address(this)) + actualAmount);
             // Emit events
             emit Repay(msg.sender, positionId, actualAmount);
             emit InterestAccrued(msg.sender, positionId, accruedInterest);
@@ -1685,11 +1713,30 @@ contract LendefiV2 is
 
             if (amount > 0) {
                 assetTVL[asset] -= amount;
+                updatePoRFeed(asset);
                 emit TVLUpdated(address(asset), assetTVL[asset]);
                 emit WithdrawCollateral(owner, positionId, asset, amount);
                 TH.safeTransfer(IERC20(asset), recipient, amount);
             }
         }
+    }
+
+    /**
+     * @dev Updates the Proof of Reserve feed for an asset using the stored TVL value
+     * @param asset The asset address to update the PoR feed for
+     */
+    function updatePoRFeed(address asset) public validAsset(asset) {
+        // Get PoR feed from assets module
+        address feedAddr = assetsModule.getPoRFeed(asset);
+
+        // Use the stored TVL value instead of parameter
+        uint256 tvl = assetTVL[asset];
+
+        // Update the reserves on the feed
+        IPoRFeed(feedAddr).updateReserves(tvl);
+
+        // Calculate and update USD value
+        assetTVLinUSD.set(asset, tvl * assetsModule.getAssetPrice(asset) / LendefiConstants.WAD);
     }
 
     /**

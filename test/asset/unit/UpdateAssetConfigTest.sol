@@ -60,7 +60,8 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 liquidationThreshold: LIQUIDATION_THRESHOLD,
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
-                assetMinimumOracles: 1, // Need at least 1 oracle
+                assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -84,7 +85,8 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 liquidationThreshold: LIQUIDATION_THRESHOLD,
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
-                assetMinimumOracles: 1, // Need at least 1 oracle
+                assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -122,6 +124,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -155,6 +158,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -191,6 +195,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -204,6 +209,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
         IASSETS.CollateralTier newTier = IASSETS.CollateralTier.ISOLATED;
         uint256 newDebtCap = 50_000e6;
 
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(testToken));
         vm.prank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
             address(testToken),
@@ -215,6 +221,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: newDebtCap,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: newTier,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -241,6 +248,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
             maxSupplyThreshold: MAX_SUPPLY,
             isolationDebtCap: ISOLATION_DEBT_CAP,
             assetMinimumOracles: 1,
+            porFeed: address(0),
             primaryOracleType: IASSETS.OracleType.CHAINLINK,
             tier: IASSETS.CollateralTier.CROSS_A,
             chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -267,6 +275,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -283,6 +292,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
         vm.stopPrank();
 
         // Deactivate the asset - now using assetsInstance
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(testToken));
         vm.prank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
             address(testToken),
@@ -294,6 +304,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -323,6 +334,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(0), active: 1}), // Zero address
@@ -346,6 +358,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 2}), // Invalid active value
@@ -369,6 +382,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 2, // Requires 2 oracles
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}), // Only 1 active
@@ -394,6 +408,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 0, // No minimum requirement
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK, // Primary is Chainlink
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 0}), // But it's inactive
@@ -417,6 +432,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -440,6 +456,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -463,6 +480,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -485,6 +503,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -508,6 +527,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -531,6 +551,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: 0, // Zero max supply
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -554,6 +575,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: 0, // Zero isolation debt cap
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED, // Isolated asset requires non-zero debt cap
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -578,6 +600,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.UNISWAP_V3_TWAP, // Primary is Uniswap
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 0}), // Chainlink inactive
@@ -611,6 +634,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: MAX_SUPPLY,
                 isolationDebtCap: ISOLATION_DEBT_CAP,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -642,6 +666,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e8,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -672,6 +697,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e8,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -702,6 +728,7 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e8,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(testOracle), active: 1}),
@@ -734,7 +761,8 @@ contract UpdateAssetConfigTest is BasicDeploy {
                 liquidationThreshold: 850,
                 maxSupplyThreshold: 1_000_000e8,
                 isolationDebtCap: 0,
-                assetMinimumOracles: 1, // Require at least 1 oracle
+                assetMinimumOracles: 1,
+                porFeed: address(0), // Require at least 1 oracle
                 primaryOracleType: IASSETS.OracleType.UNISWAP_V3_TWAP, // Uniswap is primary
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({

@@ -57,6 +57,7 @@ contract GetAssetInfoTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -79,6 +80,7 @@ contract GetAssetInfoTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e6, // Supply limit
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
@@ -134,6 +136,7 @@ contract GetAssetInfoTest is BasicDeploy {
     }
 
     function test_GetAssetInfo_AfterUpdate() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         vm.startPrank(address(timelockInstance));
 
         // UPDATED: Update WETH configuration using struct-based approach
@@ -147,6 +150,7 @@ contract GetAssetInfoTest is BasicDeploy {
                 maxSupplyThreshold: 500_000 ether, // Lower supply limit
                 isolationDebtCap: 1_000_000e6, // Add isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B, // Change tier
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -161,7 +165,7 @@ contract GetAssetInfoTest is BasicDeploy {
         vm.stopPrank();
 
         // Use assetsInstance for getAssetInfo
-        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
+        asset = assetsInstance.getAssetInfo(address(wethInstance));
 
         assertEq(asset.active, 0, "WETH should be inactive after update");
         assertEq(asset.borrowThreshold, 750, "Borrow threshold should be updated");

@@ -71,6 +71,7 @@ contract GetPositionTierTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e6, // Supply limit
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE, // 0
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
@@ -93,6 +94,7 @@ contract GetPositionTierTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A, // 1
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -115,6 +117,7 @@ contract GetPositionTierTest is BasicDeploy {
                 maxSupplyThreshold: 1_000 * 1e8, // Supply limit
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A, // 1
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wbtcOracleInstance), active: 1}),
@@ -137,6 +140,7 @@ contract GetPositionTierTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B, // 2
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(rwaOracleInstance), active: 1}),
@@ -160,6 +164,7 @@ contract GetPositionTierTest is BasicDeploy {
                 maxSupplyThreshold: 1_000 * 1e8, // Supply limit
                 isolationDebtCap: 1_000_000e6, // Isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED, // 3
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wbtcOracleInstance), active: 1}),

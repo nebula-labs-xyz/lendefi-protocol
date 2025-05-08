@@ -59,6 +59,7 @@ contract LendefiExtendedTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // max supply
                 isolationDebtCap: 100_000e6, // isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(rwaOracleInstance), active: 1}),
@@ -81,6 +82,7 @@ contract LendefiExtendedTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // max supply
                 isolationDebtCap: 0, // no isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -165,6 +167,7 @@ contract LendefiExtendedTest is BasicDeploy {
 
         // Accumulate interest for 1 year
         vm.warp(block.timestamp + 365 days);
+        wethOracleInstance.setPrice(2500e8); // same price, but this updates the blockstamp as well
         uint256 debtWithInterest = LendefiInstance.calculateDebtWithInterest(charlie, 0);
 
         // Replace the APR calculation section
@@ -372,6 +375,7 @@ contract LendefiExtendedTest is BasicDeploy {
 
     // Test - Use proper asset capacity error code
     function testRevert_ExceedAssetSupplyLimit() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         // Setup low max supply for WETH
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
@@ -384,6 +388,7 @@ contract LendefiExtendedTest is BasicDeploy {
                 maxSupplyThreshold: 5 ether, // Low max supply of 5 ETH
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),

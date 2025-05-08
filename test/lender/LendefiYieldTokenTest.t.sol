@@ -19,6 +19,8 @@ contract LendefiYieldTokenTest is Test {
     address public unauthorized = address(0x5);
     address public timelock = address(0x6);
 
+    address usdc = address(0x7); // Mock USDC instance
+
     bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00;
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant PROTOCOL_ROLE = keccak256("PROTOCOL_ROLE");
@@ -54,7 +56,7 @@ contract LendefiYieldTokenTest is Test {
 
         // Deploy proxy and initialize with all required parameters
         bytes memory initData =
-            abi.encodeWithSelector(LendefiYieldToken.initialize.selector, protocol, timelock, multisig);
+            abi.encodeWithSelector(LendefiYieldToken.initialize.selector, protocol, timelock, multisig, usdc);
 
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         yieldToken = LendefiYieldToken(address(proxy));
@@ -86,12 +88,12 @@ contract LendefiYieldTokenTest is Test {
 
         // Now try to initialize with zero address - should revert with ZeroAddressNotAllowed()
         vm.expectRevert(ZeroAddressNotAllowed.selector);
-        newToken.initialize(address(0), timelock, multisig);
+        newToken.initialize(address(0), timelock, multisig, usdc);
     }
 
     function testRevert_DoubleInitialization() public {
         vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
-        yieldToken.initialize(protocol, timelock, multisig);
+        yieldToken.initialize(protocol, timelock, multisig, usdc);
     }
 
     // ------ Role Management Tests ------

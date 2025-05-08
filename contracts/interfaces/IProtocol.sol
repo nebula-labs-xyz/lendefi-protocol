@@ -712,4 +712,13 @@ interface IPROTOCOL {
      * @return ProtocoConfig struct containing all protocol parameters
      */
     function getConfig() external view returns (ProtocolConfig memory);
+
+    /**
+     * @notice Checks if the protocol is solvent based on total asset value and borrow amount
+     * @dev Ensures that the total asset value exceeds the total borrow amount
+     * @return A tuple containing:
+     *   - A boolean indicating if the protocol is solvent (total assets >= total borrows)
+     *   - The total asset value in USD terms
+     */
+    function isCollateralized() external view returns (bool, uint256);
 }

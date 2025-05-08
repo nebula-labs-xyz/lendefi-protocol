@@ -4,13 +4,13 @@ pragma solidity ^0.8.23;
 import "../../BasicDeploy.sol";
 import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
-import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
+import {MockPriceOracle} from "../../../contracts/mock/MockPriceOracle.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 contract UpdateTierConfigTest is BasicDeploy {
     // Add this to your contract's state variables
-    WETHPriceConsumerV3 internal wethOracleInstance;
+    MockPriceOracle internal wethOracleInstance;
 
     event TierParametersUpdated(IASSETS.CollateralTier indexed tier, uint256 jumpRate, uint256 liquidationFee);
 
@@ -28,7 +28,7 @@ contract UpdateTierConfigTest is BasicDeploy {
 
     function setUp() public {
         // Create the mock WETH oracle first
-        wethOracleInstance = new WETHPriceConsumerV3();
+        wethOracleInstance = new MockPriceOracle();
         wethOracleInstance.setPrice(2500e8); // $2500 per ETH
 
         // Deploy all contracts including the Oracle module
@@ -55,6 +55,7 @@ contract UpdateTierConfigTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -208,14 +209,20 @@ contract UpdateTierConfigTest is BasicDeploy {
 
     // Test 7: Effect on borrow rate calculation
     function test_EffectOnBorrowRateCalculation() public {
-        // Setup protocol with supply
+        // STEP 1: Setup initial protocol liquidity
         usdcInstance.mint(alice, 100_000e6);
         vm.startPrank(alice);
         usdcInstance.approve(address(LendefiInstance), 100_000e6);
         LendefiInstance.supplyLiquidity(100_000e6);
         vm.stopPrank();
 
-        // Setup a position with collateral and borrow
+        // STEP 2: Ensure oracle is up-to-date before any operations
+        wethOracleInstance.setTimestamp(block.timestamp);
+        wethOracleInstance.setPrice(2500e8);
+        wethOracleInstance.setRoundId(1);
+        wethOracleInstance.setAnsweredInRound(1);
+
+        // STEP 3: Setup a position with collateral
         vm.deal(bob, 50 ether);
         vm.startPrank(bob);
         wethInstance.deposit{value: 50 ether}();
@@ -225,38 +232,50 @@ contract UpdateTierConfigTest is BasicDeploy {
         LendefiInstance.createPosition(address(wethInstance), false);
         LendefiInstance.supplyCollateral(address(wethInstance), 20 ether, 0);
 
-        // Update the oracle with current data to avoid timeout
-        // The mock WETHPriceConsumerV3 likely doesn't have setTimestamp method
-        // Instead, use the appropriate method to update the price with current timestamp
-        wethOracleInstance.setPrice(2500e8); // This typically updates the latest answer
+        // STEP 4: Update oracle again before borrowing
+        // This is critical - we need fresh oracle data for any price-dependent operation
+        wethOracleInstance.setTimestamp(block.timestamp);
+        wethOracleInstance.setPrice(2500e8);
+        wethOracleInstance.setRoundId(2);
+        wethOracleInstance.setAnsweredInRound(2);
 
-        // Warp to ensure the oracle has recent data
-        vm.warp(block.timestamp + 1);
-
-        // Borrow to create utilization
+        // STEP 5: Borrow to create protocol utilization
         LendefiInstance.borrow(0, 40_000e6);
         vm.stopPrank();
 
-        // Verify we have non-zero utilization
+        // STEP 6: Verify non-zero utilization
         uint256 utilization = LendefiInstance.getUtilization();
         assertTrue(utilization > 0, "Test should have non-zero utilization");
 
-        // Get initial borrow rate for CROSS_A tier
+        // STEP 7: Record initial borrow rate
+        // First update oracle again
+        wethOracleInstance.setTimestamp(block.timestamp);
+        wethOracleInstance.setPrice(2500e8);
+        wethOracleInstance.setRoundId(3);
+        wethOracleInstance.setAnsweredInRound(3);
+
         uint256 initialBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
 
-        // Update CROSS_A tier borrow rate to double
+        // STEP 8: Update tier config to double the borrow rate
         uint256 doubleBorrowRate = DEFAULT_BORROW_RATE * 2;
-
         vm.prank(address(timelockInstance));
         assetsInstance.updateTierConfig(IASSETS.CollateralTier.CROSS_A, doubleBorrowRate, NEW_LIQUIDATION_FEE);
 
-        // Update price again to ensure fresh data for rate calculation
+        // STEP 9: Update oracle again before final rate check
+        wethOracleInstance.setTimestamp(block.timestamp);
         wethOracleInstance.setPrice(2500e8);
+        wethOracleInstance.setRoundId(4);
+        wethOracleInstance.setAnsweredInRound(4);
 
-        // Get new borrow rate
+        // STEP 10: Get updated borrow rate and assert it increased
         uint256 newBorrowRate = LendefiInstance.getBorrowRate(IASSETS.CollateralTier.CROSS_A);
 
-        // The new rate should be higher with meaningful utilization
+        // Log the values to help debugging
+        console2.log("Initial borrow rate:", initialBorrowRate);
+        console2.log("New borrow rate:", newBorrowRate);
+        console2.log("Current utilization:", utilization);
+
+        // STEP 11: Verify the borrow rate increased due to the config change
         assertGt(newBorrowRate, initialBorrowRate, "New borrow rate should be higher after parameter update");
     }
 

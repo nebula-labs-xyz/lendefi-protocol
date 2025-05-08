@@ -77,6 +77,7 @@ contract GetAssetDetailsTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // Supply limit
                 isolationDebtCap: 10_000e6, // Isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -99,6 +100,7 @@ contract GetAssetDetailsTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e6, // Supply limit (note the e6 for USDC)
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracleInstance), active: 1}),
@@ -121,6 +123,7 @@ contract GetAssetDetailsTest is BasicDeploy {
                 maxSupplyThreshold: 100_000 ether, // Supply limit
                 isolationDebtCap: 5_000e6, // Isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(linkOracle), active: 1}),
@@ -143,6 +146,7 @@ contract GetAssetDetailsTest is BasicDeploy {
                 maxSupplyThreshold: 200_000 ether, // Supply limit
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_B,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(uniOracle), active: 1}),
@@ -337,7 +341,7 @@ contract GetAssetDetailsTest is BasicDeploy {
         // Get current max supply
         (,, uint256 initialMaxSupply,) = assetsInstance.getAssetDetails(address(wethInstance));
         uint256 newMaxSupply = 500_000 ether;
-
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         // UPDATED: Update max supply threshold using assetsInstance
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
@@ -350,6 +354,7 @@ contract GetAssetDetailsTest is BasicDeploy {
                 maxSupplyThreshold: newMaxSupply, // Supply limit
                 isolationDebtCap: 10_000e6, // Isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),

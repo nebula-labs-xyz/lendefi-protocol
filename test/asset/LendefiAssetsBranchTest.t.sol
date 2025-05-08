@@ -53,6 +53,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
@@ -150,6 +151,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
@@ -236,10 +238,10 @@ contract LendefiAssetsBranchTest is BasicDeploy {
     }
 
     function test_3_3_UpdateAssetConfigInvalidThresholds() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         vm.startPrank(address(timelockInstance));
 
         vm.expectRevert(abi.encodeWithSelector(IASSETS.InvalidLiquidationThreshold.selector, 995));
-
         assetsInstance.updateAssetConfig(
             address(wethInstance),
             IASSETS.Asset({
@@ -250,6 +252,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e6,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
@@ -335,6 +338,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
     }
 
     function test_4_6_InvalidUniswapConfig() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         vm.startPrank(address(timelockInstance));
 
         // First update with inactive Uniswap configuration
@@ -348,6 +352,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK, // Keep Chainlink as primary
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
@@ -390,6 +395,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
     }
 
     function test_5_2_AssetActivationDeactivation() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         vm.startPrank(address(timelockInstance));
 
         // First activate an asset (active = 1)
@@ -403,6 +409,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
@@ -424,6 +431,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
@@ -449,7 +457,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
             20, // volatilityPercentage (20%)
             50 // circuitBreakerThreshold (50%)
         );
-
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         // Configure wethInstance with both oracles active
         assetsInstance.updateAssetConfig(
             address(wethInstance),
@@ -461,6 +469,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
@@ -501,6 +510,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
     }
 
     function test_6_2_CircuitBreakerUnchangedStatus() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
             address(wethInstance),
@@ -512,6 +522,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
@@ -543,9 +554,9 @@ contract LendefiAssetsBranchTest is BasicDeploy {
         vm.deal(address(this), 100 ether);
         wethInstance.deposit{value: 100 ether}();
         wethInstance.transfer(address(mockUniswapPool), 100 ether);
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
 
         vm.startPrank(address(timelockInstance));
-
         // Configure test token with active Uniswap oracle
         assetsInstance.updateAssetConfig(
             address(wethInstance),
@@ -557,6 +568,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e8,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.UNISWAP_V3_TWAP,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
@@ -616,6 +628,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e8,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.UNISWAP_V3_TWAP, // Uniswap as primary
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
@@ -639,6 +652,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
     // ======== 8. Coverage Gap Tests ========
 
     function test_8_1_CheckPriceDeviationWithInsufficientOracles() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         // Configure wethInstance with only one active oracle
         vm.startPrank(address(timelockInstance));
         assetsInstance.updateAssetConfig(
@@ -651,6 +665,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),
@@ -676,6 +691,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
 
         // Configure Uniswap pool for test token
         MockUniswapV3Pool tokenPool = new MockUniswapV3Pool(address(testToken), address(usdcInstance), 3000);
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
 
         // Try to set a token with primary oracle as Uniswap but with inactive Uniswap
         vm.expectRevert(
@@ -693,6 +709,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e8,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.UNISWAP_V3_TWAP, // Uniswap as primary
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({
@@ -710,6 +727,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
     }
 
     function testRevert_GetAssetPriceByTypeCircuitBreakerActive() public {
+        IASSETS.Asset memory asset = assetsInstance.getAssetInfo(address(wethInstance));
         vm.startPrank(address(timelockInstance));
 
         // First set up the oracle configuration
@@ -731,6 +749,7 @@ contract LendefiAssetsBranchTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000e18,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: asset.porFeed,
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockChainlinkOracle), active: 1}),

@@ -63,6 +63,7 @@ contract GetUserPositionsCountTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // max supply
                 isolationDebtCap: 0, // no isolation debt cap for cross assets
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(ethOracle), active: 1}),
@@ -85,6 +86,7 @@ contract GetUserPositionsCountTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // max supply
                 isolationDebtCap: 100_000e6, // $100k max borrow cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(rwaOracle), active: 1}),

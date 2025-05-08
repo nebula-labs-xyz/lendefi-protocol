@@ -90,6 +90,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 1,
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(wethOracleInstance), active: 1}),
@@ -108,6 +109,7 @@ contract OraclePriceExpandedTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether,
                 isolationDebtCap: 0,
                 assetMinimumOracles: 2, // Require 2 oracles for median calculation
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockOracle), active: 1}),

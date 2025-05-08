@@ -43,9 +43,6 @@ contract AssetsInitializeTest is BasicDeploy {
         assertTrue(assetsContract.hasRole(UPGRADER_ROLE, timelockAddr), "Timelock should have UPGRADER_ROLE");
         assertTrue(assetsContract.hasRole(PAUSER_ROLE, gnosisSafe), "gnosisSafe should have PAUSER_ROLE");
         assertTrue(assetsContract.hasRole(PAUSER_ROLE, timelockAddr), "Timelock should have PAUSER_ROLE");
-        assertTrue(
-            assetsContract.hasRole(CIRCUIT_BREAKER_ROLE, gnosisSafe), "gnosisSafe should have CIRCUIT_BREAKER_ROLE"
-        );
 
         // Check version
         assertEq(assetsContract.version(), 1, "Initial version should be 1");
@@ -113,14 +110,6 @@ contract AssetsInitializeTest is BasicDeploy {
         // Timelock should have MANAGER_ROLE
         assertTrue(assetsContract.hasRole(MANAGER_ROLE, timelockAddr), "Timelock should have MANAGER_ROLE");
         assertFalse(assetsContract.hasRole(MANAGER_ROLE, gnosisSafe), "gnosisSafe should not have MANAGER_ROLE");
-
-        // Both timelock and gnosisSafe should have CIRCUIT_BREAKER_ROLE
-        assertTrue(
-            assetsContract.hasRole(CIRCUIT_BREAKER_ROLE, gnosisSafe), "gnosisSafe should have CIRCUIT_BREAKER_ROLE"
-        );
-        assertTrue(
-            assetsContract.hasRole(CIRCUIT_BREAKER_ROLE, timelockAddr), "timelock should have CIRCUIT_BREAKER_ROLE"
-        );
     }
 
     function test_BothHaveUpgraderAndPauserRoles() public {
@@ -210,12 +199,6 @@ contract AssetsInitializeTest is BasicDeploy {
     }
 
     function test_PauseStateAfterInit() public {
-        // Deploy with initialization using explicit gnosisSafe address
-        bytes memory localInitData =
-            abi.encodeCall(LendefiAssets.initialize, (timelockAddr, gnosisSafe, address(usdcInstance)));
-        address payable proxy = payable(Upgrades.deployUUPSProxy("LendefiAssets.sol", localInitData));
-        LendefiAssets assetsContract = LendefiAssets(proxy);
-
         // Create a mock oracle address for the asset
         address mockPriceFeed = address(0x123456);
 
@@ -231,6 +214,7 @@ contract AssetsInitializeTest is BasicDeploy {
             maxSupplyThreshold: 1_000_000e18,
             isolationDebtCap: 0,
             assetMinimumOracles: 1,
+            porFeed: address(0),
             primaryOracleType: IASSETS.OracleType.CHAINLINK,
             tier: IASSETS.CollateralTier.CROSS_A,
             chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockPriceFeed), active: 1}),
@@ -238,27 +222,41 @@ contract AssetsInitializeTest is BasicDeploy {
         });
 
         // Update asset config on the newly deployed contract (not the global instance)
-        assetsContract.updateAssetConfig(address(wethInstance), item);
+        assetsInstance.updateAssetConfig(address(wethInstance), item);
 
         // Verify the asset is properly registered
-        assertTrue(assetsContract.isAssetValid(address(wethInstance)), "Asset should be valid");
+        assertTrue(assetsInstance.isAssetValid(address(wethInstance)), "Asset should be valid");
         vm.stopPrank();
 
         // Both timelock and gnosisSafe can pause
         vm.prank(gnosisSafe);
-        assetsContract.pause();
+        assetsInstance.pause();
 
         // Try a function that's protected by whenNotPaused
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         vm.prank(timelockAddr);
-        assetsContract.updateAssetConfig(address(wethInstance), item);
+        assetsInstance.updateAssetConfig(address(wethInstance), item);
 
         // Test unpause with timelock
         vm.prank(timelockAddr);
-        assetsContract.unpause();
+        assetsInstance.unpause();
 
         // Now update should work again
+        item = IASSETS.Asset({
+            active: 1,
+            decimals: 18,
+            borrowThreshold: 900,
+            liquidationThreshold: 950,
+            maxSupplyThreshold: 1_000_000e18,
+            isolationDebtCap: 0,
+            assetMinimumOracles: 1,
+            porFeed: assetsInstance.getAssetInfo(address(wethInstance)).porFeed,
+            primaryOracleType: IASSETS.OracleType.CHAINLINK,
+            tier: IASSETS.CollateralTier.CROSS_A,
+            chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(mockPriceFeed), active: 1}),
+            poolConfig: IASSETS.UniswapPoolConfig({pool: address(0), twapPeriod: 0, active: 0})
+        });
         vm.prank(timelockAddr);
-        assetsContract.updateAssetConfig(address(wethInstance), item);
+        assetsInstance.updateAssetConfig(address(wethInstance), item);
     }
 }

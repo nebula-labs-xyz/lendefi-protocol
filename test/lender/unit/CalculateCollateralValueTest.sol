@@ -75,6 +75,7 @@ contract CalculateCollateralValueTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // max supply
                 isolationDebtCap: 0, // no isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.CROSS_A,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(ethOracle), active: 1}),
@@ -97,6 +98,7 @@ contract CalculateCollateralValueTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // max supply
                 isolationDebtCap: 100_000e6, // isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.ISOLATED,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(rwaOracle), active: 1}),
@@ -119,6 +121,7 @@ contract CalculateCollateralValueTest is BasicDeploy {
                 maxSupplyThreshold: 1_000_000 ether, // max supply
                 isolationDebtCap: 0, // no isolation debt cap
                 assetMinimumOracles: 1, // Need at least 1 oracle
+                porFeed: address(0),
                 primaryOracleType: IASSETS.OracleType.CHAINLINK,
                 tier: IASSETS.CollateralTier.STABLE,
                 chainlinkConfig: IASSETS.ChainlinkOracleConfig({oracleUSD: address(stableOracle), active: 1}),
