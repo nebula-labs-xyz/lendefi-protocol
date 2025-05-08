@@ -1008,36 +1008,6 @@ contract Lendefi is
         );
     }
 
-    // /**
-    //  * @notice Resets protocol parameters to default values
-    //  * @dev Reverts all configuration parameters to conservative default values
-    //  * @custom:access-control Restricted to LendefiConstants.MANAGER_ROLE
-    //  * @custom:events Emits a ProtocolConfigReset event
-    //  */
-    // function resetProtocolConfig() external onlyRole(LendefiConstants.MANAGER_ROLE) {
-    //     // Set default values in mainConfig
-    //     mainConfig = ProtocolConfig({
-    //         profitTargetRate: 0.01e6, // 1%
-    //         borrowRate: 0.06e6, // 6%
-    //         rewardAmount: 2_000 ether, // 2,000 tokens
-    //         rewardInterval: 180 days, // 180 days
-    //         rewardableSupply: 100_000 * LendefiConstants.WAD, // 100,000 USDC
-    //         liquidatorThreshold: 20_000 ether, // 20,000 tokens
-    //         flashLoanFee: 9 // 9 basis points (0.09%)
-    //     });
-
-    //     // Emit event
-    //     emit ProtocolConfigReset(
-    //         mainConfig.profitTargetRate,
-    //         mainConfig.borrowRate,
-    //         mainConfig.rewardAmount,
-    //         mainConfig.rewardInterval,
-    //         mainConfig.rewardableSupply,
-    //         mainConfig.liquidatorThreshold,
-    //         mainConfig.flashLoanFee
-    //     );
-    // }
-
     /**
      * @notice Schedules an upgrade to a new implementation with timelock
      * @dev Only callable by addresses with LendefiConstants.UPGRADER_ROLE
