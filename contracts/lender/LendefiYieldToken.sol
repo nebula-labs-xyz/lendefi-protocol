@@ -235,6 +235,23 @@ contract LendefiYieldToken is
         emit UpgradeCancelled(msg.sender, implementation);
     }
 
+    /**
+     * @notice Performs automated Proof of Reserve updates at regular intervals
+     * @dev This function is called by Chainlink Automation nodes when checkUpkeep returns true
+     *      It updates the PoR feed with current TVL and monitors protocol collateralization
+     *
+     * The function:
+     * 1. Updates lastTimeStamp to track intervals
+     * 2. Increments the counter for monitoring purposes
+     * 3. Checks protocol collateralization status
+     * 4. Updates the Chainlink PoR feed with current TVL
+     * 5. Emits alert if protocol becomes undercollateralized
+     *
+     * @custom:automation This function is part of Chainlink's AutomationCompatibleInterface
+     * @custom:interval Updates occur every 12 hours (defined by interval state variable)
+     *
+     * @custom:emits CollateralizationAlert when protocol becomes undercollateralized
+     */
     function performUpkeep(bytes calldata /* performData */ ) external override {
         if ((block.timestamp - lastTimeStamp) > interval) {
             lastTimeStamp = block.timestamp;
@@ -252,20 +269,14 @@ contract LendefiYieldToken is
     }
 
     /**
-     * @notice method that is simulated by the keepers to see if any work actually
-     * needs to be performed. This method does does not actually need to be
-     * executable, and since it is only ever simulated it can consume lots of gas.
-     * @dev To ensure that it is never called, you may want to add the
-     * cannotExecute modifier from KeeperBase to your implementation of this
-     * method.
-     * same for a registered upkeep. This can easily be broken down into specific
-     * arguments using `abi.decode`, so multiple upkeeps can be registered on the
-     * same contract and easily differentiated by the contract.
-     * @return upkeepNeeded boolean to indicate whether the keeper should call
-     * performUpkeep or not.
-     * @return performData bytes that the keeper should call performUpkeep with, if
-     * upkeep is needed. If you would like to encode data to decode later, try
-     * `abi.encode`.
+     * @notice Checks if upkeep needs to be performed for Proof of Reserve updates
+     * @dev This function is called by Chainlink Automation nodes to determine if performUpkeep should be executed
+     *      The upkeep is needed when the time elapsed since the last update exceeds the defined interval
+     * @return upkeepNeeded Boolean indicating if upkeep should be performed
+     * @return performData Encoded data to be passed to performUpkeep (returns empty bytes)
+     *
+     * @custom:automation This function is part of Chainlink's AutomationCompatibleInterface
+     * @custom:interval The check uses the contract's interval variable (default 12 hours)
      */
     function checkUpkeep(bytes calldata /* checkData */ )
         external
