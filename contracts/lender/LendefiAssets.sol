@@ -145,8 +145,6 @@ contract LendefiAssets is
         _grantRole(LendefiConstants.UPGRADER_ROLE, timelock);
         _grantRole(LendefiConstants.PAUSER_ROLE, multisig);
         _grantRole(LendefiConstants.PAUSER_ROLE, timelock);
-        _grantRole(LendefiConstants.CIRCUIT_BREAKER_ROLE, timelock);
-        _grantRole(LendefiConstants.CIRCUIT_BREAKER_ROLE, multisig);
 
         // Initialize oracle config
         mainOracleConfig = MainOracleConfig({
