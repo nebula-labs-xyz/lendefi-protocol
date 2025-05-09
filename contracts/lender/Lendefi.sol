@@ -960,11 +960,11 @@ contract Lendefi is
         address vault = positions[user][positionId].vault;
         // Transfer all assets from vault to liquidator
         IVAULT(vault).liquidate(getPositionCollateralAssets(user, positionId), msg.sender);
+        // Clear all collateral assets
+        positionCollateral[user][positionId].clear();
 
         emit InterestAccrued(user, positionId, interestAccrued);
         emit Liquidated(user, positionId, msg.sender);
-
-        positionCollateral[user][positionId].clear(); // Clear all collateral assets
         TH.safeTransferFrom(usdcInstance, msg.sender, address(this), debtWithInterest + fee);
     }
 
@@ -1119,13 +1119,7 @@ contract Lendefi is
         returns (address[] memory assets)
     {
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
-        uint256 len = collaterals.length();
-        assets = new address[](len);
-
-        for (uint256 i = 0; i < len; i++) {
-            (address asset,) = collaterals.at(i);
-            assets[i] = asset;
-        }
+        assets = collaterals.keys();
     }
 
     /**
@@ -1206,26 +1200,8 @@ contract Lendefi is
      * @return credit - The maximum amount of USDC that can be borrowed against the position
      * @custom:access-control Available to any caller, read-only
      */
-    function calculateCreditLimit(address user, uint256 positionId)
-        public
-        view
-        validPosition(user, positionId)
-        returns (uint256 credit)
-    {
-        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
-        uint256 len = collaterals.length();
-        if (len == 0) return 0;
-
-        for (uint256 i; i < len; i++) {
-            (address asset, uint256 amount) = collaterals.at(i);
-
-            if (amount > 0) {
-                // Get all parameters in a single call
-                IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
-
-                credit += (amount * params.price * params.borrowThreshold) / (10 ** params.decimals * 1000);
-            }
-        }
+    function calculateCreditLimit(address user, uint256 positionId) public view returns (uint256 credit) {
+        (credit,,) = calculateLimits(user, positionId);
     }
 
     /**
@@ -1235,21 +1211,52 @@ contract Lendefi is
      * @param positionId ID of the position to calculate value for
      * @return value - The total USD value of all collateral assets in the position
      */
-    function calculateCollateralValue(address user, uint256 positionId)
+    function calculateCollateralValue(address user, uint256 positionId) public view returns (uint256 value) {
+        (,, value) = calculateLimits(user, positionId);
+    }
+
+    /**
+     * @notice Calculates the health factor of a position
+     * @dev Health factor is the ratio of weighted collateral to debt, below 1.0 is liquidatable
+     * @param user Address of the position owner
+     * @param positionId ID of the position to calculate health for
+     * @return The position's health factor in LendefiConstants.WAD format (1.0 = 1e6)
+     * @custom:error-cases
+     *   - InvalidPosition: Thrown when position doesn't exist
+     */
+    function healthFactor(address user, uint256 positionId) public view returns (uint256) {
+        uint256 debt = calculateDebtWithInterest(user, positionId);
+        if (debt == 0) return type(uint256).max;
+        (, uint256 liqLevel,) = calculateLimits(user, positionId);
+        return (liqLevel * LendefiConstants.WAD) / debt;
+    }
+
+    /**
+     * @notice Calculates key position parameters
+     * @dev Uses oracle prices to convert collateral amounts to USD value
+     * @param user Address of the position owner
+     * @param positionId ID of the position to calculate value for
+     * @return credit - The maximum amount of USDC that can be borrowed against the position
+     * @return liqLevel - The collateral value level where liquidation will occur
+     * @return value - The total USD value of all collateral assets in the position
+     */
+    function calculateLimits(address user, uint256 positionId)
         public
         view
         validPosition(user, positionId)
-        returns (uint256 value)
+        returns (uint256 credit, uint256 liqLevel, uint256 value)
     {
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
         uint256 len = collaterals.length();
-        if (len == 0) return 0;
 
         for (uint256 i; i < len; i++) {
             (address asset, uint256 amount) = collaterals.at(i);
 
-            if (amount > 0) {
+            if (amount != 0) {
+                // Get all parameters in a single call
                 IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
+                credit += (amount * params.price * params.borrowThreshold) / (10 ** params.decimals * 1000);
+                liqLevel += (amount * params.price * params.liquidationThreshold) / (10 ** params.decimals * 1000);
                 value += (amount * params.price) / (10 ** params.decimals);
             }
         }
@@ -1277,42 +1284,6 @@ contract Lendefi is
 
         // Compare against LendefiConstants.WAD (1.0 in fixed-point representation)
         return healthFactorValue < LendefiConstants.WAD;
-    }
-
-    /**
-     * @notice Calculates the health factor of a position
-     * @dev Health factor is the ratio of weighted collateral to debt, below 1.0 is liquidatable
-     * @param user Address of the position owner
-     * @param positionId ID of the position to calculate health for
-     * @return The position's health factor in LendefiConstants.WAD format (1.0 = 1e6)
-     * @custom:error-cases
-     *   - InvalidPosition: Thrown when position doesn't exist
-     */
-    function healthFactor(address user, uint256 positionId)
-        public
-        view
-        validPosition(user, positionId)
-        returns (uint256)
-    {
-        uint256 debt = calculateDebtWithInterest(user, positionId);
-        if (debt == 0) return type(uint256).max;
-
-        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
-        uint256 len = collaterals.length();
-        uint256 liqLevel;
-
-        for (uint256 i; i < len; i++) {
-            (address asset, uint256 amount) = collaterals.at(i);
-
-            if (amount != 0) {
-                // Get all parameters in a single call
-                IASSETS.AssetCalculationParams memory params = assetsModule.getAssetCalculationParams(asset);
-
-                liqLevel += (amount * params.price * params.liquidationThreshold) / (10 ** params.decimals * 1000);
-            }
-        }
-
-        return (liqLevel * LendefiConstants.WAD) / debt;
     }
 
     /**
