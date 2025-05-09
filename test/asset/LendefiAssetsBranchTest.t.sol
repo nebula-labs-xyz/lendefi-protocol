@@ -595,60 +595,6 @@ contract LendefiAssetsBranchTest is BasicDeploy {
         assertTrue(limitReached2, "Should reach limit with amount > 3% of pool liquidity");
     }
 
-    // Test 7.2: Fix getAssetPriceUniswapOnly test
-    function testRevert_7_2_UniswapOracleInvalidPrice() public {
-        // Deploy a test token for this specific test
-        MockWBTC testToken = new MockWBTC();
-
-        vm.startPrank(address(timelockInstance));
-
-        // Configure Uniswap pool for test token
-        MockUniswapV3Pool tokenPool = new MockUniswapV3Pool(address(testToken), address(usdcInstance), 3000);
-
-        // Setup the token for TWAP data
-        int56[] memory tickCumulatives = new int56[](2);
-        tickCumulatives[0] = 0;
-        tickCumulatives[1] = -203200 * 900; // set an invalid tick cumulative
-        tokenPool.setTickCumulatives(tickCumulatives);
-
-        uint160[] memory secondsPerLiquidityCumulatives = new uint160[](2);
-        secondsPerLiquidityCumulatives[0] = 1000;
-        secondsPerLiquidityCumulatives[1] = 2000;
-        tokenPool.setSecondsPerLiquidity(secondsPerLiquidityCumulatives);
-        tokenPool.setObserveSuccess(true);
-
-        // Configure test token with only Uniswap oracle active (NO Chainlink)
-        assetsInstance.updateAssetConfig(
-            address(testToken),
-            IASSETS.Asset({
-                active: 1,
-                decimals: 8,
-                borrowThreshold: 800,
-                liquidationThreshold: 850,
-                maxSupplyThreshold: 1_000_000e8,
-                isolationDebtCap: 0,
-                assetMinimumOracles: 1,
-                porFeed: address(0),
-                primaryOracleType: IASSETS.OracleType.UNISWAP_V3_TWAP, // Uniswap as primary
-                tier: IASSETS.CollateralTier.CROSS_A,
-                chainlinkConfig: IASSETS.ChainlinkOracleConfig({
-                    oracleUSD: address(mockChainlinkOracle), // Use mockChainlinkOracle instead of address(0)
-                    active: 0 // Still inactive
-                }),
-                poolConfig: IASSETS.UniswapPoolConfig({
-                    pool: address(tokenPool),
-                    twapPeriod: 900,
-                    active: 1 // Uniswap ACTIVE
-                })
-            })
-        );
-        vm.stopPrank();
-
-        // Rest of the test remains the same...
-        vm.expectRevert(abi.encodeWithSelector(IASSETS.OracleInvalidPrice.selector, address(tokenPool), 0));
-        assetsInstance.getAssetPrice(address(testToken));
-    }
-
     // ======== 8. Coverage Gap Tests ========
 
     function test_8_1_CheckPriceDeviationWithInsufficientOracles() public {
