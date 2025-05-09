@@ -1065,6 +1065,7 @@ contract LendefiV2 is
     function getConfig() external view returns (ProtocolConfig memory) {
         return mainConfig;
     }
+
     /**
      * @notice Retrieves a user's position data by ID
      * @dev Returns the full position struct including isolation status, debt, and status
@@ -1075,7 +1076,6 @@ contract LendefiV2 is
      * @custom:error-cases
      *   - InvalidPosition: Thrown when position doesn't exist
      */
-
     function getUserPosition(address user, uint256 positionId)
         external
         view
@@ -1100,8 +1100,7 @@ contract LendefiV2 is
         validPosition(user, positionId)
         returns (uint256)
     {
-        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
-        (bool exists, uint256 amount) = collaterals.tryGet(asset);
+        (bool exists, uint256 amount) = positionCollateral[user][positionId].tryGet(asset);
         return exists ? amount : 0;
     }
 
@@ -1116,10 +1115,9 @@ contract LendefiV2 is
         public
         view
         validPosition(user, positionId)
-        returns (address[] memory assets)
+        returns (address[] memory)
     {
-        EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[user][positionId];
-        assets = collaterals.keys();
+        return positionCollateral[user][positionId].keys();
     }
 
     /**
@@ -1275,9 +1273,7 @@ contract LendefiV2 is
         activePosition(user, positionId)
         returns (bool)
     {
-        UserPosition storage position = positions[user][positionId];
-        if (position.debtAmount == 0) return false;
-
+        if (positions[user][positionId].debtAmount == 0) return false;
         // Use the health factor which properly accounts for liquidation thresholds
         // Health factor < 1.0 means position is undercollateralized based on liquidation parameters
         uint256 healthFactorValue = healthFactor(user, positionId);
@@ -1515,12 +1511,6 @@ contract LendefiV2 is
     {
         UserPosition storage position = positions[msg.sender][positionId];
         EnumerableMap.AddressToUintMap storage collaterals = positionCollateral[msg.sender][positionId];
-
-        // For isolated positions, verify asset
-        if (position.isIsolated && collaterals.length() > 0) {
-            (address firstAsset,) = collaterals.at(0);
-            if (asset != firstAsset) revert InvalidAssetForIsolation(); // Isolated asset mismatch
-        }
 
         // Check and update balance
         (bool exists, uint256 currentAmount) = collaterals.tryGet(asset);
