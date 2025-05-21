@@ -66,7 +66,7 @@ contract GovernanceToken is
     uint32 public version;
     /// @dev tge initialized variable
     uint32 public tge;
-
+    /// @dev Upgrade request structure
     UpgradeRequest public pendingUpgrade;
 
     /// @dev Storage gap for future upgrades
