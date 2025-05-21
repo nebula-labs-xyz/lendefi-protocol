@@ -419,7 +419,10 @@ contract GovernanceTokenV2 is
         onlyRole(BRIDGE_ROLE)
     {
         if (account == address(this)) revert InvalidRecipient(account);
-        if (amount > maxBridge) revert BridgeAmountExceeded(amount, maxBridge);
+
+        // Cache maxBridge to avoid double storage read
+        uint256 maxBridgeAmount = maxBridge;
+        if (amount > maxBridgeAmount) revert BridgeAmountExceeded(amount, maxBridgeAmount);
 
         // Supply constraint validation
         uint256 newSupply = totalSupply() + amount;
