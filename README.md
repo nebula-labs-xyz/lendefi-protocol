@@ -294,10 +294,11 @@ then
 ```
 git clone https://github.com/nebula-labs-xyz/lendefi-protocol.git
 cd lendefi-protocol
-git checkout -b custodian
+git checkout -b chainlinkCCIP-CCT
 
 echo "ALCHEMY_API_KEY=your_api_key_here" >> .env
 
 npm install
-forge clean && forge build && forge test -vvv --ffi --gas-report
+npm run build
+npm run test:unit
 ```
