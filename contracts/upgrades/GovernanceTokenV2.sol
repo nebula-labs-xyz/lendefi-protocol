@@ -227,11 +227,11 @@ contract GovernanceTokenV2 is
             revert ZeroAddress();
         }
 
-        __ERC20_init("Test BnM", "BnMt");
+        __ERC20_init("Lendefi DAO", "LEND");
         __ERC20Burnable_init();
         __ERC20Pausable_init();
         __AccessControl_init();
-        __ERC20Permit_init("Test BnM");
+        __ERC20Permit_init("Lendefi DAO");
         __ERC20Votes_init();
         __UUPSUpgradeable_init();
 
