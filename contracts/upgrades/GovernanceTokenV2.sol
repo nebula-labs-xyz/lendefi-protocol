@@ -250,46 +250,6 @@ contract GovernanceTokenV2 is
     }
 
     /**
-     * @dev Sets the bridge address with BRIDGE_ROLE
-     * @param bridgeAddress The address of the bridge contract
-     * @custom:requires-role MANAGER_ROLE
-     * @custom:throws ZeroAddress if bridgeAddress is zero
-     */
-    function setBridgeAddress(address bridgeAddress) external onlyRole(MANAGER_ROLE) {
-        if (bridgeAddress == address(0)) revert ZeroAddress();
-
-        _grantRole(BRIDGE_ROLE, bridgeAddress);
-
-        emit BridgeRoleAssigned(msg.sender, bridgeAddress);
-    }
-
-    /**
-     * @dev Initializes the Token Generation Event (TGE).
-     * @notice Sets up the initial token distribution between the ecosystem and treasury contracts.
-     * @param ecosystem The address of the ecosystem contract.
-     * @param treasury The address of the treasury contract.
-     * @custom:requires The ecosystem and treasury addresses must not be zero.
-     * @custom:requires TGE must not be already initialized.
-     * @custom:events-emits {TGE} event.
-     * @custom:throws ZeroAddress if any address is zero.
-     * @custom:throws TGEAlreadyInitialized if TGE was already initialized.
-     */
-    function initializeTGE(address ecosystem, address treasury) external onlyRole(TGE_ROLE) {
-        if (ecosystem == address(0)) revert InvalidAddress(ecosystem, "Ecosystem address cannot be zero");
-        if (treasury == address(0)) revert InvalidAddress(treasury, "Treasury address cannot be zero");
-        if (tge > 0) revert TGEAlreadyInitialized();
-
-        ++tge;
-
-        // Directly mint to target addresses instead of minting to this contract first
-        _mint(treasury, TREASURY_SHARE);
-        _mint(ecosystem, ECOSYSTEM_SHARE);
-        _mint(msg.sender, DEPLOYER_SHARE);
-
-        emit TGE(initialSupply);
-    }
-
-    /**
      * @dev Pauses all token transfers and operations.
      * @notice This function can be called by an account with the PAUSER_ROLE to pause the contract.
      * @custom:requires-role PAUSER_ROLE
@@ -496,7 +456,7 @@ contract GovernanceTokenV2 is
     }
 
     // ================================================================
-    // │                            Roles                             │
+    // │                       CCIP Roles                             │
     // ================================================================
 
     /// @notice grants both mint and burn roles to `burnAndMinter`.
