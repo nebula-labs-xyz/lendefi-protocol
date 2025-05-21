@@ -310,31 +310,6 @@ contract GovernanceTokenV2 is
     }
 
     /**
-     * @dev Mints tokens for cross-chain bridge transfers
-     * @param to Address receiving the tokens
-     * @param amount Amount to mint
-     * @notice Can only be called by the official Bridge contract
-     * @custom:requires-role BRIDGE_ROLE
-     * @custom:requires Total supply must not exceed initialSupply
-     * @custom:requires to address must not be zero
-     * @custom:requires amount must not be zero or exceed maxBridge limit
-     * @custom:events-emits {BridgeMint} event
-     * @custom:throws ZeroAddress if recipient address is zero
-     * @custom:throws ZeroAmount if amount is zero
-     * @custom:throws BridgeAmountExceeded if amount exceeds maxBridge
-     * @custom:throws MaxSupplyExceeded if the mint would exceed initialSupply
-     */
-    function bridgeMint(address to, uint256 amount)
-        external
-        nonZeroAddress(to)
-        nonZeroAmount(amount)
-        whenNotPaused
-        onlyRole(BRIDGE_ROLE)
-    {
-        mint(to, amount);
-    }
-
-    /**
      * @dev Updates the maximum allowed bridge amount per transaction
      * @param newMaxBridge New maximum bridge amount
      * @notice Only callable by manager role
@@ -443,6 +418,10 @@ contract GovernanceTokenV2 is
         // Emit the upgrade event
         emit Upgrade(msg.sender, newImplementation);
     }
+
+    // ================================================================
+    // │     NEW Chainlink CCIP CCT SECTION                           │
+    // ================================================================
 
     /// @inheritdoc IERC165
     function supportsInterface(bytes4 interfaceId)
