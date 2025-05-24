@@ -264,7 +264,7 @@ contract UpdateProtocolConfigTest is BasicDeploy {
         _setupProtocolWithSupplyAndBorrow();
 
         // Generate protocol profit by minting additional USDC directly to the contract
-        usdcInstance.mint(address(LendefiInstance), 5_000e6); // Add 5,000 USDC as profit
+        _simulateProtocolProfits(5_000e6);
 
         // Get initial supply rate
         uint256 initialSupplyRate = LendefiInstance.getSupplyRate();
@@ -318,6 +318,36 @@ contract UpdateProtocolConfigTest is BasicDeploy {
     }
 
     /* --------------- Helper Functions --------------- */
+
+    /**
+     * @notice Helper to simulate protocol profits using the proper boostYield function
+     * @dev Uses boostYield instead of direct USDC transfers to maintain trackedUsdcBalance integrity
+     */
+    function _simulateProtocolProfits(uint256 amount) internal {
+        uint256 initialTrackedBalance = LendefiInstance.trackedUsdcBalance();
+        uint256 initialProtocolBalance = usdcInstance.balanceOf(address(LendefiInstance));
+
+        // Mint USDC to the timelock address since only MANAGER_ROLE can call boostYield
+        usdcInstance.mint(address(timelockInstance), amount);
+
+        // Execute boostYield as timelock (which has MANAGER_ROLE)
+        vm.startPrank(address(timelockInstance));
+        usdcInstance.approve(address(LendefiInstance), amount);
+        LendefiInstance.boostYield(amount);
+        vm.stopPrank();
+
+        // Verify state changes after profit simulation
+        assertEq(
+            LendefiInstance.trackedUsdcBalance(),
+            initialTrackedBalance + amount,
+            "Tracked balance should increase by profit amount"
+        );
+        assertEq(
+            usdcInstance.balanceOf(address(LendefiInstance)),
+            initialProtocolBalance + amount,
+            "Protocol USDC balance should increase by profit amount"
+        );
+    }
 
     function _createValidConfig() internal pure returns (IPROTOCOL.ProtocolConfig memory) {
         return IPROTOCOL.ProtocolConfig({

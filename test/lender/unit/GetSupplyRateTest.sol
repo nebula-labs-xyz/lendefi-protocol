@@ -7,6 +7,7 @@ import {IPROTOCOL} from "../../../contracts/interfaces/IProtocol.sol";
 import {IASSETS} from "../../../contracts/interfaces/IASSETS.sol";
 import {Lendefi} from "../../../contracts/lender/Lendefi.sol";
 import {LendefiView} from "../../../contracts/lender/LendefiView.sol";
+import {LendefiConstants} from "../../../contracts/lender/lib/LendefiConstants.sol";
 import {WETHPriceConsumerV3} from "../../../contracts/mock/WETHOracle.sol";
 import {StablePriceConsumerV3} from "../../../contracts/mock/StableOracle.sol";
 
@@ -18,6 +19,11 @@ contract GetSupplyRateTest is BasicDeploy {
     function setUp() public {
         // Use deployCompleteWithOracle() instead of deployComplete()
         deployCompleteWithOracle();
+
+        // Grant MANAGER_ROLE to this test contract for boostYield calls
+        vm.startPrank(address(timelockInstance));
+        LendefiInstance.grantRole(LendefiConstants.MANAGER_ROLE, address(this));
+        vm.stopPrank();
 
         // TGE setup
         vm.prank(guardian);
@@ -107,7 +113,7 @@ contract GetSupplyRateTest is BasicDeploy {
         vm.stopPrank();
 
         // Verify liquidity was added
-        uint256 baseAfter = viewInstance.getProtocolSnapshot().totalSuppliedLiquidity; // Changed to viewInstance
+        uint256 baseAfter = viewInstance.getProtocolSnapshot().totalSuppliedLiquidity;
         assertGe(baseAfter, amount, "Total base should increase after adding liquidity");
     }
 
@@ -138,26 +144,12 @@ contract GetSupplyRateTest is BasicDeploy {
         return positionId;
     }
 
-    // Helper to simulate protocol profits (payments from borrowers, fees, etc.)
-    function _simulateProtocolProfits(uint256 amount) internal {
-        // Mint USDC and send it directly to protocol to simulate profits
-        usdcInstance.mint(address(this), amount);
-        usdcInstance.approve(address(LendefiInstance), amount);
-        usdcInstance.transfer(address(LendefiInstance), amount);
-
-        // Log protocol state after simulating profits
-        LendefiView.ProtocolSnapshot memory snapshot = viewInstance.getProtocolSnapshot(); // Changed to viewInstance
-        console2.log("Protocol USDC balance after profit simulation:", usdcInstance.balanceOf(address(LendefiInstance)));
-        console2.log("Total base:", snapshot.totalSuppliedLiquidity);
-        console2.log("Total borrow:", snapshot.totalBorrow);
-    }
-
     function test_GetSupplyRate_Initial() public {
         // Initially no deposits or borrowing, should be 0
         uint256 supplyRate = LendefiInstance.getSupplyRate();
 
         // Get state using viewInstance
-        LendefiView.ProtocolSnapshot memory snapshot = viewInstance.getProtocolSnapshot(); // Changed to viewInstance
+        LendefiView.ProtocolSnapshot memory snapshot = viewInstance.getProtocolSnapshot();
         console2.log("Initial totalSuppliedLiquidity:", snapshot.totalSuppliedLiquidity);
         console2.log("Initial totalBorrow:", snapshot.totalBorrow);
         console2.log("Initial supply rate:", supplyRate);
@@ -174,7 +166,7 @@ contract GetSupplyRateTest is BasicDeploy {
         uint256 supplyRate = LendefiInstance.getSupplyRate();
 
         // Get protocol state for debugging
-        LendefiView.ProtocolSnapshot memory snapshot = viewInstance.getProtocolSnapshot(); // Changed to viewInstance
+        LendefiView.ProtocolSnapshot memory snapshot = viewInstance.getProtocolSnapshot();
         console2.log("totalSuppliedLiquidity after adding liquidity:", snapshot.totalSuppliedLiquidity);
         console2.log("totalBorrow after adding liquidity:", snapshot.totalBorrow);
         console2.log("totalSupply:", yieldTokenInstance.totalSupply());
@@ -193,7 +185,7 @@ contract GetSupplyRateTest is BasicDeploy {
         uint256 initialSupplyRate = LendefiInstance.getSupplyRate();
         console2.log("Initial supply rate (before profits):", initialSupplyRate);
 
-        // Simulate protocol profits - sending 50,000 USDC to protocol (simulating interest payments)
+        // Simulate protocol profits - using boostYield function
         _simulateProtocolProfits(50_000e6);
 
         // Get supply rate after profits
@@ -268,11 +260,6 @@ contract GetSupplyRateTest is BasicDeploy {
         console2.log("Initial base profit target:", initialBaseProfitTarget);
         console2.log("Initial supply rate with profits:", initialSupplyRate);
 
-        // Let's debug the current permissions
-        bytes32 MANAGER_ROLE = keccak256("MANAGER_ROLE");
-        console2.log("Current timelock address:", address(timelockInstance));
-        console2.log("Timelock has manager role:", LendefiInstance.hasRole(MANAGER_ROLE, address(timelockInstance)));
-
         // Start a prank properly as timelock
         vm.startPrank(address(timelockInstance));
 
@@ -329,5 +316,36 @@ contract GetSupplyRateTest is BasicDeploy {
         // When liquidity is withdrawn, supply rate typically increases for remaining LPs
         // because the same profit is distributed among fewer LP tokens
         assertGt(supplyRateAfterWithdrawal, initialSupplyRate, "Supply rate should increase after liquidity withdrawal");
+    }
+
+    /* --------------- Helper Functions --------------- */
+    /**
+     * @notice Helper to simulate protocol profits using the proper boostYield function
+     * @dev Uses boostYield instead of direct USDC transfers to maintain trackedUsdcBalance integrity
+     */
+    function _simulateProtocolProfits(uint256 amount) internal {
+        uint256 initialTrackedBalance = LendefiInstance.trackedUsdcBalance();
+        uint256 initialProtocolBalance = usdcInstance.balanceOf(address(LendefiInstance));
+
+        // Mint USDC to the timelock address since only MANAGER_ROLE can call boostYield
+        usdcInstance.mint(address(timelockInstance), amount);
+
+        // Execute boostYield as timelock (which has MANAGER_ROLE)
+        vm.startPrank(address(timelockInstance));
+        usdcInstance.approve(address(LendefiInstance), amount);
+        LendefiInstance.boostYield(amount);
+        vm.stopPrank();
+
+        // Verify state changes after profit simulation
+        assertEq(
+            LendefiInstance.trackedUsdcBalance(),
+            initialTrackedBalance + amount,
+            "Tracked balance should increase by profit amount"
+        );
+        assertEq(
+            usdcInstance.balanceOf(address(LendefiInstance)),
+            initialProtocolBalance + amount,
+            "Protocol USDC balance should increase by profit amount"
+        );
     }
 }

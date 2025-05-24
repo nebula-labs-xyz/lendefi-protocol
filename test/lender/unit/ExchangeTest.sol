@@ -110,7 +110,13 @@ contract ExchangeTest is BasicDeploy {
 
     // Helper function to generate protocol profit
     function _generateProfit(uint256 amount) internal {
-        usdcInstance.mint(address(LendefiInstance), amount);
+        usdcInstance.mint(address(timelockInstance), amount);
+
+        // Execute boostYield as timelock (which has MANAGER_ROLE)
+        vm.startPrank(address(timelockInstance));
+        usdcInstance.approve(address(LendefiInstance), amount);
+        LendefiInstance.boostYield(amount);
+        vm.stopPrank();
     }
 
     // Test 1: Basic exchange functionality
