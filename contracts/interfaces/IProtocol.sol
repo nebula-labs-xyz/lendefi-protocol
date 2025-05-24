@@ -209,6 +209,19 @@ interface IPROTOCOL {
      * @param vault Address of the created vault
      */
     event VaultCreated(address indexed user, uint256 indexed positionId, address vault);
+
+    /**
+     * @notice Emitted when DAO withdraws excess USDC from the protocol
+     * @param amount The amount of USDC withdrawn
+     */
+    event ExcessUsdcTransferredToTreasury(uint256 amount);
+
+    /**
+     * @notice Emitted when the DAO deposits USDC into the protocol
+     * @param amount The amount of USDC deposited
+     */
+    event YieldBoosted(uint256 amount);
+
     //////////////////////////////////////////////////
     // -------------------Errors-------------------//
     /////////////////////////////////////////////////
