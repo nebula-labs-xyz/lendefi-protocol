@@ -154,6 +154,10 @@ contract Lendefi is
      * @notice Address of the vaultFactory
      */
     address public vaultFactory;
+    /**
+     * @notice tracked liquidty balance
+     */
+    uint256 public trackedUsdcBalance;
 
     /**
      * @notice Protocol configuration parameters
@@ -424,18 +428,82 @@ contract Lendefi is
      *   - Reverts if USDC transfer fails
      */
     function supplyLiquidity(uint256 amount) external validAmount(amount) nonReentrant whenNotPaused {
-        uint256 total = usdcInstance.balanceOf(address(this)) + totalBorrow;
+        uint256 total = trackedUsdcBalance + totalBorrow;
         uint256 supply = yieldTokenInstance.totalSupply();
         uint256 value = (amount * supply) / (total > 0 ? total : LendefiConstants.WAD);
         uint256 utilization = getUtilization();
         if (supply == 0 || utilization == 0) value = amount;
 
         totalSuppliedLiquidity += amount;
+        // Update tracked balance when USDC comes in
+        trackedUsdcBalance += amount;
 
         liquidityAccrueTimeIndex[msg.sender] = block.timestamp;
         yieldTokenInstance.mint(msg.sender, value);
 
         emit SupplyLiquidity(msg.sender, amount);
+        TH.safeTransferFrom(usdcInstance, msg.sender, address(this), amount);
+    }
+
+    /**
+     * @notice Reconciles any discrepancy between actual and tracked USDC balance
+     * @dev Can be called by governance to handle unexpected USDC transfers
+     */
+    function reconcileUsdcBalance() external onlyRole(LendefiConstants.MANAGER_ROLE) {
+        uint256 actualBalance = usdcInstance.balanceOf(address(this));
+
+        if (actualBalance > trackedUsdcBalance) {
+            // Excess USDC detected - transfer to treasury
+            uint256 excess = actualBalance - trackedUsdcBalance;
+            emit ExcessUsdcTransferredToTreasury(excess);
+            TH.safeTransfer(usdcInstance, treasury, excess);
+        }
+    }
+
+    /**
+     * @notice Boosts protocol yield by depositing USDC directly without minting yield tokens
+     * @dev This function allows depositing USDC to increase protocol reserves without affecting
+     *      exchange rates or diluting existing yield token holders. The deposited USDC becomes
+     *      part of the protocol's tracked balance and increases available liquidity for borrowers.
+     *
+     * Unlike supplyLiquidity(), this function:
+     * - Does not mint yield tokens to the depositor
+     * - Updates trackedUsdcBalance to maintain rate calculation integrity
+     * - Increases available liquidity for flash loans and borrowing
+     * - Can be used for protocol capitalization or yield enhancement
+     *
+     * @param amount Amount of USDC to deposit for yield boosting
+     *
+     * @custom:requirements
+     *   - Protocol must not be paused
+     *   - Amount must be greater than zero
+     *   - Caller must have approved sufficient USDC to the protocol
+     *
+     * @custom:state-changes
+     *   - Increases trackedUsdcBalance by amount
+     *   - Transfers USDC from msg.sender to the protocol
+     *
+     * @custom:emits
+     *   - YieldBoosted(msg.sender, amount)
+     *
+     * @custom:access-control Available to any caller when protocol is not paused
+     * @custom:use-cases
+     *   - Protocol treasury operations
+     *   - Yield enhancement initiatives
+     *   - Liquidity provisioning without token dilution
+     *   - Emergency liquidity injection
+     */
+    function boostYield(uint256 amount)
+        external
+        validAmount(amount)
+        nonReentrant
+        whenNotPaused
+        onlyRole(LendefiConstants.MANAGER_ROLE)
+    {
+        // Update tracked balance to include the boost
+        trackedUsdcBalance += amount;
+
+        emit YieldBoosted(amount);
         TH.safeTransferFrom(usdcInstance, msg.sender, address(this), amount);
     }
 
@@ -482,7 +550,7 @@ contract Lendefi is
     function exchange(uint256 amount) external validAmount(amount) nonReentrant whenNotPaused {
         uint256 supply = yieldTokenInstance.totalSupply();
         uint256 baseAmount = (amount * totalSuppliedLiquidity) / supply;
-        uint256 total = usdcInstance.balanceOf(address(this)) + totalBorrow;
+        uint256 total = trackedUsdcBalance + totalBorrow;
 
         uint256 target = (baseAmount * mainConfig.profitTargetRate) / LendefiConstants.WAD;
         if (total >= totalSuppliedLiquidity + target) {
@@ -493,9 +561,10 @@ contract Lendefi is
 
         totalSuppliedLiquidity -= baseAmount;
         totalAccruedSupplierInterest += value - baseAmount;
+        // Update tracked balance when USDC goes out
+        trackedUsdcBalance -= value;
 
         yieldTokenInstance.burn(msg.sender, amount);
-
         emit Exchange(msg.sender, amount, value);
         TH.safeTransfer(usdcInstance, msg.sender, value);
     }
@@ -787,6 +856,7 @@ contract Lendefi is
         // Update position debt and interest accrual timestamp
         position.debtAmount = currentDebt + amount;
         position.lastInterestAccrual = block.timestamp;
+        trackedUsdcBalance -= amount;
 
         emit Borrow(msg.sender, positionId, amount);
         TH.safeTransfer(usdcInstance, msg.sender, amount);
@@ -962,6 +1032,8 @@ contract Lendefi is
         IVAULT(vault).liquidate(getPositionCollateralAssets(user, positionId), msg.sender);
         // Clear all collateral assets
         positionCollateral[user][positionId].clear();
+        // Update tracked USDC balance
+        trackedUsdcBalance += (debtWithInterest + fee);
 
         emit InterestAccrued(user, positionId, interestAccrued);
         emit Liquidated(user, positionId, msg.sender);
@@ -1304,7 +1376,7 @@ contract Lendefi is
             totalBorrow,
             totalSuppliedLiquidity,
             mainConfig.profitTargetRate,
-            usdcInstance.balanceOf(address(this))
+            trackedUsdcBalance
         );
     }
 
@@ -1574,6 +1646,7 @@ contract Lendefi is
 
             // Determine actual repayment amount (capped at total debt)
             actualAmount = proposedAmount > balance ? balance : proposedAmount;
+            trackedUsdcBalance += actualAmount;
 
             // Update total protocol debt
             // The formula ensures we account for both interest accrual and repayment
